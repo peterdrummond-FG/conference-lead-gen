@@ -8,6 +8,7 @@ public class Event
     public string State { get; set; } = null!;
     public string City { get; set; } = null!;
     public DateTimeOffset ActivatedAt { get; set; }
+    public bool IsActive { get; set; }
 
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
 }

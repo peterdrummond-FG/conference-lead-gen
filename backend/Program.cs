@@ -1,4 +1,5 @@
 using ConferenceLeadGen.Api.Data;
+using ConferenceLeadGen.Api.Endpoints;
 using ConferenceLeadGen.Api.Tools;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,9 +9,12 @@ using Microsoft.EntityFrameworkCore;
 // walks up from backend/ to find the .env file at the repo root.
 DotNetEnv.Env.TraversePath().Load();
 
-if (args.Length > 0 && args[0] == "seed-schools")
+if (args.Length > 0 && (args[0] == "seed-schools" || args[0] == "sync-campaigns"))
 {
-    var jsonPath = args.Length > 1 ? args[1] : "Data/Seed/zoho-school-accounts.json";
+    var defaultPath = args[0] == "seed-schools"
+        ? "Data/Seed/zoho-school-accounts.json"
+        : "Data/Seed/zoho-campaigns.json";
+    var jsonPath = args.Length > 1 ? args[1] : defaultPath;
 
     var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
         ?? throw new InvalidOperationException("ConnectionStrings__Default not set (check .env).");
@@ -21,7 +25,16 @@ if (args.Length > 0 && args[0] == "seed-schools")
         .Options;
 
     await using var db = new AppDbContext(options);
-    await SeedSchoolAccounts.RunAsync(db, jsonPath);
+
+    if (args[0] == "seed-schools")
+    {
+        await SeedSchoolAccounts.RunAsync(db, jsonPath);
+    }
+    else
+    {
+        await SyncCampaigns.RunAsync(db, jsonPath);
+    }
+
     return;
 }
 
@@ -34,14 +47,27 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
         .UseSnakeCaseNamingConvention());
 
+// Dev-only safety net for direct Swagger/curl testing against the backend
+// port — not load-bearing for the real kiosk flow, which only ever talks to
+// the Quasar dev server's own same-origin /api proxy, never this backend
+// directly. Never enabled outside Development.
+builder.Services.AddCors();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseCors(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 }
 
 app.UseHttpsRedirection();
+
+app.MapCampaignEndpoints();
+app.MapEventEndpoints();
+app.MapDistrictEndpoints();
+app.MapSchoolEndpoints();
+app.MapContactEndpoints();
 
 app.Run();

@@ -16,5 +16,12 @@ public class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.Property(e => e.Name).IsRequired();
         builder.Property(e => e.State).IsRequired();
         builder.Property(e => e.City).IsRequired();
+
+        // At most one active event at a time, enforced at the DB level, not
+        // just in application logic (POST /api/events deactivates the
+        // current one before activating the next inside one transaction).
+        builder.HasIndex(e => e.IsActive)
+            .IsUnique()
+            .HasFilter("is_active");
     }
 }

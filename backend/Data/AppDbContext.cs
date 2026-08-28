@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<SchoolDistrict> SchoolDistricts => Set<SchoolDistrict>();
     public DbSet<School> Schools => Set<School>();
