@@ -61,6 +61,7 @@ of SQLite tables:
 | State | text | from Campaign's `State` field |
 | City | text | from Campaign's `City` field (Zoho has no County field) |
 | ActivatedAt | timestamptz | when a rep locked this table to the event |
+| FolderCode | text | nullable, unique — short human-typeable id (e.g. `lansing-20260920`) a rep creates a Finder subfolder with by hand for card-photo intake; see section 5 |
 
 ### `Contacts`
 | column | type | notes |
@@ -132,7 +133,8 @@ District and school start empty and grow via "+ add new" as people type them in.
 | `GET /review` (Quasar page) | The clearinghouse — a list view, not a step-through queue, so reviewers can tackle records in any order and bulk-approve a batch of high-confidence ones in one action. Each row shows: source photo (if any) next to editable fields, extraction confidence, a "possible duplicate of [name]" flag when `LocalDuplicateOfContactId` is set, and — when `MatchConfidence = medium` — a picker showing `CandidateMatches` to resolve against. Approve / Edit / Reject per row or in bulk |
 | `PATCH /api/contacts/{id}` | Updates a row's fields, resolves a candidate match, and/or updates status |
 | `GET /export` (Quasar page) | Generates the Zoho-ready CSV from all `approved` rows. Rows with `MatchStatus = new_account` are excluded until a human has created the Account in Zoho and linked it |
-| `POST /api/contacts/from-ocr` | Called by the watcher script (see below) — not by a browser. Inserts one `needs_review` row per card found in a photo |
+| `POST /api/contacts/from-ocr` | Called by the watcher script (see below) — not by a browser. Resolves the `Event` from a folder code, creates one `Contact` row per photo, and enqueues it for the same background matching pipeline forms use |
+| `GET /api/contacts/{id}/photo` | Streams the original card photo for a `card_photo` contact, for the panel on `/review` |
 
 **Zoho's Campaigns module has no State/City fields at all** — confirmed
 against all 671 real conference campaigns pulled: every one has both null,
@@ -165,32 +167,79 @@ silently vanishes from view between review and export.
 
 ## 5. Card-photo pipeline — mirroring GoodWrap's watcher
 
-Instead of the API polling a folder itself, a small standalone script does — same
-division of responsibility as GoodWrap's `downloads_watcher.py` /
-`start_scanfolder_watcher.command` pair:
+Instead of the API polling a folder itself, a small standalone script
+(`watcher/watch-cards.command`) does — same division of responsibility as
+GoodWrap's `downloads_watcher.py` / `start_scanfolder_watcher.command` pair, run
+as a macOS Login Item so it inherits Terminal's folder permissions instead of
+losing them silently the way a background LaunchAgent does.
 
-1. Photos land in a local folder (drag-and-drop, AirDrop, whatever's easiest at
-   the venue).
-2. A polling loop (a `.command` script run as a macOS Login Item, same mechanism
-   GoodWrap uses and for the same reason — it inherits Terminal's folder
-   permissions instead of losing them silently the way a background LaunchAgent
-   does) calls `claude -p` headlessly against a dedicated Skill
-   (`.claude/skills/process-cards/SKILL.md`) that OCRs each new photo, runs the
-   research step on any gaps, and POSTs the result to `/api/contacts/from-ocr`.
-3. Each photo is hashed on arrival; the hash is checked against `SourceImageHash`
-   before processing, so re-running the watcher or re-dropping a photo is always
-   safe — a repeat is a no-op, not a duplicate contact. Straight from GoodWrap's
-   "uploads are idempotent" design.
-4. Same cost reasoning as GoodWrap: this runs on your Claude Code plan, not a
-   metered `ANTHROPIC_API_KEY` — worth keeping in mind if photo volume is high,
-   since GoodWrap paces itself with a cooldown between runs for exactly that
-   reason (`SCAN_COOLDOWN_SECONDS`). Worth adopting the same pacing here if a
-   convention generates a big batch of photos at once.
+**Built as implemented (supersedes the original single-skill sketch below):**
+`research-contact` and `match-contact` already exist as their own pipeline
+stage (section 6), wired in from the form path and shared unchanged by card
+photos — so `process-cards` (`.claude/skills/process-cards/SKILL.md`) has a
+much narrower job than first imagined: **OCR one photo, extract fields exactly
+as printed, hand off — nothing more.** It does not research the person and
+does not touch Zoho.
 
-This is the one piece I'm defaulting on rather than asking about outright — it's
-a real pattern you already run elsewhere, so it seemed like the obvious fit. Say
-so if you'd rather call the Anthropic API directly from the .NET backend instead
-(simpler code path, but back to metered API billing instead of your Code plan).
+- **Explicit per-event folder selection, not "whichever event is `IsActive`."**
+  Cards are processed after the event, often once a different event is already
+  active for whatever's next — so the watcher can't lean on the form path's
+  `IsActive` shortcut. Each `Event` gets a `FolderCode` (slugified city +
+  activation date, e.g. `lansing-20260920`) shown on `/setup` once activated;
+  a rep creates a matching subfolder under `watcher/inbox/` by hand, and the
+  watcher/skill resolve the `Event` from that code — never a client-trusted id.
+- **Folder layout**: `inbox/<code>/` (drop zone) → `.processing/<code>/`
+  (transient staging for one photo's run) → `processed/<code>/<hash>.<ext>`
+  (permanent archive, doubles as `SourceImagePath`) or `failed/<code>/` on
+  error, plus `logs/watch.log`. All gitignored except the script and each
+  folder's `.gitkeep`.
+- **Idempotency at two layers.** The watcher hashes each photo's original bytes
+  on arrival (before any HEIC conversion) and checks the archive folder for
+  that hash by filename — a match is a local no-op, skipped without invoking
+  `claude` at all. `POST /api/contacts/from-ocr` separately checks
+  `SourceImageHash` against existing contacts as a server-side backstop
+  (`200`/`alreadyProcessed: true`, no new row) — belt-and-suspenders, since the
+  watcher's own check is what actually avoids the cost of a Claude invocation.
+- **HEIC handling**: iPhone photos convert to JPEG via `sips` (built into
+  macOS) before staging; the identity hash is always the pre-conversion
+  original bytes, so re-dropping the same photo is recognized regardless of
+  which format it arrives in.
+- **Crash-safe.** Anything still sitting in `.processing/` when a poll starts
+  means the previous run died mid-file (killed Terminal, laptop sleep) — a
+  `reconcile_stale` step moves it back to `inbox/` to retry before that poll
+  does anything else. Verified: killing the watcher mid-run and restarting it
+  recovers the staged photo and reprocesses it correctly.
+- **Local district/school resolution for OCR'd free text.** `Contact`'s
+  district/school FKs are required, but OCR just reads raw text with no
+  type-ahead-guaranteed match. A simple exact case-insensitive lookup scoped to
+  the event's state finds-or-creates a local row (`ZohoAccountId = null`,
+  same as a form's "+ add new") — the real fuzzy/authoritative resolution
+  still happens downstream in `research-contact`/`match-contact` against Zoho,
+  regardless of which local row this picks. A card with no legible
+  institution text at all resolves to a shared per-state placeholder district
+  (`"(none provided on card)"`), easy for a reviewer to spot and fix via the
+  district/school pickers now on `/review`.
+- **No email/phone requirement for card photos.** The form path requires one
+  of the two; a photographed business card routinely has neither legible, and
+  there's no kiosk user to push back on it — `from-ocr` skips that rule.
+- **Portable timeout, no GNU coreutils.** Confirmed neither `timeout` nor
+  `gtimeout` exists on this Mac — the watcher backgrounds each `claude -p`
+  call and polls/`kill -9`s it past a configurable ceiling with plain bash,
+  rather than assuming a GNU tool that isn't there.
+- **Poll interval: 45s** — lighter per-item than GoodWrap's transcript
+  pipeline (one multimodal read + one curl call, no web search), but still
+  worth pacing against the same Claude Code plan usage note below.
+- Same cost reasoning as GoodWrap: this runs on your Claude Code plan, not a
+  metered `ANTHROPIC_API_KEY` — worth keeping in mind if photo volume is high,
+  since GoodWrap paces itself with a cooldown between runs for exactly that
+  reason (`SCAN_COOLDOWN_SECONDS`). Worth adopting the same pacing here if a
+  convention generates a big batch of photos at once.
+
+Verified end-to-end: JPEG and HEIC photos both OCR correctly and produce a
+`Contact` row that the existing background matching pipeline then picks up
+exactly like a form submission; a duplicate is caught at both layers; a
+no-institution card lands under the placeholder and is correctable on
+`/review`; a simulated mid-run crash recovers cleanly on restart.
 
 ## 6. Duplicate and match checks
 
@@ -209,9 +258,10 @@ than the app silently merging or silently keeping two rows for one person.
 For every contact, before it can reach `approved`, one skill checks it against
 your actual Zoho data and classifies it into exactly one of:
 
-- **`pending`** — the check hasn't completed yet. Only applies to form
-  submissions (see "Async for forms" below); card-photo rows are only ever
-  created once their pipeline run, including this check, has already finished.
+- **`pending`** — the check hasn't completed yet. Applies to both intake
+  paths: `process-cards` only OCRs a photo and hands off (section 5); the
+  Zoho matching check itself always runs afterward, asynchronously, on the
+  same background queue as a form submission (see "Async for forms" below).
 - **`existing_contact`** — matched an existing Zoho Contact by name (and
   email/phone if present). Nothing new to create.
 - **`new_contact_existing_account`** — no Contact match, but the school/district
@@ -270,16 +320,17 @@ row by itself — a human still makes that call in `/review`. High-confidence
 Zoho hits skip the web search entirely, so the common case (a real, unambiguous
 match) never pays for it.
 
-**Where this runs**: the same Claude Code CLI skill that does OCR/research for
-card photos also does the Zoho lookup (and, when needed, the web-search
-fallback) in the same pass, since it already has read access to Zoho CRM. For
-form submissions — which skip OCR but still need this same matching-and-research
-check — the .NET API triggers that skill directly (a quick, synchronous
-`claude -p` call against a narrower version of the skill that starts from typed
-fields instead of a photo) right after saving the row, rather than duplicating
-matching logic inside the .NET backend itself. One place decides what counts as
-a match — and when web research is worth doing — regardless of which intake
-path a contact came from.
+**Where this runs**: as implemented, this is two Claude Code CLI skills, not
+one — `research-contact` (identity/institution verification, web search when
+needed) followed by `match-contact` (a pure Zoho classifier, no web search),
+run in that order by a background queue (`MatchingQueue`/
+`MatchingBackgroundService`) inside the .NET API. Both skills are invoked
+headlessly (`claude -p`) by `SkillRunner.cs` and are agnostic to how the
+`Contact` row was created — a card photo only differs upstream, in that
+`process-cards` (section 5) does the OCR step and hands off via
+`POST /api/contacts/from-ocr`, which enqueues onto this same queue. One place
+decides what counts as a match — and when web research is worth doing —
+regardless of which intake path a contact came from.
 
 **"+ Add new" district/school doesn't skip this.** Typing a district that isn't
 in our own local `SchoolDistricts` list only means it's new *to us* — it could
@@ -293,9 +344,9 @@ round-trip mid-event — a submission saves immediately (`MatchStatus = pending`
 and the kiosk resets right away, same as always. The matching check kicks off
 right after, and if Zoho is briefly unreachable it retries automatically in the
 background rather than failing the submission or blocking the next attendee.
-Card-photo rows never carry `pending` at all, since that whole pipeline already
-runs after the event, when the matching check completing is just one more step
-in an already-non-live process.
+Card-photo rows go through this exact same async path — `process-cards` only
+OCRs and hands off, so a fresh card-photo row is `MatchStatus = pending` too,
+until the background queue's matching check completes, just like a form row.
 
 ## 7. Kiosk behavior (iPad)
 
@@ -345,6 +396,13 @@ noted here so it doesn't get lost between the pilot and the real build.
 - Card photos are never processed live during an event — only form/QR
   submissions need to work in real time, and those retry Zoho automatically in
   the background rather than blocking the kiosk.
+- **Card-photo events use explicit per-event folder selection (`FolderCode`),
+  not whichever `Event` is `IsActive`** — cards are processed after the event,
+  possibly once a different one is already active by then, so the form path's
+  `IsActive` shortcut doesn't apply here (section 5).
+- `process-cards` OCRs only — the Zoho research/matching step is the same
+  `research-contact`/`match-contact` pipeline the form path already uses, not
+  a separate combined skill (section 5/6).
 
 **Still open:**
 - **Watcher billing model**: defaulted to mirroring GoodWrap's Claude Code CLI
