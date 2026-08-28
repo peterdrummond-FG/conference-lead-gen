@@ -5,6 +5,7 @@ public class SchoolDistrict
     public Guid Id { get; set; }
     public string State { get; set; } = null!;
     public string Name { get; set; } = null!;
+    public string? ZohoAccountId { get; set; }
 
     public ICollection<School> Schools { get; set; } = new List<School>();
 }

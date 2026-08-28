@@ -14,6 +14,10 @@ public class SchoolConfiguration : IEntityTypeConfiguration<School>
 
         builder.Property(s => s.Name).IsRequired();
 
+        builder.HasIndex(s => s.ZohoAccountId)
+            .IsUnique()
+            .HasFilter("zoho_account_id IS NOT NULL");
+
         // Reference data: a district's schools shouldn't vanish just because
         // the district row is deleted by hand — no deletion UI is planned for
         // either (section 3: they only grow via "+ add new"), but fail loudly

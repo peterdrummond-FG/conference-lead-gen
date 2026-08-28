@@ -17,3 +17,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Seed loader run artifacts (regenerated each run, not source data)
+backend/Data/Seed/*.excluded.json

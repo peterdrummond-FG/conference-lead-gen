@@ -14,5 +14,11 @@ public class SchoolDistrictConfiguration : IEntityTypeConfiguration<SchoolDistri
 
         builder.Property(d => d.State).IsRequired();
         builder.Property(d => d.Name).IsRequired();
+
+        // Set only on rows seeded from Zoho; nullable so locally "+ add new"
+        // districts (a later stage) are still valid without one.
+        builder.HasIndex(d => d.ZohoAccountId)
+            .IsUnique()
+            .HasFilter("zoho_account_id IS NOT NULL");
     }
 }
