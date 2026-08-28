@@ -1,0 +1,6 @@
+@ConferenceLeadGen.Api_HostAddress = http://localhost:5240
+
+GET {{ConferenceLeadGen.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
