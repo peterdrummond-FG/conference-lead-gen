@@ -213,7 +213,9 @@ indentation requirement, just valid JSON):
       "matchStatus": "new_contact_existing_account",
       "matchConfidence": "medium",
       "matchedZohoContactId": null,
+      "matchedZohoContactName": null,
       "matchedZohoAccountId": "3001271000007193584",
+      "matchedZohoAccountName": "Sunflower County School District",
       "candidateMatches": [
         {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8}
       ],
@@ -222,5 +224,9 @@ indentation requirement, just valid JSON):
 
 `candidateMatches` is `null` (not `[]`) when there's nothing worth surfacing —
 a clean `existing_contact`, or a true `new_account` with no plausible
-candidates at all. Re-verify field names and enum strings against this file
+candidates at all. `matchedZohoAccountName`/`matchedZohoContactName` are the
+display name of whatever `matchedZohoAccountId`/`matchedZohoContactId` point
+at — set both id and name together, null together (a caller needs the name
+for a CSV export and shouldn't have to re-derive it by searching
+`candidateMatches`). Re-verify field names and enum strings against this file
 before printing.

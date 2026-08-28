@@ -122,16 +122,26 @@ District and school start empty and grow via "+ add new" as people type them in.
 
 | Route | Purpose |
 |---|---|
-| `GET /setup` (Quasar page) | One-time-per-event screen. Rep searches/selects the Zoho Campaign for today; on confirm, activates a row in `Events` and generates the QR code pointing at `/intake` |
-| `GET /api/events?search=` | .NET endpoint, pulls matching Campaigns from Zoho (`Type = conference`) |
+| `GET /setup` (Quasar page) | One-time-per-event screen. Rep searches/selects the Zoho Campaign for today, types in State/City (see note below), and on confirm activates a row in `Events` and generates the QR code pointing at `/intake` |
+| `GET /api/campaigns?search=` | .NET endpoint, searches a local Postgres cache of Campaigns (`Type = conference`), synced periodically via `dotnet run -- sync-campaigns` from a Claude-driven Zoho pull — not a live Zoho call. (Named `/campaigns`, not `/events` as originally sketched here — the cache is its own `Campaign` entity, distinct from an *activated* `Event`, and naming the search route after `Event` was actively confusing once that split existed.) |
+| `POST /api/events` | Activates a cached Campaign into a new `Event` row. Takes `state`/`city` directly from the rep — see note below, Zoho has no such data to copy |
 | `GET /intake` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new." |
-| `POST /api/contacts` | Saves a form row, then triggers the matching skill (below) before it can reach `approved` |
+| `POST /api/contacts` | Saves a form row, runs the within-event duplicate check synchronously, then enqueues it for background matching (`research-contact` → `match-contact`, below) — the response returns immediately, before matching completes |
 | `GET /api/districts?search=` / `GET /api/schools?districtId=&search=` | Type-ahead lookups |
 | `POST /api/districts` / `POST /api/schools` | Add-new, called when someone types something not already in the list |
 | `GET /review` (Quasar page) | The clearinghouse — a list view, not a step-through queue, so reviewers can tackle records in any order and bulk-approve a batch of high-confidence ones in one action. Each row shows: source photo (if any) next to editable fields, extraction confidence, a "possible duplicate of [name]" flag when `LocalDuplicateOfContactId` is set, and — when `MatchConfidence = medium` — a picker showing `CandidateMatches` to resolve against. Approve / Edit / Reject per row or in bulk |
 | `PATCH /api/contacts/{id}` | Updates a row's fields, resolves a candidate match, and/or updates status |
 | `GET /export` (Quasar page) | Generates the Zoho-ready CSV from all `approved` rows. Rows with `MatchStatus = new_account` are excluded until a human has created the Account in Zoho and linked it |
 | `POST /api/contacts/from-ocr` | Called by the watcher script (see below) — not by a browser. Inserts one `needs_review` row per card found in a photo |
+
+**Zoho's Campaigns module has no State/City fields at all** — confirmed
+against all 671 real conference campaigns pulled: every one has both null,
+and no related field carries it either. The only trace of location is
+embedded inconsistently in free-text campaign names (e.g. `"2023 01.29-02.01
+(TX) TASA Mid-winter Conference"` — a state abbreviation in parens
+sometimes, a city almost never). Per your call, the rep simply types
+State/City in at `/setup` when activating an event, rather than anything
+being parsed or copied from Zoho.
 
 ### Export format
 

@@ -9,7 +9,7 @@ public static class ReviewStatusConverter
         v => ToProviderValue(v),
         v => FromProviderValue(v));
 
-    private static string ToProviderValue(ReviewStatus v) => v switch
+    public static string ToProviderValue(ReviewStatus v) => v switch
     {
         ReviewStatus.Approved => "approved",
         ReviewStatus.NeedsReview => "needs_review",
@@ -17,7 +17,7 @@ public static class ReviewStatusConverter
         _ => throw new ArgumentOutOfRangeException(nameof(v), v, "Unmapped ReviewStatus value")
     };
 
-    private static ReviewStatus FromProviderValue(string v) => v switch
+    public static ReviewStatus FromProviderValue(string v) => v switch
     {
         "approved" => ReviewStatus.Approved,
         "needs_review" => ReviewStatus.NeedsReview,

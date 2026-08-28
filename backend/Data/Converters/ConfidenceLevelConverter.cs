@@ -12,7 +12,7 @@ public static class ConfidenceLevelConverter
         v => ToProviderValue(v),
         v => FromProviderValue(v));
 
-    private static string ToProviderValue(ConfidenceLevel v) => v switch
+    public static string ToProviderValue(ConfidenceLevel v) => v switch
     {
         ConfidenceLevel.High => "high",
         ConfidenceLevel.Medium => "medium",
@@ -20,7 +20,7 @@ public static class ConfidenceLevelConverter
         _ => throw new ArgumentOutOfRangeException(nameof(v), v, "Unmapped ConfidenceLevel value")
     };
 
-    private static ConfidenceLevel FromProviderValue(string v) => v switch
+    public static ConfidenceLevel FromProviderValue(string v) => v switch
     {
         "high" => ConfidenceLevel.High,
         "medium" => ConfidenceLevel.Medium,

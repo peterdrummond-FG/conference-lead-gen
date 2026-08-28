@@ -75,9 +75,11 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
 
         // Self-referencing FK: the one place a true null-out is correct — if
         // the contact this row was flagged as a duplicate of gets deleted,
-        // clear the pointer rather than blocking the delete. No reverse
-        // navigation collection; nothing needs "contacts that point at me."
-        builder.HasOne<Contact>()
+        // clear the pointer rather than blocking the delete. Forward
+        // navigation only (for displaying "possible duplicate of [name]" on
+        // /review) — no reverse collection; nothing needs "contacts that
+        // point at me."
+        builder.HasOne(c => c.LocalDuplicateOfContact)
             .WithMany()
             .HasForeignKey(c => c.LocalDuplicateOfContactId)
             .OnDelete(DeleteBehavior.SetNull);

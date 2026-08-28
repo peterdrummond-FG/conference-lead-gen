@@ -8,6 +8,8 @@ const routes: RouteRecordRaw[] = [
       { path: '', redirect: '/setup' },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue') },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
+      { path: 'review', component: () => import('@/pages/ReviewPage.vue') },
+      { path: 'export', component: () => import('@/pages/ExportPage.vue') },
     ],
   },
 

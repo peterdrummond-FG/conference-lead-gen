@@ -15,14 +15,17 @@ public static class ContactSourceConverter
         v => ToProviderValue(v),
         v => FromProviderValue(v));
 
-    private static string ToProviderValue(ContactSource v) => v switch
+    // Public so callers outside EF Core (e.g. building skill-invocation input,
+    // parsing skill output) reuse the exact same mapping instead of
+    // duplicating this switch elsewhere.
+    public static string ToProviderValue(ContactSource v) => v switch
     {
         ContactSource.Form => "form",
         ContactSource.CardPhoto => "card_photo",
         _ => throw new ArgumentOutOfRangeException(nameof(v), v, "Unmapped ContactSource value")
     };
 
-    private static ContactSource FromProviderValue(string v) => v switch
+    public static ContactSource FromProviderValue(string v) => v switch
     {
         "form" => ContactSource.Form,
         "card_photo" => ContactSource.CardPhoto,

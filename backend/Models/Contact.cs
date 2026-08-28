@@ -34,11 +34,14 @@ public class Contact
     public ConfidenceLevel? MatchConfidence { get; set; }
 
     public string? MatchedZohoContactId { get; set; }
+    public string? MatchedZohoContactName { get; set; }
     public string? MatchedZohoAccountId { get; set; }
+    public string? MatchedZohoAccountName { get; set; }
 
     public List<CandidateMatch>? CandidateMatches { get; set; }
 
     public Guid? LocalDuplicateOfContactId { get; set; }
+    public Contact? LocalDuplicateOfContact { get; set; }
 
     public ReviewStatus ReviewStatus { get; set; } = ReviewStatus.NeedsReview;
 

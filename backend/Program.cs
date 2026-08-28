@@ -1,5 +1,6 @@
 using ConferenceLeadGen.Api.Data;
 using ConferenceLeadGen.Api.Endpoints;
+using ConferenceLeadGen.Api.Services;
 using ConferenceLeadGen.Api.Tools;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,6 +54,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // directly. Never enabled outside Development.
 builder.Services.AddCors();
 
+// .claude/skills lives at the repo root, one level up from this project's
+// own content root (backend/) — the background worker shells out to `claude`
+// with this as its working directory so skills are discoverable.
+var repoRoot = Directory.GetParent(builder.Environment.ContentRootPath)!.FullName;
+builder.Services.AddSingleton(new MatchingOptions(repoRoot));
+builder.Services.AddSingleton<MatchingQueue>();
+builder.Services.AddHostedService<MatchingBackgroundService>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -69,5 +78,6 @@ app.MapEventEndpoints();
 app.MapDistrictEndpoints();
 app.MapSchoolEndpoints();
 app.MapContactEndpoints();
+app.MapExportEndpoints();
 
 app.Run();
