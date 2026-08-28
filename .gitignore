@@ -20,3 +20,16 @@ __pycache__/
 
 # Seed loader run artifacts (regenerated each run, not source data)
 backend/Data/Seed/*.excluded.json
+
+# Card-photo watcher — real photos and run state, never version-controlled.
+# The script itself and this .gitignore's own placeholders stay tracked.
+watcher/inbox/*
+!watcher/inbox/.gitkeep
+watcher/.processing/*
+!watcher/.processing/.gitkeep
+watcher/processed/*
+!watcher/processed/.gitkeep
+watcher/failed/*
+!watcher/failed/.gitkeep
+watcher/logs/*
+!watcher/logs/.gitkeep

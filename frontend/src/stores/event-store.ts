@@ -8,6 +8,7 @@ export interface ActiveEvent {
   state: string;
   city: string;
   activatedAt: string;
+  folderCode: string | null;
 }
 
 export const useEventStore = defineStore('event', {

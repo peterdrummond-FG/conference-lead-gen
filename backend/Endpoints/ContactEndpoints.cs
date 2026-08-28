@@ -25,8 +25,12 @@ public record ContactListItem(
     string? Phone,
     string? Title,
     string Source,
+    Guid EventId,
     string EventName,
+    string EventState,
+    Guid SchoolDistrictId,
     string DistrictName,
+    Guid? SchoolId,
     string? SchoolName,
     string? ExtractionConfidence,
     string MatchStatus,
@@ -40,6 +44,7 @@ public record ContactListItem(
     string? LocalDuplicateOfContactName,
     string ReviewStatus,
     string? Notes,
+    bool HasPhoto,
     DateTimeOffset CreatedAt);
 
 public record UpdateContactRequest(
@@ -61,6 +66,21 @@ public record UpdateContactRequest(
 public record BulkApproveRequest(List<Guid> Ids);
 public record BulkApproveResult(List<Guid> Approved, List<BulkApproveSkip> Skipped);
 public record BulkApproveSkip(Guid Id, string Reason);
+
+public record CreateContactFromOcrRequest(
+    string EventFolderCode,
+    string FirstName,
+    string LastName,
+    string? Email,
+    string? Phone,
+    string? Title,
+    string? DistrictName,
+    string? SchoolName,
+    string ExtractionConfidence,
+    string SourceImageHash,
+    string SourceImagePath);
+
+public record CreateContactFromOcrResult(Guid Id, bool AlreadyProcessed, DateTimeOffset CreatedAt);
 
 public static class ContactEndpoints
 {
@@ -100,7 +120,9 @@ public static class ContactEndpoints
             var results = contacts.Select(c => new ContactListItem(
                 c.Id, c.FirstName, c.LastName, c.Email, c.Phone, c.Title,
                 Data.Converters.ContactSourceConverter.ToProviderValue(c.Source),
-                c.Event.Name, c.SchoolDistrict.Name, c.School?.Name,
+                c.EventId, c.Event.Name, c.Event.State,
+                c.SchoolDistrictId, c.SchoolDistrict.Name,
+                c.SchoolId, c.School?.Name,
                 c.ExtractionConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.ExtractionConfidence.Value) : null,
                 Data.Converters.MatchStatusConverter.ToProviderValue(c.MatchStatus),
                 c.MatchConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.MatchConfidence.Value) : null,
@@ -111,6 +133,7 @@ public static class ContactEndpoints
                 c.LocalDuplicateOfContact != null ? $"{c.LocalDuplicateOfContact.FirstName} {c.LocalDuplicateOfContact.LastName}" : null,
                 Data.Converters.ReviewStatusConverter.ToProviderValue(c.ReviewStatus),
                 c.Notes,
+                !string.IsNullOrEmpty(c.SourceImagePath),
                 c.CreatedAt))
                 .ToList();
 
@@ -122,6 +145,9 @@ public static class ContactEndpoints
             // Server-side backstop for the frontend's own required-field
             // check — a captured lead with no way to reach them isn't
             // useful, so this isn't optional just because a client forgot.
+            // (Card-photo submissions, below, deliberately do NOT enforce
+            // this — a photographed business card routinely has neither
+            // legible, and there's no kiosk user to push back on it.)
             if (string.IsNullOrWhiteSpace(req.Email) && string.IsNullOrWhiteSpace(req.Phone))
             {
                 return Results.BadRequest(new { error = "At least one of email or phone is required." });
@@ -179,6 +205,101 @@ public static class ContactEndpoints
 
             var response = new ContactResponse(contact.Id, contact.CreatedAt);
             return Results.Created($"/api/contacts/{contact.Id}", response);
+        });
+
+        app.MapPost("/api/contacts/from-ocr", async (CreateContactFromOcrRequest req, AppDbContext db, MatchingQueue queue) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.FirstName) || string.IsNullOrWhiteSpace(req.LastName))
+            {
+                return Results.BadRequest(new { error = "firstName and lastName are required." });
+            }
+
+            // Folder code, never a client-trusted EventId — cards are
+            // processed after the event, possibly once a different one is
+            // already active, so this can't resolve from IsActive the way
+            // the form path does; the folder code is the stable identifier
+            // instead.
+            var targetEvent = await db.Events.SingleOrDefaultAsync(e => e.FolderCode == req.EventFolderCode);
+            if (targetEvent is null)
+            {
+                return Results.NotFound(new { error = $"No event with folder code '{req.EventFolderCode}'." });
+            }
+
+            // Per the doc: "a repeat is a no-op, not a duplicate contact."
+            // The watcher's own archive-folder check already avoids
+            // invoking Claude at all for a re-dropped photo — this is the
+            // defense-in-depth layer for when that local check can't be
+            // trusted (e.g. the archive was cleared, or something else POSTs
+            // the same photo again).
+            var existingByHash = await db.Contacts.FirstOrDefaultAsync(c => c.SourceImageHash == req.SourceImageHash);
+            if (existingByHash is not null)
+            {
+                return Results.Ok(new CreateContactFromOcrResult(existingByHash.Id, true, existingByHash.CreatedAt));
+            }
+
+            var extractionConfidence = Data.Converters.ConfidenceLevelConverter.FromProviderValue(req.ExtractionConfidence);
+
+            var districtId = await LocalDistrictResolution.ResolveDistrictAsync(db, targetEvent.State, req.DistrictName);
+            var schoolId = await LocalDistrictResolution.ResolveSchoolAsync(db, districtId, req.SchoolName);
+
+            var duplicateOfId = await DuplicateDetection.FindLocalDuplicateAsync(
+                db, targetEvent.Id, req.FirstName, req.LastName, districtId);
+
+            var contact = new Contact
+            {
+                EventId = targetEvent.Id,
+                Source = ContactSource.CardPhoto,
+                FirstName = req.FirstName,
+                LastName = req.LastName,
+                // Deliberately not enforced here the way POST /api/contacts
+                // enforces it — a photographed card routinely has neither
+                // legible, and there's no one at a kiosk to push back on it.
+                Email = string.IsNullOrWhiteSpace(req.Email) ? null : req.Email,
+                Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone,
+                Title = req.Title,
+                SchoolDistrictId = districtId,
+                SchoolId = schoolId,
+                ExtractionConfidence = extractionConfidence,
+                MatchStatus = MatchStatus.Pending,
+                ReviewStatus = ReviewStatus.NeedsReview,
+                LocalDuplicateOfContactId = duplicateOfId,
+                SourceImagePath = req.SourceImagePath,
+                SourceImageHash = req.SourceImageHash,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            db.Contacts.Add(contact);
+            await db.SaveChangesAsync();
+
+            // Same MatchingQueue singleton the form path uses — research
+            // -contact -> match-contact runs identically regardless of
+            // Source. No changes needed to MatchingBackgroundService.
+            queue.Enqueue(contact.Id);
+
+            return Results.Created($"/api/contacts/{contact.Id}",
+                new CreateContactFromOcrResult(contact.Id, false, contact.CreatedAt));
+        });
+
+        app.MapGet("/api/contacts/{id:guid}/photo", async (Guid id, AppDbContext db) =>
+        {
+            var contact = await db.Contacts.FirstOrDefaultAsync(c => c.Id == id);
+            if (contact is null || string.IsNullOrEmpty(contact.SourceImagePath))
+            {
+                return Results.NotFound();
+            }
+            if (!File.Exists(contact.SourceImagePath))
+            {
+                return Results.NotFound(new { error = "Source image file is missing on disk." });
+            }
+
+            var contentType = Path.GetExtension(contact.SourceImagePath).ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".heic" or ".heif" => "image/heic", // practically unreachable — HEIC is always converted before archiving
+                _ => "application/octet-stream"
+            };
+
+            return Results.File(contact.SourceImagePath, contentType);
         });
 
         app.MapPatch("/api/contacts/{id:guid}", async (Guid id, UpdateContactRequest req, AppDbContext db) =>

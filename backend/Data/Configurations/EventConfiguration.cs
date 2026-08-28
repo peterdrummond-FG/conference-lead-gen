@@ -23,5 +23,9 @@ public class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.HasIndex(e => e.IsActive)
             .IsUnique()
             .HasFilter("is_active");
+
+        builder.HasIndex(e => e.FolderCode)
+            .IsUnique()
+            .HasFilter("folder_code IS NOT NULL");
     }
 }

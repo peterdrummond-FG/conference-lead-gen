@@ -1,5 +1,6 @@
 using ConferenceLeadGen.Api.Data;
 using ConferenceLeadGen.Api.Models;
+using ConferenceLeadGen.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace ConferenceLeadGen.Api.Endpoints;
@@ -9,7 +10,7 @@ namespace ConferenceLeadGen.Api.Endpoints;
 // nothing to copy from. The person activating the table knows where they
 // physically are.
 public record ActivateEventRequest(string ZohoCampaignId, string State, string City);
-public record EventResponse(Guid Id, string Name, string State, string City, DateTimeOffset ActivatedAt);
+public record EventResponse(Guid Id, string Name, string State, string City, DateTimeOffset ActivatedAt, string? FolderCode);
 
 public static class EventEndpoints
 {
@@ -46,12 +47,13 @@ public static class EventEndpoints
                 ActivatedAt = DateTimeOffset.UtcNow,
                 IsActive = true
             };
+            newEvent.FolderCode = await EventFolderCode.GenerateAsync(db, newEvent.City, newEvent.ActivatedAt);
             db.Events.Add(newEvent);
             await db.SaveChangesAsync();
 
             await transaction.CommitAsync();
 
-            var response = new EventResponse(newEvent.Id, newEvent.Name, newEvent.State, newEvent.City, newEvent.ActivatedAt);
+            var response = new EventResponse(newEvent.Id, newEvent.Name, newEvent.State, newEvent.City, newEvent.ActivatedAt, newEvent.FolderCode);
             return Results.Created($"/api/events/{newEvent.Id}", response);
         });
 
@@ -63,7 +65,7 @@ public static class EventEndpoints
                 return Results.NotFound();
             }
 
-            return Results.Ok(new EventResponse(active.Id, active.Name, active.State, active.City, active.ActivatedAt));
+            return Results.Ok(new EventResponse(active.Id, active.Name, active.State, active.City, active.ActivatedAt, active.FolderCode));
         });
     }
 }

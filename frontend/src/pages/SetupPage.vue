@@ -19,6 +19,14 @@
           </div>
         </q-banner>
 
+        <div v-if="eventStore.activeEvent.folderCode" class="q-mt-sm">
+          <div class="text-caption">Card-photo folder for today:</div>
+          <div class="text-subtitle2 text-weight-bold">{{ eventStore.activeEvent.folderCode }}</div>
+          <div class="text-caption text-grey">
+            Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
+          </div>
+        </div>
+
         <div class="q-mt-md text-center">
           <div class="text-caption q-mb-sm">
             Scan to open the intake form on another device:

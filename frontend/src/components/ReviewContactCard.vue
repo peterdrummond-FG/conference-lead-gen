@@ -3,6 +3,14 @@
     <q-card-section class="row items-start q-gutter-sm">
       <q-checkbox v-model="selected" dense class="q-mt-xs" />
 
+      <img
+        v-if="contact.hasPhoto"
+        :src="`/api/contacts/${contact.id}/photo`"
+        style="max-width: 160px; max-height: 160px; object-fit: contain"
+        class="q-mr-sm"
+        alt="Source card photo"
+      />
+
       <div class="col">
         <div class="row items-center q-gutter-xs">
           <span class="text-subtitle1">{{ contact.firstName }} {{ contact.lastName }}</span>
@@ -29,6 +37,36 @@
           <q-input v-model="draft.email" dense outlined class="col-6 col-sm-3" label="Email" />
           <q-input v-model="draft.phone" dense outlined class="col-6 col-sm-3" label="Phone" />
           <q-input v-model="draft.title" dense outlined class="col-12 col-sm-6" label="Title" />
+
+          <q-select
+            v-model="draft.district"
+            :options="districtTypeahead.options.value"
+            option-label="name"
+            use-input
+            fill-input
+            hide-selected
+            input-debounce="300"
+            new-value-mode="add-unique"
+            class="col-6"
+            label="School District"
+            @filter="districtTypeahead.filterFn"
+            @new-value="onNewDistrict"
+          />
+          <q-select
+            v-model="draft.school"
+            :options="schoolTypeahead.options.value"
+            option-label="name"
+            use-input
+            fill-input
+            hide-selected
+            input-debounce="300"
+            new-value-mode="add-unique"
+            class="col-6"
+            label="School (optional)"
+            :disable="!draft.district"
+            @filter="schoolTypeahead.filterFn"
+            @new-value="onNewSchool"
+          />
         </div>
 
         <div v-if="contact.matchStatus === 'ambiguous' && contact.candidateMatches?.length" class="q-mt-sm">
@@ -76,6 +114,8 @@
 
 <script setup lang="ts">
 import { reactive, computed, ref } from 'vue';
+import { api } from '@/boot/axios';
+import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
 
 const props = defineProps<{ contact: ContactListItem }>();
@@ -93,17 +133,54 @@ const draft = reactive({
   email: props.contact.email ?? '',
   phone: props.contact.phone ?? '',
   title: props.contact.title ?? '',
+  district: { id: props.contact.schoolDistrictId, name: props.contact.districtName } as TypeaheadOption | null,
+  school: props.contact.schoolId
+    ? ({ id: props.contact.schoolId, name: props.contact.schoolName ?? '' } as TypeaheadOption)
+    : null as TypeaheadOption | null,
 });
 
 const newAccountId = ref('');
 const newAccountName = ref('');
+
+// Scoped by the CONTACT's own event state, not whichever event is currently
+// active — a card-photo contact is often reviewed well after its event
+// ended, possibly with a different one active by then.
+const districtTypeahead = useTypeahead(async (search: string) => {
+  const { data } = await api.get<TypeaheadOption[]>('/districts', {
+    params: { search, state: props.contact.eventState },
+  });
+  return data;
+});
+
+const schoolTypeahead = useTypeahead(async (search: string) => {
+  if (!draft.district) return [];
+  const { data } = await api.get<TypeaheadOption[]>('/schools', {
+    params: { search, districtId: draft.district.id },
+  });
+  return data;
+});
+
+function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
+  api.post<TypeaheadOption>('/districts', { name: val, eventId: props.contact.eventId }).then(({ data }) => {
+    done(data, 'add-unique');
+  });
+}
+
+function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
+  if (!draft.district) return;
+  api.post<TypeaheadOption>('/schools', { districtId: draft.district.id, name: val }).then(({ data }) => {
+    done(data, 'add-unique');
+  });
+}
 
 const isDirty = computed(() =>
   draft.firstName !== props.contact.firstName ||
   draft.lastName !== props.contact.lastName ||
   draft.email !== (props.contact.email ?? '') ||
   draft.phone !== (props.contact.phone ?? '') ||
-  draft.title !== (props.contact.title ?? ''));
+  draft.title !== (props.contact.title ?? '') ||
+  draft.district?.id !== props.contact.schoolDistrictId ||
+  (draft.school?.id ?? null) !== props.contact.schoolId);
 
 function save() {
   emit('update', props.contact.id, {
@@ -112,6 +189,8 @@ function save() {
     email: draft.email || null,
     phone: draft.phone || null,
     title: draft.title || null,
+    schoolDistrictId: draft.district?.id ?? props.contact.schoolDistrictId,
+    schoolId: draft.school?.id ?? null,
   });
 }
 

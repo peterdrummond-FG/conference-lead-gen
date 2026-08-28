@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ConferenceLeadGen.Api.Endpoints;
 
 public record DistrictOption(Guid Id, string Name);
-public record CreateDistrictRequest(string Name);
+public record CreateDistrictRequest(string Name, Guid? EventId);
 public record DistrictResponse(Guid Id, string Name, string State);
 
 public static class DistrictEndpoints
@@ -31,20 +31,38 @@ public static class DistrictEndpoints
 
         app.MapPost("/api/districts", async (CreateDistrictRequest req, AppDbContext db) =>
         {
-            // State is derived from the active event, never trusted from the
-            // client — a district typed in at this event belongs to this
-            // event's state, same reasoning as POST /api/contacts deriving
-            // EventId server-side rather than accepting a client value.
-            var activeEvent = await db.Events.SingleOrDefaultAsync(e => e.IsActive);
-            if (activeEvent is null)
+            // State is derived from an event, never trusted from the client
+            // — same reasoning as POST /api/contacts deriving EventId
+            // server-side. Two callers, two ways to identify the event:
+            // - The live intake form always means "today's active event"
+            //   (EventId omitted).
+            // - /review can be correcting a contact from an event that's no
+            //   longer active (e.g. a card-photo contact reviewed after the
+            //   next event was already activated) — it passes EventId
+            //   explicitly so State resolves from *that* event, not
+            //   whatever's active right now.
+            Event? targetEvent;
+            if (req.EventId is { } eventId)
             {
-                return Results.Conflict(new { error = "No active event. Activate one via POST /api/events first." });
+                targetEvent = await db.Events.FindAsync(eventId);
+                if (targetEvent is null)
+                {
+                    return Results.NotFound(new { error = $"No event with id '{eventId}'." });
+                }
+            }
+            else
+            {
+                targetEvent = await db.Events.SingleOrDefaultAsync(e => e.IsActive);
+                if (targetEvent is null)
+                {
+                    return Results.Conflict(new { error = "No active event. Activate one via POST /api/events first." });
+                }
             }
 
             var district = new SchoolDistrict
             {
                 Name = req.Name,
-                State = activeEvent.State,
+                State = targetEvent.State,
                 ZohoAccountId = null
             };
             db.SchoolDistricts.Add(district);

@@ -13,8 +13,12 @@ export interface ContactListItem {
   phone: string | null;
   title: string | null;
   source: string;
+  eventId: string;
   eventName: string;
+  eventState: string;
+  schoolDistrictId: string;
   districtName: string;
+  schoolId: string | null;
   schoolName: string | null;
   extractionConfidence: string | null;
   matchStatus: string;
@@ -28,6 +32,7 @@ export interface ContactListItem {
   localDuplicateOfContactName: string | null;
   reviewStatus: string;
   notes: string | null;
+  hasPhoto: boolean;
   createdAt: string;
 }
 
@@ -37,6 +42,8 @@ export interface UpdateContactPayload {
   email?: string | null;
   phone?: string | null;
   title?: string | null;
+  schoolDistrictId?: string;
+  schoolId?: string | null;
   matchedZohoAccountId?: string;
   matchedZohoAccountName?: string;
   matchedZohoContactId?: string;
