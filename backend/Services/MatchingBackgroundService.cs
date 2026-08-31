@@ -69,6 +69,14 @@ public class MatchingBackgroundService : BackgroundService
             return;
         }
 
+        // Recorded before the skills even run, and saved immediately, so a
+        // subprocess crash or timeout still leaves a trail — MatchingRetryScanner
+        // relies on this to find stuck Pending rows and to eventually stop
+        // auto-retrying ones that keep failing.
+        contact.MatchAttempts++;
+        contact.LastMatchAttemptAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(stoppingToken);
+
         var researchInput = new ResearchInput(
             contact.Id.ToString(),
             contact.FirstName,

@@ -45,6 +45,8 @@ public record ContactListItem(
     string ReviewStatus,
     string? Notes,
     bool HasPhoto,
+    int MatchAttempts,
+    DateTimeOffset? LastMatchAttemptAt,
     DateTimeOffset CreatedAt);
 
 public record UpdateContactRequest(
@@ -134,6 +136,8 @@ public static class ContactEndpoints
                 Data.Converters.ReviewStatusConverter.ToProviderValue(c.ReviewStatus),
                 c.Notes,
                 !string.IsNullOrEmpty(c.SourceImagePath),
+                c.MatchAttempts,
+                c.LastMatchAttemptAt,
                 c.CreatedAt))
                 .ToList();
 
@@ -300,6 +304,24 @@ public static class ContactEndpoints
             };
 
             return Results.File(contact.SourceImagePath, contentType);
+        });
+
+        app.MapPost("/api/contacts/{id:guid}/retry-match", async (Guid id, AppDbContext db, MatchingQueue queue) =>
+        {
+            var contact = await db.Contacts.FirstOrDefaultAsync(c => c.Id == id);
+            if (contact is null)
+            {
+                return Results.NotFound(new { error = $"No contact with id '{id}'." });
+            }
+            if (contact.MatchStatus != MatchStatus.Pending)
+            {
+                return Results.BadRequest(new { error = "Contact is not pending — nothing to retry." });
+            }
+
+            // Works even past MatchingRetryScanner's own auto-retry cap —
+            // this is the manual escape hatch for a row it's given up on.
+            queue.Enqueue(contact.Id);
+            return Results.Ok(new ContactResponse(contact.Id, contact.CreatedAt));
         });
 
         app.MapPatch("/api/contacts/{id:guid}", async (Guid id, UpdateContactRequest req, AppDbContext db) =>

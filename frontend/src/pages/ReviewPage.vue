@@ -34,6 +34,7 @@
         @approve="approve"
         @reject="reject"
         @update="update"
+        @retry-match="retryMatch"
       />
     </div>
   </q-page>
@@ -76,6 +77,11 @@ async function reject(id: string) {
 
 async function update(id: string, payload: UpdateContactPayload) {
   await api.patch(`/contacts/${id}`, payload);
+  await load();
+}
+
+async function retryMatch(id: string) {
+  await api.post(`/contacts/${id}/retry-match`);
   await load();
 }
 

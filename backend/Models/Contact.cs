@@ -51,4 +51,11 @@ public class Contact
     public string? SourceImageHash { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    // How many times the matching pipeline has been attempted on this
+    // contact, and when the most recent attempt started — drives
+    // MatchingRetryScanner's stuck-Pending sweep. Null until the first
+    // attempt, so a brand-new row is never mistaken for a stale one.
+    public int MatchAttempts { get; set; }
+    public DateTimeOffset? LastMatchAttemptAt { get; set; }
 }

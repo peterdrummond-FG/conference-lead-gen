@@ -33,6 +33,8 @@ export interface ContactListItem {
   reviewStatus: string;
   notes: string | null;
   hasPhoto: boolean;
+  matchAttempts: number;
+  lastMatchAttemptAt: string | null;
   createdAt: string;
 }
 

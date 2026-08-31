@@ -22,9 +22,14 @@
           <q-chip v-if="contact.matchConfidence" dense size="sm" :color="confidenceColor(contact.matchConfidence)" text-color="white">
             match: {{ contact.matchConfidence }}
           </q-chip>
+          <q-chip v-if="isStuck" dense size="sm" color="red-8" text-color="white">stuck — needs attention</q-chip>
         </div>
         <div class="text-caption text-grey">
           {{ contact.eventName }} · {{ contact.districtName }}<span v-if="contact.schoolName"> · {{ contact.schoolName }}</span>
+        </div>
+        <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey">
+          Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
+          <q-btn dense flat size="sm" color="primary" label="Retry match" class="q-ml-sm" @click="$emit('retryMatch', contact.id)" />
         </div>
 
         <q-banner v-if="contact.localDuplicateOfContactName" dense class="bg-orange-1 text-orange-10 q-mt-sm">
@@ -123,7 +128,14 @@ const emit = defineEmits<{
   approve: [id: string];
   reject: [id: string];
   update: [id: string, payload: UpdateContactPayload];
+  retryMatch: [id: string];
 }>();
+
+// Mirrors MatchingRetryScanner's MaxAutoAttempts (backend/Services/MatchingRetryScanner.cs)
+// — past this, the background sweep has given up and only the manual
+// "Retry match" button can trigger another attempt.
+const maxAutoAttempts = 3;
+const isStuck = computed(() => props.contact.matchStatus === 'pending' && props.contact.matchAttempts >= maxAutoAttempts);
 
 const selected = defineModel<boolean>('selected', { default: false });
 

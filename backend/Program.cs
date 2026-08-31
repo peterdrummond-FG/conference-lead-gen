@@ -2,6 +2,7 @@ using ConferenceLeadGen.Api.Data;
 using ConferenceLeadGen.Api.Endpoints;
 using ConferenceLeadGen.Api.Services;
 using ConferenceLeadGen.Api.Tools;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 
 // Must run before WebApplication.CreateBuilder(args) — CreateBuilder snapshots
@@ -61,8 +62,21 @@ var repoRoot = Directory.GetParent(builder.Environment.ContentRootPath)!.FullNam
 builder.Services.AddSingleton(new MatchingOptions(repoRoot));
 builder.Services.AddSingleton<MatchingQueue>();
 builder.Services.AddHostedService<MatchingBackgroundService>();
+builder.Services.AddHostedService<MatchingRetryScanner>();
 
 var app = builder.Build();
+
+// A live event should never show a kiosk user a raw ASP.NET error page —
+// log whatever went wrong and hand back a plain JSON 500 instead.
+app.UseExceptionHandler(errApp => errApp.Run(async context =>
+{
+    var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    context.RequestServices.GetRequiredService<ILogger<Program>>()
+        .LogError(error, "Unhandled exception on {Path}", context.Request.Path);
+
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(new { error = "Something went wrong." });
+}));
 
 if (app.Environment.IsDevelopment())
 {
