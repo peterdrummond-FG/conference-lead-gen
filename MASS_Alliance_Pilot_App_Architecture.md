@@ -87,6 +87,8 @@ of SQLite tables:
 | Notes | text | OCR/research/matching notes |
 | SourceImagePath | text | nullable — only for card_photo rows |
 | SourceImageHash | text | content hash of the photo, for dedup — see pipeline note below |
+| MatchAttempts | int | how many times the matching pipeline has run on this row; drives the stuck-Pending retry sweep (section 6) |
+| LastMatchAttemptAt | timestamptz | nullable — null until the first attempt |
 | CreatedAt | timestamptz | |
 
 **`ReviewStatus` is no longer just about extraction quality.** A record only
@@ -135,6 +137,7 @@ District and school start empty and grow via "+ add new" as people type them in.
 | `GET /export` (Quasar page) | Generates the Zoho-ready CSV from all `approved` rows. Rows with `MatchStatus = new_account` are excluded until a human has created the Account in Zoho and linked it |
 | `POST /api/contacts/from-ocr` | Called by the watcher script (see below) — not by a browser. Resolves the `Event` from a folder code, creates one `Contact` row per photo, and enqueues it for the same background matching pipeline forms use |
 | `GET /api/contacts/{id}/photo` | Streams the original card photo for a `card_photo` contact, for the panel on `/review` |
+| `POST /api/contacts/{id}/retry-match` | Manually re-enqueues a `pending` row for matching — the escape hatch once the automatic stuck-Pending retry (section 6) has given up |
 
 **Zoho's Campaigns module has no State/City fields at all** — confirmed
 against all 671 real conference campaigns pulled: every one has both null,
@@ -342,11 +345,21 @@ actually matters for `MatchStatus`.
 **Async for forms, per your call.** The kiosk can't sit and wait on a Zoho
 round-trip mid-event — a submission saves immediately (`MatchStatus = pending`)
 and the kiosk resets right away, same as always. The matching check kicks off
-right after, and if Zoho is briefly unreachable it retries automatically in the
-background rather than failing the submission or blocking the next attendee.
-Card-photo rows go through this exact same async path — `process-cards` only
-OCRs and hands off, so a fresh card-photo row is `MatchStatus = pending` too,
-until the background queue's matching check completes, just like a form row.
+right after. Card-photo rows go through this exact same async path —
+`process-cards` only OCRs and hands off, so a fresh card-photo row is
+`MatchStatus = pending` too, until the background queue's matching check
+completes, just like a form row.
+
+**Stuck-Pending retry (Stage 7).** If the pipeline fails (a `claude -p`
+subprocess timeout or transient error — `research-contact`/`match-contact`
+each already retry twice internally before giving up) or a row was enqueued
+but never even dequeued before a backend restart, it's left at `Pending`
+rather than a fabricated result. A background sweep every 2 minutes catches
+any `Pending` row idle more than 10 minutes and re-enqueues it, up to 3 auto
+attempts (`MatchAttempts`/`LastMatchAttemptAt` on `Contact`). Past that cap,
+`/review` shows a distinct "stuck — needs attention" chip and `POST
+/api/contacts/{id}/retry-match` gives a reviewer a manual way to force
+another attempt.
 
 ## 7. Kiosk behavior (iPad)
 
@@ -403,6 +416,14 @@ noted here so it doesn't get lost between the pilot and the real build.
 - `process-cards` OCRs only — the Zoho research/matching step is the same
   `research-contact`/`match-contact` pipeline the form path already uses, not
   a separate combined skill (section 5/6).
+- **Stage 7 pilot hardening scoped down to one concrete fix**: a stuck-Pending
+  auto-retry sweep + manual retry endpoint + a "stuck" flag on `/review`
+  (section 6), plus a small bonus global exception handler. Staff PIN auth
+  stays deferred exactly as this doc already decided (section 8); confidence-
+  threshold calibration is deferred to the live dry run, since `MatchConfidence`
+  is pure LLM judgment with no numeric threshold in code to calibrate; a DOE
+  roster supplement for sparse-state seed data stayed out of scope — the
+  existing "+ add new" local-district fallback already covers it functionally.
 
 **Still open:**
 - **Watcher billing model**: defaulted to mirroring GoodWrap's Claude Code CLI
