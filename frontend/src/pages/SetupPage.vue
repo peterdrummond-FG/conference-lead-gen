@@ -28,6 +28,33 @@
             </div>
           </div>
 
+          <q-separator class="q-my-md" />
+
+          <div v-if="eventStore.activeEvent.folderCode">
+            <div class="text-subtitle2 text-weight-bold">
+              Texting in cards &amp; notes (no laptop needed)
+            </div>
+            <div class="text-caption text-grey q-mb-sm">
+              Every rep does this once per event, then just texts photos as they go.
+            </div>
+            <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
+              <li>
+                Text
+                <span class="text-weight-bold">{{ eventStore.activeEvent.folderCode }}</span>
+                to
+                <span class="text-weight-bold">{{ twilioNumber }}</span>
+                to bind your phone to today's event. Do this again if you switch phones or events.
+              </li>
+              <li>Text a photo of a business card — one card filling the frame, or several laid out together on the table.</li>
+              <li>
+                Optional: right after, record and send a voice memo about the conversation. If it's
+                about someone from earlier (not the card you just sent), just say their name — the
+                system reads it and sorts the note onto the right person.
+              </li>
+              <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
+            </ol>
+          </div>
+
           <div class="q-mt-md text-center">
             <div class="text-caption text-grey q-mb-sm">
               Print this and set it on the booth table — attendees scan it, not the laptop screen.
@@ -159,6 +186,12 @@ interface CampaignOption {
   zohoCampaignId: string;
   name: string;
 }
+
+// The number Twilio's SMS/MMS webhook is configured against — not stored
+// anywhere server-side (the app never needs to know its own number; Twilio
+// just POSTs inbound messages to twilio-webhook), so this is the one place
+// it's hardcoded for display. Update here if the Twilio number ever changes.
+const twilioNumber = '+1 (936) 218-1311';
 
 const eventStore = useEventStore();
 const roleStore = useRoleStore();
