@@ -49,6 +49,15 @@ public class MatchingBackgroundService : BackgroundService
                 // (nothing gets half-saved), so it just stays at Pending.
                 _logger.LogError(ex, "Unhandled error processing contact {ContactId}", contactId);
             }
+            finally
+            {
+                // Releases the in-flight marker regardless of which path
+                // ProcessAsync took (success, early return, or the catch
+                // above) — this is what makes MatchingQueue.Enqueue safe to
+                // call again for this contact, e.g. from MatchingRetryScanner
+                // or a manual retry.
+                _queue.Complete(contactId);
+            }
         }
     }
 
@@ -97,6 +106,11 @@ public class MatchingBackgroundService : BackgroundService
             var researchOutput = JsonSerializer.Deserialize<ResearchOutput>(researchElement.GetRawText(), JsonOpts)
                 ?? throw new InvalidOperationException("research-contact output deserialized to null");
 
+            contact.ResearchConfidence = researchOutput.ResearchConfidence is null
+                ? null
+                : ConfidenceLevelConverter.FromProviderValue(researchOutput.ResearchConfidence);
+            contact.PersonVerified = researchOutput.PersonVerified;
+
             matchElement = await SkillRunner.RunSkillAsync("match-contact", researchOutput, _options.RepoRoot, _logger);
         }
         catch (Exception ex)
@@ -111,14 +125,33 @@ public class MatchingBackgroundService : BackgroundService
         var matchOutput = JsonSerializer.Deserialize<MatchOutput>(matchElement.GetRawText(), JsonOpts)
             ?? throw new InvalidOperationException("match-contact output deserialized to null");
 
+        // match-contact's own contract guarantees matchStatus is never
+        // "pending" — but if it ever violates that, treat it exactly like a
+        // pipeline failure (leave the row at Pending, don't save a
+        // fabricated result) rather than trusting it blindly. Without this,
+        // a genuinely-processed row could silently revert to Pending and
+        // re-enter the retry cycle with no error logged anywhere.
+        if (matchOutput.MatchStatus == "pending")
+        {
+            _logger.LogError(
+                "match-contact violated its contract and returned matchStatus=pending for contact {ContactId}; leaving at Pending",
+                contactId);
+            return;
+        }
+
         contact.MatchStatus = MatchStatusConverter.FromProviderValue(matchOutput.MatchStatus);
         contact.MatchConfidence = matchOutput.MatchConfidence is null
             ? null
             : ConfidenceLevelConverter.FromProviderValue(matchOutput.MatchConfidence);
         contact.MatchedZohoContactId = matchOutput.MatchedZohoContactId;
         contact.MatchedZohoContactName = matchOutput.MatchedZohoContactName;
+        contact.MatchedZohoContactEmail = matchOutput.MatchedZohoContactEmail;
+        contact.MatchedZohoContactPhone = matchOutput.MatchedZohoContactPhone;
+        contact.MatchedZohoContactTitle = matchOutput.MatchedZohoContactTitle;
         contact.MatchedZohoAccountId = matchOutput.MatchedZohoAccountId;
         contact.MatchedZohoAccountName = matchOutput.MatchedZohoAccountName;
+        contact.HasActiveOpportunity = matchOutput.HasActiveOpportunity;
+        contact.ActiveOpportunityName = matchOutput.ActiveOpportunityName;
         contact.CandidateMatches = matchOutput.CandidateMatches;
         contact.Notes = matchOutput.Notes;
 
@@ -131,6 +164,7 @@ public class MatchingBackgroundService : BackgroundService
             && (contact.ExtractionConfidence is null || contact.ExtractionConfidence == ConfidenceLevel.High))
         {
             contact.ReviewStatus = ReviewStatus.Approved;
+            contact.AutoApproved = true;
         }
 
         await db.SaveChangesAsync(stoppingToken);
@@ -152,6 +186,8 @@ public class MatchingBackgroundService : BackgroundService
     private sealed record MatchOutput(
         string? ContactId, string MatchStatus, string? MatchConfidence,
         string? MatchedZohoContactId, string? MatchedZohoContactName,
+        string? MatchedZohoContactEmail, string? MatchedZohoContactPhone, string? MatchedZohoContactTitle,
         string? MatchedZohoAccountId, string? MatchedZohoAccountName,
+        bool? HasActiveOpportunity, string? ActiveOpportunityName,
         List<CandidateMatch>? CandidateMatches, string? Notes);
 }

@@ -33,3 +33,12 @@ watcher/failed/*
 !watcher/failed/.gitkeep
 watcher/logs/*
 !watcher/logs/.gitkeep
+
+# Local matching-poll agent (Stage 11) — run state, never version-controlled.
+local-agent/logs/*
+!local-agent/logs/.gitkeep
+
+# Stage 13/14 scratch dirs — downloaded SMS photos/audio, purely transient
+# (the durable copy is always Supabase Storage), cleaned up after each run.
+local-agent/.processing-sms/
+local-agent/.processing-audio/

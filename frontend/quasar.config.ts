@@ -80,17 +80,14 @@ export default defineConfig((/* ctx */) => {
 
       // host 0.0.0.0 so the kiosk iPad (and anything else on the venue's
       // WiFi) can reach this dev server, not just the laptop running it.
-      // The backend itself stays bound to localhost — only this dev server
-      // needs to be LAN-reachable, and it proxies /api server-side so the
-      // kiosk never talks to the .NET backend directly.
+      // Stage 15: there's no /api proxy any more — boot/axios.ts talks
+      // directly to the Supabase Edge Functions (VITE_FUNCTIONS_BASE_URL),
+      // which already set their own CORS headers, so a dev-time proxy
+      // isn't needed. This also means local frontend dev now always talks
+      // to the real (or a staging) Supabase project, not a fully offline
+      // local backend.
       host: '0.0.0.0',
-      port: 9000,
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:5240',
-          changeOrigin: true
-        }
-      }
+      port: process.env.PORT ? Number(process.env.PORT) : 9000,
     },
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#framework
@@ -108,7 +105,7 @@ export default defineConfig((/* ctx */) => {
       // directives: [],
 
       // Quasar plugins
-      plugins: []
+      plugins: ['Notify', 'Dialog']
     },
 
     // animations: 'all', // --- includes all animations

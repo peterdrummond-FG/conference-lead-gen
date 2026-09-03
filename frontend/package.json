@@ -1,8 +1,8 @@
 {
-  "name": "",
+  "name": "conference-lead-gen",
   "version": "0.0.1",
-  "description": "A Quasar Project",
-  "productName": "Quasar App",
+  "description": "Conference Lead Gen — MASS/Alliance conference contact-capture pilot",
+  "productName": "Conference Lead Gen",
   "author": "Peter Drummond <peter.drummond@flippengroup.com>",
   "type": "module",
   "private": true,
@@ -15,8 +15,9 @@
   "dependencies": {
     "@quasar/extras": "^2.0.4",
     "axios": "^1.20.0",
+    "jspdf": "^4.2.1",
     "pinia": "^4.0.2",
-    "qrcode.vue": "^3.10.0",
+    "qrcode": "^1.5.4",
     "quasar": "^2.27.0",
     "vue": "^3.5.22",
     "vue-router": "^5.0.6"
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@quasar/app-vite": "^3.8.1",
     "@types/node": "^22.19.11",
+    "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "typescript": "^6.0.0",

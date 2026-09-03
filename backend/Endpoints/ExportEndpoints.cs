@@ -81,6 +81,15 @@ public static class ExportEndpoints
 
     private static string Csv(string value)
     {
+        // OWASP CSV/formula-injection mitigation: a value starting with one
+        // of these characters is interpreted as a formula by Excel/Sheets if
+        // a human opens the export before re-importing to Zoho. Prefixing
+        // with a plain quote neutralizes it without altering the visible
+        // text otherwise.
+        if (value.Length > 0 && "=+-@\t\r".IndexOf(value[0]) >= 0)
+        {
+            value = "'" + value;
+        }
         if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
         {
             return "\"" + value.Replace("\"", "\"\"") + "\"";

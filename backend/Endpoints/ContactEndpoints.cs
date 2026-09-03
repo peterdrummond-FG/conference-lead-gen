@@ -1,3 +1,4 @@
+using ConferenceLeadGen.Api.Common;
 using ConferenceLeadGen.Api.Data;
 using ConferenceLeadGen.Api.Models;
 using ConferenceLeadGen.Api.Models.Enums;
@@ -33,41 +34,72 @@ public record ContactListItem(
     Guid? SchoolId,
     string? SchoolName,
     string? ExtractionConfidence,
+    string? ResearchConfidence,
+    bool? PersonVerified,
     string MatchStatus,
     string? MatchConfidence,
     string? MatchedZohoContactId,
     string? MatchedZohoContactName,
+    string? MatchedZohoContactEmail,
+    string? MatchedZohoContactPhone,
+    string? MatchedZohoContactTitle,
     string? MatchedZohoAccountId,
     string? MatchedZohoAccountName,
+    bool? HasActiveOpportunity,
+    string? ActiveOpportunityName,
     List<CandidateMatch>? CandidateMatches,
     Guid? LocalDuplicateOfContactId,
     string? LocalDuplicateOfContactName,
     string ReviewStatus,
     string? Notes,
     bool HasPhoto,
+    bool HasCroppedPhoto,
     int MatchAttempts,
     DateTimeOffset? LastMatchAttemptAt,
     DateTimeOffset CreatedAt);
 
+// Optional<T> (backend/Common/Optional.cs) distinguishes "key omitted"
+// (leave the field alone — e.g. ReviewPage.vue's single-field PATCHes like
+// { reviewStatus: 'approved' }) from "key present with value null" (clear
+// it — e.g. ReviewContactCard.vue's full-draft save sending
+// schoolId: draft.school?.id ?? null). A plain nullable type can't tell
+// those apart, since both bind to the same C# null.
 public record UpdateContactRequest(
-    string? FirstName,
-    string? LastName,
+    Optional<string> FirstName,
+    Optional<string> LastName,
+    Optional<string?> Email,
+    Optional<string?> Phone,
+    Optional<string?> Title,
+    Optional<Guid> SchoolDistrictId,
+    Optional<Guid?> SchoolId,
+    Optional<string?> MatchedZohoAccountId,
+    Optional<string?> MatchedZohoAccountName,
+    Optional<string?> MatchedZohoContactId,
+    Optional<string?> MatchedZohoContactName,
+    Optional<string?> MatchedZohoContactEmail,
+    Optional<string?> MatchedZohoContactPhone,
+    Optional<string?> MatchedZohoContactTitle,
+    Optional<string> MatchStatus,
+    Optional<string?> MatchConfidence,
+    Optional<string> ReviewStatus);
+
+public record MergeDuplicatesRequest(
+    string FirstName,
+    string LastName,
     string? Email,
     string? Phone,
     string? Title,
-    Guid? SchoolDistrictId,
+    Guid SchoolDistrictId,
     Guid? SchoolId,
-    string? MatchedZohoAccountId,
-    string? MatchedZohoAccountName,
-    string? MatchedZohoContactId,
-    string? MatchedZohoContactName,
-    string? MatchStatus,
-    string? MatchConfidence,
-    string? ReviewStatus);
+    List<Guid> DiscardContactIds);
 
 public record BulkApproveRequest(List<Guid> Ids);
 public record BulkApproveResult(List<Guid> Approved, List<BulkApproveSkip> Skipped);
 public record BulkApproveSkip(Guid Id, string Reason);
+
+public record BulkDeleteRequest(List<Guid> Ids);
+public record BulkDeleteResult(List<Guid> Deleted, List<BulkDeleteSkip> Skipped);
+public record BulkDeleteSkip(Guid Id, string Reason);
 
 public record CreateContactFromOcrRequest(
     string EventFolderCode,
@@ -80,12 +112,43 @@ public record CreateContactFromOcrRequest(
     string? SchoolName,
     string ExtractionConfidence,
     string SourceImageHash,
-    string SourceImagePath);
+    string SourceImagePath,
+    string? CroppedImagePath = null);
 
 public record CreateContactFromOcrResult(Guid Id, bool AlreadyProcessed, DateTimeOffset CreatedAt);
 
 public static class ContactEndpoints
 {
+    // Shared by GET /api/contacts and GET /api/contacts/{id}/duplicates —
+    // both need the same Contact -> ContactListItem shape, including the
+    // converter calls that force LINQ-to-Objects (see the comment at the
+    // GET /api/contacts callsite).
+    private static ContactListItem ToListItem(Contact c) => new ContactListItem(
+        c.Id, c.FirstName, c.LastName, c.Email, c.Phone, c.Title,
+        Data.Converters.ContactSourceConverter.ToProviderValue(c.Source),
+        c.EventId, c.Event.Name, c.Event.State,
+        c.SchoolDistrictId, c.SchoolDistrict.Name,
+        c.SchoolId, c.School?.Name,
+        c.ExtractionConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.ExtractionConfidence.Value) : null,
+        c.ResearchConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.ResearchConfidence.Value) : null,
+        c.PersonVerified,
+        Data.Converters.MatchStatusConverter.ToProviderValue(c.MatchStatus),
+        c.MatchConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.MatchConfidence.Value) : null,
+        c.MatchedZohoContactId, c.MatchedZohoContactName,
+        c.MatchedZohoContactEmail, c.MatchedZohoContactPhone, c.MatchedZohoContactTitle,
+        c.MatchedZohoAccountId, c.MatchedZohoAccountName,
+        c.HasActiveOpportunity, c.ActiveOpportunityName,
+        c.CandidateMatches,
+        c.LocalDuplicateOfContactId,
+        c.LocalDuplicateOfContact != null ? $"{c.LocalDuplicateOfContact.FirstName} {c.LocalDuplicateOfContact.LastName}" : null,
+        Data.Converters.ReviewStatusConverter.ToProviderValue(c.ReviewStatus),
+        c.Notes,
+        !string.IsNullOrEmpty(c.SourceImagePath),
+        !string.IsNullOrEmpty(c.CroppedImagePath),
+        c.MatchAttempts,
+        c.LastMatchAttemptAt,
+        c.CreatedAt);
+
     public static void MapContactEndpoints(this WebApplication app)
     {
         app.MapGet("/api/contacts", async (string? reviewStatus, string? matchStatus, AppDbContext db) =>
@@ -113,35 +176,26 @@ public static class ContactEndpoints
                 query = query.Where(c => c.MatchStatus == parsedMatchStatus);
             }
 
-            // Materialize first, then project — the converter calls below are
-            // plain C# static methods, not EF-translatable SQL expressions,
-            // so this must run as LINQ-to-Objects over already-fetched rows,
-            // not as part of the IQueryable.
+            // Materialize first, then project — ToListItem's converter calls
+            // are plain C# static methods, not EF-translatable SQL
+            // expressions, so this must run as LINQ-to-Objects over
+            // already-fetched rows, not as part of the IQueryable.
             var contacts = await query.OrderBy(c => c.CreatedAt).ToListAsync();
 
-            var results = contacts.Select(c => new ContactListItem(
-                c.Id, c.FirstName, c.LastName, c.Email, c.Phone, c.Title,
-                Data.Converters.ContactSourceConverter.ToProviderValue(c.Source),
-                c.EventId, c.Event.Name, c.Event.State,
-                c.SchoolDistrictId, c.SchoolDistrict.Name,
-                c.SchoolId, c.School?.Name,
-                c.ExtractionConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.ExtractionConfidence.Value) : null,
-                Data.Converters.MatchStatusConverter.ToProviderValue(c.MatchStatus),
-                c.MatchConfidence.HasValue ? Data.Converters.ConfidenceLevelConverter.ToProviderValue(c.MatchConfidence.Value) : null,
-                c.MatchedZohoContactId, c.MatchedZohoContactName,
-                c.MatchedZohoAccountId, c.MatchedZohoAccountName,
-                c.CandidateMatches,
-                c.LocalDuplicateOfContactId,
-                c.LocalDuplicateOfContact != null ? $"{c.LocalDuplicateOfContact.FirstName} {c.LocalDuplicateOfContact.LastName}" : null,
-                Data.Converters.ReviewStatusConverter.ToProviderValue(c.ReviewStatus),
-                c.Notes,
-                !string.IsNullOrEmpty(c.SourceImagePath),
-                c.MatchAttempts,
-                c.LastMatchAttemptAt,
-                c.CreatedAt))
-                .ToList();
+            var results = contacts.Select(ToListItem).ToList();
 
             return Results.Ok(results);
+        });
+
+        app.MapGet("/api/contacts/{id:guid}/duplicates", async (Guid id, AppDbContext db) =>
+        {
+            var group = await DuplicateDetection.FindDuplicateGroupAsync(db, id);
+            if (group.Count == 0)
+            {
+                return Results.NotFound(new { error = $"No contact with id '{id}'." });
+            }
+
+            return Results.Ok(group.Select(ToListItem).ToList());
         });
 
         app.MapPost("/api/contacts", async (CreateContactRequest req, AppDbContext db, MatchingQueue queue) =>
@@ -269,6 +323,7 @@ public static class ContactEndpoints
                 LocalDuplicateOfContactId = duplicateOfId,
                 SourceImagePath = req.SourceImagePath,
                 SourceImageHash = req.SourceImageHash,
+                CroppedImagePath = string.IsNullOrWhiteSpace(req.CroppedImagePath) ? null : req.CroppedImagePath,
                 CreatedAt = DateTimeOffset.UtcNow
             };
             db.Contacts.Add(contact);
@@ -283,19 +338,29 @@ public static class ContactEndpoints
                 new CreateContactFromOcrResult(contact.Id, false, contact.CreatedAt));
         });
 
-        app.MapGet("/api/contacts/{id:guid}/photo", async (Guid id, AppDbContext db) =>
+        app.MapGet("/api/contacts/{id:guid}/photo", async (Guid id, bool? full, AppDbContext db) =>
         {
             var contact = await db.Contacts.FirstOrDefaultAsync(c => c.Id == id);
             if (contact is null || string.IsNullOrEmpty(contact.SourceImagePath))
             {
                 return Results.NotFound();
             }
-            if (!File.Exists(contact.SourceImagePath))
+
+            // A shared multi-card sheet photo has one cropped file per
+            // contact — that's the default thumbnail. ?full=true (or no
+            // crop yet, e.g. a genuine single-card photo, or a row not yet
+            // backfilled) falls back to the original sheet, unchanged from
+            // this endpoint's original behavior.
+            var imagePath = (full != true && !string.IsNullOrEmpty(contact.CroppedImagePath))
+                ? contact.CroppedImagePath
+                : contact.SourceImagePath;
+
+            if (!File.Exists(imagePath))
             {
                 return Results.NotFound(new { error = "Source image file is missing on disk." });
             }
 
-            var contentType = Path.GetExtension(contact.SourceImagePath).ToLowerInvariant() switch
+            var contentType = Path.GetExtension(imagePath).ToLowerInvariant() switch
             {
                 ".jpg" or ".jpeg" => "image/jpeg",
                 ".png" => "image/png",
@@ -303,7 +368,7 @@ public static class ContactEndpoints
                 _ => "application/octet-stream"
             };
 
-            return Results.File(contact.SourceImagePath, contentType);
+            return Results.File(imagePath, contentType);
         });
 
         app.MapPost("/api/contacts/{id:guid}/retry-match", async (Guid id, AppDbContext db, MatchingQueue queue) =>
@@ -332,40 +397,136 @@ public static class ContactEndpoints
                 return Results.NotFound(new { error = $"No contact with id '{id}'." });
             }
 
+            // These fields have no valid "cleared" state in the domain model
+            // (a contact always has a name/matchStatus/reviewStatus) — reject
+            // an explicit null rather than silently accepting or ignoring it.
+            if (req.FirstName is { HasValue: true, Value: null } ||
+                req.LastName is { HasValue: true, Value: null } ||
+                req.MatchStatus is { HasValue: true, Value: null } ||
+                req.ReviewStatus is { HasValue: true, Value: null })
+            {
+                return Results.BadRequest(new { error = "firstName, lastName, matchStatus and reviewStatus cannot be explicitly cleared." });
+            }
+
+            if (req.SchoolDistrictId.HasValue && req.SchoolDistrictId.Value is { } districtId
+                && !await db.SchoolDistricts.AnyAsync(d => d.Id == districtId))
+            {
+                return Results.NotFound(new { error = $"No district with id '{districtId}'." });
+            }
+            if (req.SchoolId.HasValue && req.SchoolId.Value is { } schoolId
+                && !await db.Schools.AnyAsync(s => s.Id == schoolId))
+            {
+                return Results.NotFound(new { error = $"No school with id '{schoolId}'." });
+            }
+
+            if (req.FirstName.HasValue) contact.FirstName = req.FirstName.Value!;
+            if (req.LastName.HasValue) contact.LastName = req.LastName.Value!;
+            if (req.Email.HasValue) contact.Email = req.Email.Value;
+            if (req.Phone.HasValue) contact.Phone = req.Phone.Value;
+            if (req.Title.HasValue) contact.Title = req.Title.Value;
+            if (req.SchoolDistrictId.HasValue) contact.SchoolDistrictId = req.SchoolDistrictId.Value;
+            if (req.SchoolId.HasValue) contact.SchoolId = req.SchoolId.Value;
+            if (req.MatchedZohoAccountId.HasValue) contact.MatchedZohoAccountId = req.MatchedZohoAccountId.Value;
+            if (req.MatchedZohoAccountName.HasValue) contact.MatchedZohoAccountName = req.MatchedZohoAccountName.Value;
+            if (req.MatchedZohoContactId.HasValue) contact.MatchedZohoContactId = req.MatchedZohoContactId.Value;
+            if (req.MatchedZohoContactName.HasValue) contact.MatchedZohoContactName = req.MatchedZohoContactName.Value;
+            if (req.MatchedZohoContactEmail.HasValue) contact.MatchedZohoContactEmail = req.MatchedZohoContactEmail.Value;
+            if (req.MatchedZohoContactPhone.HasValue) contact.MatchedZohoContactPhone = req.MatchedZohoContactPhone.Value;
+            if (req.MatchedZohoContactTitle.HasValue) contact.MatchedZohoContactTitle = req.MatchedZohoContactTitle.Value;
+            if (req.MatchStatus.HasValue) contact.MatchStatus = Data.Converters.MatchStatusConverter.FromProviderValue(req.MatchStatus.Value!);
+            if (req.MatchConfidence.HasValue) contact.MatchConfidence = req.MatchConfidence.Value is null ? null : Data.Converters.ConfidenceLevelConverter.FromProviderValue(req.MatchConfidence.Value);
+            // Any explicit ReviewStatus change here is a human decision (the
+            // Approve/Reject buttons, or "Confirm match") — never something
+            // merge-duplicates should later treat as safe to auto-undo.
+            if (req.ReviewStatus.HasValue)
+            {
+                contact.ReviewStatus = Data.Converters.ReviewStatusConverter.FromProviderValue(req.ReviewStatus.Value!);
+                contact.AutoApproved = false;
+            }
+
             // The doc's own rule: a still-Pending row can't reach Approved.
-            // Cheap insurance against a stale UI regardless of what the
-            // client thinks the row's state is.
-            if (req.ReviewStatus == "approved" && contact.MatchStatus == MatchStatus.Pending)
+            // Reads contact.MatchStatus AFTER the assignments above so a
+            // single PATCH that both resolves MatchStatus and approves in
+            // the same call is judged on its effective value, not whatever
+            // was in the DB before this request.
+            if (req.ReviewStatus.HasValue && req.ReviewStatus.Value == "approved" && contact.MatchStatus == MatchStatus.Pending)
             {
                 return Results.BadRequest(new { error = "Cannot approve a contact while MatchStatus is still pending." });
             }
 
-            if (req.SchoolDistrictId is { } districtId && !await db.SchoolDistricts.AnyAsync(d => d.Id == districtId))
+            await db.SaveChangesAsync();
+            return Results.Ok(new ContactResponse(contact.Id, contact.CreatedAt));
+        });
+
+        // Resolves a "possible duplicate" group down to one row. The keeper
+        // (id) gets the reviewer's edited field values; the rest are soft-
+        // rejected (not deleted — same audit-trail rule as the plain Reject
+        // button) with a note explaining why. Deliberately leaves the
+        // keeper's own match fields untouched — the reviewer resolves
+        // duplicates first, then separately confirms/retries the match on
+        // whichever row survives.
+        app.MapPost("/api/contacts/{id:guid}/merge-duplicates", async (Guid id, MergeDuplicatesRequest req, AppDbContext db) =>
+        {
+            var group = await DuplicateDetection.FindDuplicateGroupAsync(db, id);
+            var keeper = group.FirstOrDefault(c => c.Id == id);
+            if (keeper is null)
             {
-                return Results.NotFound(new { error = $"No district with id '{districtId}'." });
+                return Results.NotFound(new { error = $"No contact with id '{id}'." });
+            }
+
+            var groupIds = group.Select(c => c.Id).ToHashSet();
+            var badDiscardId = req.DiscardContactIds.FirstOrDefault(discardId => !groupIds.Contains(discardId));
+            if (badDiscardId != default)
+            {
+                return Results.BadRequest(new { error = $"Contact '{badDiscardId}' is not part of this duplicate group." });
+            }
+            if (req.DiscardContactIds.Contains(id))
+            {
+                return Results.BadRequest(new { error = "Cannot discard the contact being kept." });
+            }
+
+            if (!await db.SchoolDistricts.AnyAsync(d => d.Id == req.SchoolDistrictId))
+            {
+                return Results.NotFound(new { error = $"No district with id '{req.SchoolDistrictId}'." });
             }
             if (req.SchoolId is { } schoolId && !await db.Schools.AnyAsync(s => s.Id == schoolId))
             {
                 return Results.NotFound(new { error = $"No school with id '{schoolId}'." });
             }
 
-            if (req.FirstName is not null) contact.FirstName = req.FirstName;
-            if (req.LastName is not null) contact.LastName = req.LastName;
-            if (req.Email is not null) contact.Email = req.Email;
-            if (req.Phone is not null) contact.Phone = req.Phone;
-            if (req.Title is not null) contact.Title = req.Title;
-            if (req.SchoolDistrictId is { } newDistrictId) contact.SchoolDistrictId = newDistrictId;
-            if (req.SchoolId is { } newSchoolId) contact.SchoolId = newSchoolId;
-            if (req.MatchedZohoAccountId is not null) contact.MatchedZohoAccountId = req.MatchedZohoAccountId;
-            if (req.MatchedZohoAccountName is not null) contact.MatchedZohoAccountName = req.MatchedZohoAccountName;
-            if (req.MatchedZohoContactId is not null) contact.MatchedZohoContactId = req.MatchedZohoContactId;
-            if (req.MatchedZohoContactName is not null) contact.MatchedZohoContactName = req.MatchedZohoContactName;
-            if (req.MatchStatus is not null) contact.MatchStatus = Data.Converters.MatchStatusConverter.FromProviderValue(req.MatchStatus);
-            if (req.MatchConfidence is not null) contact.MatchConfidence = Data.Converters.ConfidenceLevelConverter.FromProviderValue(req.MatchConfidence);
-            if (req.ReviewStatus is not null) contact.ReviewStatus = Data.Converters.ReviewStatusConverter.FromProviderValue(req.ReviewStatus);
+            keeper.FirstName = req.FirstName;
+            keeper.LastName = req.LastName;
+            keeper.Email = req.Email;
+            keeper.Phone = req.Phone;
+            keeper.Title = req.Title;
+            keeper.SchoolDistrictId = req.SchoolDistrictId;
+            keeper.SchoolId = req.SchoolId;
+            keeper.LocalDuplicateOfContactId = null;
+
+            // The pipeline's own auto-approve rule only ever looks at a
+            // contact's own row — it can't know a *later* card will turn out
+            // to be a duplicate of this one, so it can approve a contact
+            // before the duplicate is ever spotted. That's fine to undo
+            // automatically (nothing about resolving the duplicate confirmed
+            // the Zoho match). A reviewer's own explicit Approve is never
+            // touched here — AutoApproved is false the moment a human sets
+            // ReviewStatus themselves.
+            if (keeper.ReviewStatus == ReviewStatus.Approved && keeper.AutoApproved)
+            {
+                keeper.ReviewStatus = ReviewStatus.NeedsReview;
+                keeper.AutoApproved = false;
+            }
+
+            var discarded = group.Where(c => req.DiscardContactIds.Contains(c.Id)).ToList();
+            foreach (var contact in discarded)
+            {
+                contact.ReviewStatus = ReviewStatus.Rejected;
+                var mergeNote = $"Merged as duplicate of {keeper.FirstName} {keeper.LastName}.";
+                contact.Notes = string.IsNullOrWhiteSpace(contact.Notes) ? mergeNote : $"{contact.Notes} {mergeNote}";
+            }
 
             await db.SaveChangesAsync();
-            return Results.Ok(new ContactResponse(contact.Id, contact.CreatedAt));
+            return Results.Ok(new ContactResponse(keeper.Id, keeper.CreatedAt));
         });
 
         app.MapPost("/api/contacts/bulk-approve", async (BulkApproveRequest req, AppDbContext db) =>
@@ -389,11 +550,46 @@ public static class ContactEndpoints
                 }
 
                 contact.ReviewStatus = ReviewStatus.Approved;
+                contact.AutoApproved = false;
                 approved.Add(id);
             }
 
             await db.SaveChangesAsync();
             return Results.Ok(new BulkApproveResult(approved, skipped));
+        });
+
+        // Permanently removes rejected rows — a deliberate exception to the
+        // usual "rejected rows are kept as an audit trail" rule, for
+        // clearing out junk/duplicate OCR entries the reviewer never wants
+        // to see again. Scoped to ReviewStatus.Rejected server-side (not
+        // just enforced by the UI only showing this on the Rejected tab) so
+        // a stale client selection can never delete a live row.
+        app.MapPost("/api/contacts/bulk-delete", async (BulkDeleteRequest req, AppDbContext db) =>
+        {
+            var contacts = await db.Contacts.Where(c => req.Ids.Contains(c.Id)).ToListAsync();
+            var deleted = new List<Guid>();
+            var skipped = new List<BulkDeleteSkip>();
+
+            foreach (var id in req.Ids)
+            {
+                var contact = contacts.FirstOrDefault(c => c.Id == id);
+                if (contact is null)
+                {
+                    skipped.Add(new BulkDeleteSkip(id, "not found"));
+                    continue;
+                }
+                if (contact.ReviewStatus != ReviewStatus.Rejected)
+                {
+                    skipped.Add(new BulkDeleteSkip(id, "not rejected"));
+                    continue;
+                }
+
+                db.Contacts.Remove(contact);
+                deleted.Add(id);
+            }
+
+            await db.SaveChangesAsync();
+            return Results.Ok(new BulkDeleteResult(deleted, skipped));
         });
     }
 }

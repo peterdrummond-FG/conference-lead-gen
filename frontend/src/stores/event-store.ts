@@ -19,7 +19,7 @@ export const useEventStore = defineStore('event', {
   actions: {
     async fetchActive() {
       try {
-        const { data } = await api.get<ActiveEvent>('/events/active');
+        const { data } = await api.get<ActiveEvent>('/events-active');
         this.activeEvent = data;
       } catch (e) {
         if (axios.isAxiosError(e) && e.response?.status === 404) {

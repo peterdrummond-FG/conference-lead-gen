@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<SchoolDistrict> SchoolDistricts => Set<SchoolDistrict>();
     public DbSet<School> Schools => Set<School>();
+    public DbSet<KioskSettings> KioskSettings => Set<KioskSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

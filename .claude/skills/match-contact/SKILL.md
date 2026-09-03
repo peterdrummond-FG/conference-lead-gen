@@ -1,6 +1,6 @@
 ---
 name: match-contact
-description: Classify a conference-captured contact against real Zoho CRM data (Accounts and Contacts) into existing_contact / new_contact_existing_account / new_account / ambiguous. Use when asked to "match this contact", "run match-contact", or when invoked headlessly as the second step of the intake pipeline, always after research-contact has already run.
+description: Classify a conference-captured contact against real Zoho CRM data (Accounts, Contacts, and Deals) into existing_contact / new_contact_existing_account / new_account / ambiguous, and flag whether the matched Account has an active opportunity. Use when asked to "match this contact", "run match-contact", or when invoked headlessly as the second step of the intake pipeline, always after research-contact has already run.
 ---
 
 # Match contact
@@ -12,8 +12,8 @@ that skill's output, not raw form/OCR fields. This skill has Zoho access but
 **never does its own web search** — any web research already happened
 upstream; if Zoho doesn't have a confident answer even after trying every
 name `research-contact` surfaced, the result is `new_account` or `ambiguous`,
-full stop. A human resolves it further in a review UI (not built yet), not
-this skill running another search.
+full stop. A human resolves it further in a review UI, not this skill running
+another search.
 
 **Every invocation is a fresh, memory-less session.** Don't rely on how you
 classified a similar-looking contact in a previous run — re-derive the answer
@@ -138,6 +138,31 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
      reviewer — a similar title, a phone number matching the account's
      listed line — fold a one-line summary into `notes` even when none of
      them is the target person.
+   - When a linked Contact clears the `existing_contact` bar, snapshot its
+     `Email`, `Phone`, and `Title` **as stored in Zoho** (not the input's own
+     values, which may be stale or hand-typed) into `matchedZohoContactEmail`,
+     `matchedZohoContactPhone`, `matchedZohoContactTitle` — a reviewer needs
+     these to recognize the match without a separate Zoho lookup. Leave all
+     three `null` when `matchedZohoContactId` is `null`.
+
+6. **Whenever a `matchedZohoAccountId` ends up non-null** (an `existing_contact`
+   or `new_contact_existing_account` result — skip this step for `new_account`
+   or `ambiguous` with no account), check whether that Account already has an
+   active opportunity — this org's word for a contract in progress or signed.
+   Query the `Deals` module (their Zoho label: "Opportunities") for that
+   account:
+   ```sql
+   select id, Deal_Name, Stage from Deals where Account_Name = '<matchedZohoAccountId>'
+   ```
+   A Deal counts as **active** unless its `Stage` is one of this org's two
+   closed-lost values — `"0 - Opportunity Lost"` or
+   `"Closed-Lost to Competition"` (treat any stage whose text contains "Lost"
+   as closed-lost too, defensively, in case the org adds more later; every
+   other stage, including `"8 - Contract Signed"`, counts as active). Set
+   `hasActiveOpportunity: true` and `activeOpportunityName` to that Deal's
+   `Deal_Name` if any returned Deal is active; otherwise `hasActiveOpportunity:
+   false` and `activeOpportunityName: null`. Leave both `null` when no account
+   was matched at all.
 
 ### Confidence rules
 
@@ -214,12 +239,17 @@ indentation requirement, just valid JSON):
       "matchConfidence": "medium",
       "matchedZohoContactId": null,
       "matchedZohoContactName": null,
+      "matchedZohoContactEmail": null,
+      "matchedZohoContactPhone": null,
+      "matchedZohoContactTitle": null,
       "matchedZohoAccountId": "3001271000007193584",
       "matchedZohoAccountName": "Sunflower County School District",
+      "hasActiveOpportunity": false,
+      "activeOpportunityName": null,
       "candidateMatches": [
         {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8}
       ],
-      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. No existing linked Contact named Latoya Pruitt at this account."
+      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. No existing linked Contact named Latoya Pruitt at this account. No active Deal found for this account."
     }
 
 `candidateMatches` is `null` (not `[]`) when there's nothing worth surfacing —
@@ -228,5 +258,9 @@ candidates at all. `matchedZohoAccountName`/`matchedZohoContactName` are the
 display name of whatever `matchedZohoAccountId`/`matchedZohoContactId` point
 at — set both id and name together, null together (a caller needs the name
 for a CSV export and shouldn't have to re-derive it by searching
-`candidateMatches`). Re-verify field names and enum strings against this file
-before printing.
+`candidateMatches`). `matchedZohoContactEmail`/`Phone`/`Title` follow
+`matchedZohoContactId`'s same null-together rule. `hasActiveOpportunity`/
+`activeOpportunityName` follow `matchedZohoAccountId`'s presence instead (see
+step 6) — both `null` when no account was matched, otherwise
+`hasActiveOpportunity` is always a real `true`/`false`. Re-verify field names
+and enum strings against this file before printing.

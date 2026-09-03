@@ -12,8 +12,10 @@ public static class SkillRunner
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(180);
+
     public static async Task<JsonElement> RunSkillAsync(
-        string skillName, object input, string repoRoot, ILogger logger, int maxAttempts = 2)
+        string skillName, object input, string repoRoot, ILogger logger, int maxAttempts = 2, TimeSpan? timeout = null)
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.json");
         await File.WriteAllTextAsync(tempPath, JsonSerializer.Serialize(input, JsonOpts));
@@ -25,7 +27,7 @@ public static class SkillRunner
             {
                 try
                 {
-                    return await InvokeOnceAsync(skillName, tempPath, repoRoot);
+                    return await InvokeOnceAsync(skillName, tempPath, repoRoot, timeout ?? DefaultTimeout);
                 }
                 catch (Exception ex)
                 {
@@ -45,7 +47,7 @@ public static class SkillRunner
         }
     }
 
-    private static async Task<JsonElement> InvokeOnceAsync(string skillName, string inputPath, string repoRoot)
+    private static async Task<JsonElement> InvokeOnceAsync(string skillName, string inputPath, string repoRoot, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo
         {
@@ -62,7 +64,7 @@ public static class SkillRunner
         using var process = new Process { StartInfo = psi };
         process.Start();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
+        using var cts = new CancellationTokenSource(timeout);
         string stdout;
         try
         {
@@ -72,7 +74,7 @@ public static class SkillRunner
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
-            throw new TimeoutException($"{skillName} timed out after 180s");
+            throw new TimeoutException($"{skillName} timed out after {timeout.TotalSeconds}s");
         }
 
         if (process.ExitCode != 0)

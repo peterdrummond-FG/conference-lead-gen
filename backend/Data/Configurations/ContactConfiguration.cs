@@ -31,6 +31,7 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         // non-nullable converter with null-handling when applied here.
         builder.Property(c => c.ExtractionConfidence).HasConversion(ConfidenceLevelConverter.Instance);
         builder.Property(c => c.MatchConfidence).HasConversion(ConfidenceLevelConverter.Instance);
+        builder.Property(c => c.ResearchConfidence).HasConversion(ConfidenceLevelConverter.Instance);
 
         // jsonb: on-disk keys use camelCase ({type, zohoId, name, score}) to
         // match the architecture doc's shape, not the C# record's PascalCase

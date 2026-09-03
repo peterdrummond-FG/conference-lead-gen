@@ -7,8 +7,17 @@
         <q-tab name="approved" label="Approved" />
         <q-tab name="rejected" label="Rejected" />
       </q-tabs>
+      <div v-if="contacts.length" class="text-caption text-grey">{{ contacts.length }} contact{{ contacts.length === 1 ? '' : 's' }}</div>
       <q-space />
       <q-btn
+        v-if="tab === 'rejected'"
+        color="negative"
+        label="Bulk delete selected"
+        :disable="selectedIds.length === 0"
+        @click="confirmBulkDelete"
+      />
+      <q-btn
+        v-else
         color="positive"
         label="Bulk approve selected"
         :disable="selectedIds.length === 0"
@@ -26,7 +35,7 @@
 
     <div v-else>
       <ReviewContactCard
-        v-for="contact in contacts"
+        v-for="contact in pagedContacts"
         :key="contact.id"
         :contact="contact"
         :selected="selectedMap[contact.id] ?? false"
@@ -35,61 +44,97 @@
         @reject="reject"
         @update="update"
         @retry-match="retryMatch"
+        @duplicates-resolved="load"
       />
+
+      <div v-if="pageCount > 1" class="row justify-center q-mt-md">
+        <q-pagination v-model="page" :max="pageCount" :max-pages="7" boundary-numbers />
+      </div>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { Dialog } from 'quasar';
 import { api } from '@/boot/axios';
 import ReviewContactCard from '@/components/ReviewContactCard.vue';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
+
+// Every contact was previously rendered at once — with a few hundred rows
+// (each carrying a multi-megabyte card photo) that made for an enormous
+// page, and pushed later cards' images so far down the DOM that browser
+// screenshot/paint tooling started blanking out around them. Paginating
+// keeps the live DOM small enough for lazy image loading to behave.
+const PER_PAGE = 20;
 
 const tab = ref('needs_review');
 const contacts = ref<ContactListItem[]>([]);
 const loading = ref(false);
 const selectedMap = reactive<Record<string, boolean>>({});
+const page = ref(1);
 
 const selectedIds = computed(() => Object.keys(selectedMap).filter((id) => selectedMap[id]));
+const pageCount = computed(() => Math.max(1, Math.ceil(contacts.value.length / PER_PAGE)));
+const pagedContacts = computed(() => contacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
 async function load() {
   loading.value = true;
   try {
-    const { data } = await api.get<ContactListItem[]>('/contacts', { params: { reviewStatus: tab.value } });
+    const { data } = await api.get<ContactListItem[]>('/contacts-list', { params: { reviewStatus: tab.value } });
     contacts.value = data;
     for (const key of Object.keys(selectedMap)) delete selectedMap[key];
     for (const c of data) selectedMap[c.id] = false;
+    if (page.value > pageCount.value) page.value = pageCount.value;
   } finally {
     loading.value = false;
   }
 }
 
 async function approve(id: string) {
-  await api.patch(`/contacts/${id}`, { reviewStatus: 'approved' });
+  await api.patch(`/contacts-patch`, { reviewStatus: 'approved' }, { params: { id } });
   await load();
 }
 
 async function reject(id: string) {
-  await api.patch(`/contacts/${id}`, { reviewStatus: 'rejected' });
+  await api.patch(`/contacts-patch`, { reviewStatus: 'rejected' }, { params: { id } });
   await load();
 }
 
 async function update(id: string, payload: UpdateContactPayload) {
-  await api.patch(`/contacts/${id}`, payload);
+  await api.patch(`/contacts-patch`, payload, { params: { id } });
   await load();
 }
 
 async function retryMatch(id: string) {
-  await api.post(`/contacts/${id}/retry-match`);
+  await api.post(`/contacts-retry-match`, undefined, { params: { id } });
   await load();
 }
 
 async function bulkApprove() {
-  await api.post('/contacts/bulk-approve', { ids: selectedIds.value });
+  await api.post('/contacts-bulk-approve', { ids: selectedIds.value });
   await load();
 }
 
-watch(tab, load);
+function confirmBulkDelete() {
+  const count = selectedIds.value.length;
+  Dialog.create({
+    title: 'Delete rejected contacts?',
+    message: `This permanently deletes ${count} rejected contact${count === 1 ? '' : 's'}. This can't be undone.`,
+    cancel: true,
+    persistent: true,
+    ok: { label: 'Delete', color: 'negative' },
+  }).onOk(bulkDelete);
+}
+
+async function bulkDelete() {
+  await api.post('/contacts-bulk-delete', { ids: selectedIds.value });
+  await load();
+}
+
+watch(tab, () => {
+  page.value = 1;
+  void load();
+});
 onMounted(load);
 </script>

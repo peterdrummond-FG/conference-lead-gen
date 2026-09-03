@@ -8,9 +8,19 @@
     <meta name="format-detection" content="telephone=no">
     <meta name="msapplication-tap-highlight" content="no">
     <meta name="viewport" content="width=device-width, initial-scale=1<% if (ctx.mode.cordova || ctx.mode.capacitor) { %>, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover<% } %>">
+    <!--
+      Stage 15: connect-src must reach the Supabase Edge Functions origin in
+      BOTH dev and the production build — this directive used to be dev-only
+      and scoped to 'self' only, which made sense when every API call was
+      same-origin (the old /api proxy to the local .NET backend). Missing
+      this in the production build would have silently broken every API
+      call on Vercel, not just local dev. img-src needs blob: too, now that
+      contacts-photo/export-csv are fetched via axios and rendered/
+      downloaded from object URLs instead of a same-origin <img src>.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';<% if (ctx.dev) { %> connect-src 'self' ws://localhost:*; worker-src 'self' blob:;<% } %>"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self' https://*.supabase.co<% if (ctx.dev) { %> ws://localhost:*<% } %>;<% if (ctx.dev) { %> worker-src 'self' blob:;<% } %>"
     />
 
     <link rel="icon" type="image/png" sizes="128x128" href="icons/favicon-128x128.png">

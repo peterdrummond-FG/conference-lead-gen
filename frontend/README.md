@@ -1,4 +1,4 @@
-# Quasar App ()
+# Conference Lead Gen (frontend)
 
 ## Install the dependencies
 

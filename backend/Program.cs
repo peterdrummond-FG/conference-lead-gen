@@ -4,6 +4,7 @@ using ConferenceLeadGen.Api.Services;
 using ConferenceLeadGen.Api.Tools;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 // Must run before WebApplication.CreateBuilder(args) — CreateBuilder snapshots
 // environment variables into IConfiguration synchronously, so loading .env
@@ -11,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 // walks up from backend/ to find the .env file at the repo root.
 DotNetEnv.Env.TraversePath().Load();
 
-if (args.Length > 0 && (args[0] == "seed-schools" || args[0] == "sync-campaigns"))
+if (args.Length > 0 && (args[0] == "seed-schools" || args[0] == "sync-campaigns" || args[0] == "backfill-card-crops" || args[0] == "backfill-match-details"))
 {
     var defaultPath = args[0] == "seed-schools"
         ? "Data/Seed/zoho-school-accounts.json"
@@ -32,9 +33,28 @@ if (args.Length > 0 && (args[0] == "seed-schools" || args[0] == "sync-campaigns"
     {
         await SeedSchoolAccounts.RunAsync(db, jsonPath);
     }
-    else
+    else if (args[0] == "sync-campaigns")
     {
         await SyncCampaigns.RunAsync(db, jsonPath);
+    }
+    else if (args[0] == "backfill-card-crops")
+    {
+        // Mirrors MatchingOptions' own derivation in the DI setup below —
+        // .claude/skills lives at the repo root, one level up from this
+        // project's own directory. dotnet run must be invoked from backend/
+        // (the same convention every other `dotnet run -- <command>` here
+        // already assumes) for this to resolve correctly.
+        var backfillRepoRoot = Directory.GetParent(Directory.GetCurrentDirectory())!.FullName;
+        using var backfillLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+        var backfillLogger = backfillLoggerFactory.CreateLogger("BackfillCardCrops");
+        await BackfillCardCrops.RunAsync(db, backfillLogger, backfillRepoRoot);
+    }
+    else
+    {
+        var matchDetailsRepoRoot = Directory.GetParent(Directory.GetCurrentDirectory())!.FullName;
+        using var matchDetailsLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+        var matchDetailsLogger = matchDetailsLoggerFactory.CreateLogger("BackfillMatchDetails");
+        await BackfillMatchDetails.RunAsync(db, matchDetailsLogger, matchDetailsRepoRoot);
     }
 
     return;
@@ -93,5 +113,6 @@ app.MapDistrictEndpoints();
 app.MapSchoolEndpoints();
 app.MapContactEndpoints();
 app.MapExportEndpoints();
+app.MapKioskEndpoints();
 
 app.Run();

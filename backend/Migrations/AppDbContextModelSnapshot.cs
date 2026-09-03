@@ -62,6 +62,14 @@ namespace ConferenceLeadGen.Api.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
+                    b.Property<string>("ActiveOpportunityName")
+                        .HasColumnType("text")
+                        .HasColumnName("active_opportunity_name");
+
+                    b.Property<bool>("AutoApproved")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_approved");
+
                     b.Property<string>("CandidateMatches")
                         .HasColumnType("jsonb")
                         .HasColumnName("candidate_matches");
@@ -69,6 +77,10 @@ namespace ConferenceLeadGen.Api.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("CroppedImagePath")
+                        .HasColumnType("text")
+                        .HasColumnName("cropped_image_path");
 
                     b.Property<string>("Email")
                         .HasColumnType("text")
@@ -86,6 +98,10 @@ namespace ConferenceLeadGen.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("first_name");
+
+                    b.Property<bool?>("HasActiveOpportunity")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_active_opportunity");
 
                     b.Property<DateTimeOffset?>("LastMatchAttemptAt")
                         .HasColumnType("timestamp with time zone")
@@ -121,6 +137,10 @@ namespace ConferenceLeadGen.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("matched_zoho_account_name");
 
+                    b.Property<string>("MatchedZohoContactEmail")
+                        .HasColumnType("text")
+                        .HasColumnName("matched_zoho_contact_email");
+
                     b.Property<string>("MatchedZohoContactId")
                         .HasColumnType("text")
                         .HasColumnName("matched_zoho_contact_id");
@@ -129,13 +149,29 @@ namespace ConferenceLeadGen.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("matched_zoho_contact_name");
 
+                    b.Property<string>("MatchedZohoContactPhone")
+                        .HasColumnType("text")
+                        .HasColumnName("matched_zoho_contact_phone");
+
+                    b.Property<string>("MatchedZohoContactTitle")
+                        .HasColumnType("text")
+                        .HasColumnName("matched_zoho_contact_title");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
 
+                    b.Property<bool?>("PersonVerified")
+                        .HasColumnType("boolean")
+                        .HasColumnName("person_verified");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text")
                         .HasColumnName("phone");
+
+                    b.Property<string>("ResearchConfidence")
+                        .HasColumnType("text")
+                        .HasColumnName("research_confidence");
 
                     b.Property<string>("ReviewStatus")
                         .IsRequired()
@@ -244,6 +280,31 @@ namespace ConferenceLeadGen.Api.Migrations
                         .HasFilter("is_active");
 
                     b.ToTable("events", (string)null);
+                });
+
+            modelBuilder.Entity("ConferenceLeadGen.Api.Models.KioskSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Pin")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("pin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_kiosk_settings");
+
+                    b.ToTable("kiosk_settings", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000001"),
+                            Pin = "1234"
+                        });
                 });
 
             modelBuilder.Entity("ConferenceLeadGen.Api.Models.School", b =>

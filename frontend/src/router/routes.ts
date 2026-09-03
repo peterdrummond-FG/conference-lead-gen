@@ -1,15 +1,18 @@
 import type { RouteRecordRaw } from 'vue-router';
+import type { Role } from '@/stores/role-store';
 
+// Routes with no `roles` (Intake) are open to everyone — it's the kiosk
+// screen itself, shown regardless of who unlocked the laptop.
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', redirect: '/setup' },
-      { path: 'setup', component: () => import('@/pages/SetupPage.vue') },
+      { path: '', redirect: '/intake' },
+      { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['sales', 'customerSuccess'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
-      { path: 'review', component: () => import('@/pages/ReviewPage.vue') },
-      { path: 'export', component: () => import('@/pages/ExportPage.vue') },
+      { path: 'review', component: () => import('@/pages/ReviewPage.vue'), meta: { roles: ['sales', 'customerSuccess'] as Role[] } },
+      { path: 'export', component: () => import('@/pages/ExportPage.vue'), meta: { roles: ['customerSuccess'] as Role[] } },
     ],
   },
 

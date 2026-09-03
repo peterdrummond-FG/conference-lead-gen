@@ -12,7 +12,12 @@ public static class SyncCampaigns
     // campaigns). If the source JSON still carries null state/city values
     // from an earlier pull, System.Text.Json silently ignores unmapped
     // properties, which is exactly the right behavior here.
-    private sealed record CampaignRecord(string ZohoCampaignId, string CampaignName);
+    // Type is optional/nullable: the current zoho-campaigns.json export has
+    // no such field at all (filtering to conference campaigns happened
+    // entirely upstream, outside this repo), so this is forward-compatible
+    // defense-in-depth — a no-op today, but it self-activates the moment the
+    // upstream export starts including a type column. See UpsertCampaignsAsync.
+    private sealed record CampaignRecord(string ZohoCampaignId, string CampaignName, string? Type = null);
 
     private sealed class Counts
     {
@@ -82,6 +87,16 @@ public static class SyncCampaigns
 
         foreach (var r in records)
         {
+            // Defense-in-depth: if the upstream export ever starts including
+            // a type column, skip anything that isn't a conference campaign
+            // rather than silently importing it. A no-op today since the
+            // field is never present.
+            if (r.Type is not null && !string.Equals(r.Type, "conference", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Skipped non-conference campaign {r.ZohoCampaignId} ({r.CampaignName}): type={r.Type}");
+                continue;
+            }
+
             if (existing.TryGetValue(r.ZohoCampaignId, out var campaign))
             {
                 if (campaign.Name != r.CampaignName)
