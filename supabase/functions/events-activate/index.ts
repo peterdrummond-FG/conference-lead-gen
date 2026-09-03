@@ -4,6 +4,7 @@
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireStaffPin } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { VALID_EVENT_STATES } from "../_shared/usStates.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -24,11 +25,16 @@ Deno.serve(async (req) => {
     return errorResponse(req, 400, "zohoCampaignId, name, state, and city are required");
   }
 
+  const state = body.state.trim();
+  if (!VALID_EVENT_STATES.has(state)) {
+    return errorResponse(req, 400, `state must be a full US state name (or "National"), got '${state}'`);
+  }
+
   const supabase = serviceClient();
   const { data, error } = await supabase.rpc("events_activate", {
     p_zoho_campaign_id: body.zohoCampaignId,
     p_name: body.name,
-    p_state: body.state.trim(),
+    p_state: state,
     p_city: body.city.trim(),
   });
   if (error) return errorResponse(req, 500, error.message);

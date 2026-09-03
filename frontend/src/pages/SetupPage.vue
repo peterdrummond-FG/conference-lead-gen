@@ -67,11 +67,19 @@
             since that's the point at which they're actually needed.
           -->
           <div v-if="selectedCampaign" class="row q-col-gutter-md q-mt-sm">
-            <q-input
-              v-model="state"
+            <q-select
+              v-model="stateOption"
               class="col"
+              :options="stateOptions"
+              option-label="name"
+              use-input
+              fill-input
+              hide-selected
+              input-debounce="0"
               label="State *"
-              :rules="[(v: string) => !!v || 'Required']"
+              hint="Type a state code or name — or 'National' for a nationwide conference"
+              :rules="[(v: UsStateOption | null) => !!v || 'Required']"
+              @filter="filterStates"
             />
             <q-input
               v-model="city"
@@ -85,7 +93,7 @@
             <q-btn
               color="primary"
               label="Activate"
-              :disable="!selectedCampaign || !state || !city"
+              :disable="!selectedCampaign || !stateOption || !city"
               :loading="activating"
               @click="activate"
             />
@@ -145,6 +153,7 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useRoleStore, type Role } from '@/stores/role-store';
 import { generateFlyerPdf } from '@/utils/generateFlyer';
+import { STATE_OPTIONS, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 
 interface CampaignOption {
   zohoCampaignId: string;
@@ -155,7 +164,8 @@ const eventStore = useEventStore();
 const roleStore = useRoleStore();
 const campaignOptions = ref<CampaignOption[]>([]);
 const selectedCampaign = ref<CampaignOption | null>(null);
-const state = ref('');
+const stateOption = ref<UsStateOption | null>(null);
+const stateOptions = ref<UsStateOption[]>(STATE_OPTIONS);
 const city = ref('');
 const activating = ref(false);
 const pickingNew = ref(false);
@@ -174,20 +184,26 @@ function filterFn(val: string, update: (cb: () => void) => void) {
   });
 }
 
+function filterStates(val: string, update: (cb: () => void) => void) {
+  update(() => {
+    stateOptions.value = filterStateOptions(val);
+  });
+}
+
 async function activate() {
-  if (!selectedCampaign.value || !state.value || !city.value) return;
+  if (!selectedCampaign.value || !stateOption.value || !city.value) return;
   activating.value = true;
   try {
     await api.post('/events-activate', {
       zohoCampaignId: selectedCampaign.value.zohoCampaignId,
       name: selectedCampaign.value.name,
-      state: state.value,
+      state: stateOption.value.name,
       city: city.value,
     });
     await eventStore.fetchActive();
     pickingNew.value = false;
     selectedCampaign.value = null;
-    state.value = '';
+    stateOption.value = null;
     city.value = '';
   } finally {
     activating.value = false;
