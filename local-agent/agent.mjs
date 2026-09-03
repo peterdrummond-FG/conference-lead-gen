@@ -357,7 +357,96 @@ async function photoLoop() {
 // whisper-runner.mjs's local CLI invocation.
 const TRANSCRIPTION_POLL_INTERVAL_MS = Number(process.env.TRANSCRIPTION_POLL_INTERVAL_MS ?? 20_000);
 const CORRELATION_WINDOW_MINUTES = 15;
+// How long a transcribed memo keeps getting retried against newly-created
+// contacts before we give up. Set comfortably above PHOTO_CLAUDE_TIMEOUT_MS
+// (15 min) — the photo/OCR pipeline that creates the contact a memo
+// correlates against can legitimately take that long for a busy multi-card
+// sheet, and transcription (a single Whisper call) routinely finishes
+// first. Without a retry, that ordering — correct arrival order, "wrong"
+// finish order — permanently orphans the memo: matched_contact_ids stays
+// empty forever with no way to reattach it short of manual SQL.
+const LINK_RETRY_WINDOW_MINUTES = 20;
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
+
+// Same correlation rule for both the first attempt (right after
+// transcribing) and every retry pass below: same phone, kind='photo',
+// received in the window preceding this memo, then contacts whose
+// source_message_id points at one of those photo messages.
+async function linkTranscriptToContacts(message, transcript) {
+  const windowStart = new Date(
+    new Date(message.received_at).getTime() - CORRELATION_WINDOW_MINUTES * 60_000,
+  ).toISOString();
+
+  const { data: candidateMessages, error: candidatesError } = await supabase
+    .from('inbound_messages')
+    .select('id')
+    .eq('from_phone', message.from_phone)
+    .eq('kind', 'photo')
+    .gte('received_at', windowStart)
+    .lte('received_at', message.received_at);
+  if (candidatesError) throw candidatesError;
+
+  const matchedContactIds = [];
+  if (candidateMessages && candidateMessages.length > 0) {
+    const messageIds = candidateMessages.map((m) => m.id);
+    const { data: matchedContacts, error: matchError } = await supabase
+      .from('contacts')
+      .select('id, interaction_notes')
+      .in('source_message_id', messageIds);
+    if (matchError) throw matchError;
+
+    for (const contact of matchedContacts ?? []) {
+      // Append, not overwrite — a rep could leave more than one memo
+      // about the same contact across an event; each keeps a running log.
+      const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${transcript}` : transcript;
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({ interaction_notes: merged })
+        .eq('id', contact.id);
+      if (updateError) throw updateError;
+      matchedContactIds.push(contact.id);
+    }
+  }
+  return matchedContactIds;
+}
+
+// Sweeps completed memos whose first-attempt link (in processAudioMessage,
+// right after transcribing) came up empty, and retries the same
+// correlation now that more time has passed — the photo/contact side of
+// the race may well have finished since. Runs every transcription poll
+// tick; a memo that never finds a contact within LINK_RETRY_WINDOW_MINUTES
+// ages out of the query and is left alone (a memo with genuinely nothing
+// to attach to is an expected, valid outcome, not a bug).
+async function retryOrphanedTranscripts() {
+  const windowStart = new Date(Date.now() - LINK_RETRY_WINDOW_MINUTES * 60_000).toISOString();
+  const { data, error } = await supabase
+    .from('inbound_messages')
+    .select('id, from_phone, received_at, transcript, matched_contact_ids, attempts')
+    .eq('kind', 'audio')
+    .eq('status', 'completed')
+    .not('transcript', 'is', null)
+    .gte('received_at', windowStart);
+  if (error) {
+    log(`ERROR finding orphaned transcripts: ${error.message ?? error}`);
+    return;
+  }
+
+  const orphaned = (data ?? []).filter((m) => !m.matched_contact_ids || m.matched_contact_ids.length === 0);
+  for (const message of orphaned) {
+    try {
+      const matchedContactIds = await linkTranscriptToContacts(message, message.transcript);
+      await supabase
+        .from('inbound_messages')
+        .update({ matched_contact_ids: matchedContactIds, attempts: (message.attempts ?? 0) + 1 })
+        .eq('id', message.id);
+      if (matchedContactIds.length > 0) {
+        log(`retry-link OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
+      }
+    } catch (err) {
+      log(`retry-link ERROR: ${message.id} — ${err.message ?? err}`);
+    }
+  }
+}
 
 async function findNextPendingAudioMessage() {
   const { data, error } = await supabase
@@ -401,47 +490,11 @@ async function processAudioMessage(message) {
 
   try {
     const transcript = await transcribeAudio(localPath);
-
-    // Correlate: contacts whose source_message_id points at a photo
-    // message from the same phone, received in the window preceding this
-    // memo.
-    const windowStart = new Date(
-      new Date(message.received_at).getTime() - CORRELATION_WINDOW_MINUTES * 60_000,
-    ).toISOString();
-
-    const { data: candidateMessages, error: candidatesError } = await supabase
-      .from('inbound_messages')
-      .select('id')
-      .eq('from_phone', message.from_phone)
-      .eq('kind', 'photo')
-      .gte('received_at', windowStart)
-      .lte('received_at', message.received_at);
-    if (candidatesError) throw candidatesError;
-
-    const matchedContactIds = [];
-    if (candidateMessages && candidateMessages.length > 0) {
-      const messageIds = candidateMessages.map((m) => m.id);
-      const { data: matchedContacts, error: matchError } = await supabase
-        .from('contacts')
-        .select('id, interaction_notes')
-        .in('source_message_id', messageIds);
-      if (matchError) throw matchError;
-
-      for (const contact of matchedContacts ?? []) {
-        // Append, not overwrite — a rep could leave more than one memo
-        // about the same contact across an event; each keeps a running log.
-        const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${transcript}` : transcript;
-        const { error: updateError } = await supabase
-          .from('contacts')
-          .update({ interaction_notes: merged })
-          .eq('id', contact.id);
-        if (updateError) throw updateError;
-        matchedContactIds.push(contact.id);
-      }
-    }
+    const matchedContactIds = await linkTranscriptToContacts(message, transcript);
 
     // An empty matchedContactIds array is a valid, non-error outcome — a
-    // memo with nothing to attach to still transcribed successfully.
+    // memo with nothing to attach to (yet — see retryOrphanedTranscripts
+    // below) still transcribed successfully.
     await supabase.from('inbound_messages').update({
       transcript,
       status: 'completed',
@@ -462,16 +515,22 @@ async function transcriptionTick() {
   let message;
   try {
     const candidate = await findNextPendingAudioMessage();
-    if (!candidate) return;
-    message = await claimAudioMessage(candidate.id);
+    if (candidate) {
+      message = await claimAudioMessage(candidate.id);
+    }
   } catch (err) {
     log(`ERROR finding/claiming pending audio message: ${err.message ?? err}`);
-    return;
   }
-  if (!message) return; // someone/something else claimed it first
 
-  log(`processing audio message ${message.id}`);
-  await processAudioMessage(message);
+  if (message) {
+    log(`processing audio message ${message.id}`);
+    await processAudioMessage(message);
+  }
+
+  // Runs every tick regardless of whether a new memo was just processed —
+  // this is what catches memos whose contact didn't exist yet the first
+  // time around (see retryOrphanedTranscripts's own comment).
+  await retryOrphanedTranscripts();
 }
 
 async function transcriptionLoop() {

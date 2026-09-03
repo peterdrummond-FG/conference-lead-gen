@@ -3,7 +3,7 @@
 // source_image_path/cropped_image_path are Supabase Storage object paths in
 // the 'contact-photos' bucket (uniform for both the local watcher and
 // SMS-sourced photos, per Stage 12).
-import { errorResponse, handlePreflight } from "../_shared/http.ts";
+import { corsHeaders, errorResponse, handlePreflight } from "../_shared/http.ts";
 import { requireStaffPin } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
@@ -34,5 +34,12 @@ Deno.serve(async (req) => {
     .createSignedUrl(path, 60);
   if (signError || !signed) return errorResponse(req, 404, "Source image file is missing in storage.");
 
-  return Response.redirect(signed.signedUrl, 302);
+  // Not Response.redirect(): it builds a bare Location header with no CORS
+  // headers, which fails the browser's cross-origin redirect check outright
+  // (fetch() throws "Failed to fetch" before ever reaching Storage) since
+  // this function's own origin differs from the frontend's.
+  return new Response(null, {
+    status: 302,
+    headers: { ...corsHeaders(req), Location: signed.signedUrl },
+  });
 });
