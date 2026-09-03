@@ -113,8 +113,13 @@ upload_to_storage() {
     return
   fi
 
+  # Storage's raw REST endpoint (unlike the Edge Functions gateway) requires
+  # an explicit apikey header alongside Authorization — confirmed by a live
+  # test: the same call with only Authorization failed on Supabase's newer
+  # sb_secret_... key format even though the key itself was valid.
   if curl -s -f -X POST "$SUPABASE_URL/storage/v1/object/contact-photos/$storage_key" \
       -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+      -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
       -H "Content-Type: $(content_type_for "$local_path")" \
       -H "x-upsert: true" \
       --data-binary "@$local_path" >>"$LOG" 2>&1; then
