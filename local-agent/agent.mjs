@@ -350,13 +350,18 @@ async function photoLoop() {
 // Ported from supabase/functions/transcribe-voice-memo/index.ts — same
 // claim-then-mark-processing idempotency guard (still worth keeping even
 // with no OpenAI cost-griefing concern anymore: it's also what makes a
-// crash/restart mid-transcription safe rather than double-processing),
-// same correlation rule (same phone, kind='photo', within the preceding
-// window), same append-not-overwrite merge into interaction_notes. Only
-// the transcription call itself changed, from a Whisper API fetch to
+// crash/restart mid-transcription safe rather than double-processing).
+// Only the transcription call itself changed, from a Whisper API fetch to
 // whisper-runner.mjs's local CLI invocation.
+//
+// Attribution (which contact a memo is actually about) used to be pure
+// phone+timing correlation — attach the whole transcript to whoever's
+// photo arrived in the preceding 15 minutes. That's wrong the moment a memo
+// mentions more than one person (e.g. a correction about someone captured
+// 30+ minutes earlier plus praise for the card just taken): the whole blob
+// landed on one contact and the other never got their part. See
+// linkTranscriptToContacts below and the attribute-voice-memo skill.
 const TRANSCRIPTION_POLL_INTERVAL_MS = Number(process.env.TRANSCRIPTION_POLL_INTERVAL_MS ?? 20_000);
-const CORRELATION_WINDOW_MINUTES = 15;
 // How long a transcribed memo keeps getting retried against newly-created
 // contacts before we give up. Set comfortably above PHOTO_CLAUDE_TIMEOUT_MS
 // (15 min) — the photo/OCR pipeline that creates the contact a memo
@@ -368,46 +373,83 @@ const CORRELATION_WINDOW_MINUTES = 15;
 const LINK_RETRY_WINDOW_MINUTES = 20;
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
 
-// Same correlation rule for both the first attempt (right after
-// transcribing) and every retry pass below: same phone, kind='photo',
-// received in the window preceding this memo, then contacts whose
-// source_message_id points at one of those photo messages.
-async function linkTranscriptToContacts(message, transcript) {
-  const windowStart = new Date(
-    new Date(message.received_at).getTime() - CORRELATION_WINDOW_MINUTES * 60_000,
-  ).toISOString();
-
-  const { data: candidateMessages, error: candidatesError } = await supabase
-    .from('inbound_messages')
-    .select('id')
-    .eq('from_phone', message.from_phone)
-    .eq('kind', 'photo')
-    .gte('received_at', windowStart)
-    .lte('received_at', message.received_at);
-  if (candidatesError) throw candidatesError;
-
+// Shared write path for every branch below — append-not-overwrite, same as
+// before: a rep could leave more than one memo about the same contact
+// across an event, so each keeps a running log rather than clobbering the
+// last one.
+async function attachExcerpts(items) {
   const matchedContactIds = [];
-  if (candidateMessages && candidateMessages.length > 0) {
-    const messageIds = candidateMessages.map((m) => m.id);
-    const { data: matchedContacts, error: matchError } = await supabase
-      .from('contacts')
-      .select('id, interaction_notes')
-      .in('source_message_id', messageIds);
-    if (matchError) throw matchError;
-
-    for (const contact of matchedContacts ?? []) {
-      // Append, not overwrite — a rep could leave more than one memo
-      // about the same contact across an event; each keeps a running log.
-      const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${transcript}` : transcript;
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({ interaction_notes: merged })
-        .eq('id', contact.id);
-      if (updateError) throw updateError;
-      matchedContactIds.push(contact.id);
-    }
+  for (const { contact, excerpt } of items) {
+    const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${excerpt}` : excerpt;
+    const { error } = await supabase.from('contacts').update({ interaction_notes: merged }).eq('id', contact.id);
+    if (error) throw error;
+    matchedContactIds.push(contact.id);
   }
   return matchedContactIds;
+}
+
+// Candidates for a memo are every card_photo contact captured at the same
+// event BY THE SAME REP (joined through source_message_id -> inbound_messages
+// -> from_phone) — not just the one photo immediately preceding this memo,
+// and not every contact at the event regardless of who captured them (a rep
+// can only ever be describing someone whose card *they* took, and pooling
+// every rep's contacts would both be wrong and make the candidate list grow
+// unboundedly over a multi-rep event's life). Forms have no associated
+// audio, so source is always 'card_photo' here.
+async function findCandidateContacts(eventId, fromPhone) {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone, title, interaction_notes, created_at, source_msg:inbound_messages!contacts_source_message_id_fkey!inner(from_phone)')
+    .eq('event_id', eventId)
+    .eq('source', 'card_photo')
+    .eq('source_msg.from_phone', fromPhone)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Used both by the first attempt (right after transcribing) and every retry
+// pass below (retryOrphanedTranscripts) — re-running this against a
+// possibly-grown candidate list is exactly the right retry behavior.
+async function linkTranscriptToContacts(message, transcript) {
+  if (!message.event_id) return []; // no event bound — nothing to scope to (should be unreachable in practice)
+
+  const candidates = await findCandidateContacts(message.event_id, message.from_phone);
+  if (candidates.length === 0) return []; // nothing to attach to yet; retry sweep will catch it later
+
+  if (candidates.length === 1) {
+    // No ambiguity possible — skip the LLM call and attach the full
+    // transcript directly, same as the old behavior, at zero extra cost.
+    return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
+  }
+
+  const skillInput = {
+    transcript,
+    candidates: candidates.map((c) => ({
+      contactId: c.id,
+      firstName: c.first_name,
+      lastName: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      title: c.title,
+    })),
+  };
+  const { results } = await runSkill('attribute-voice-memo', skillInput, REPO_ROOT);
+  const attributed = (results ?? []).filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0);
+
+  if (attributed.length === 0) {
+    // Memo names no one explicitly (e.g. "great conversation, really
+    // knowledgeable" with no name spoken) — fall back to the single
+    // most-recently-captured candidate, preserving the old good-case
+    // default instead of regressing to "attach to nobody."
+    return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
+  }
+
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  const toAttach = attributed
+    .map((r) => ({ contact: byId.get(r.contactId), excerpt: r.excerpt }))
+    .filter((x) => x.contact); // defensive: ignore an id the skill echoed that wasn't in the candidate list
+  return attachExcerpts(toAttach);
 }
 
 // Sweeps completed memos whose first-attempt link (in processAudioMessage,
@@ -421,7 +463,7 @@ async function retryOrphanedTranscripts() {
   const windowStart = new Date(Date.now() - LINK_RETRY_WINDOW_MINUTES * 60_000).toISOString();
   const { data, error } = await supabase
     .from('inbound_messages')
-    .select('id, from_phone, received_at, transcript, matched_contact_ids, attempts')
+    .select('id, event_id, from_phone, received_at, transcript, matched_contact_ids, attempts')
     .eq('kind', 'audio')
     .eq('status', 'completed')
     .not('transcript', 'is', null)
