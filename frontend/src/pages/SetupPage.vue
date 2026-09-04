@@ -57,14 +57,14 @@
 
           <div class="q-mt-md text-center">
             <div class="text-caption text-grey q-mb-sm">
-              Print this and set it on the booth table — attendees scan it, not the laptop screen.
+              Drop this on a slide or open it on an iPad at the booth — attendees scan it, not the laptop screen.
             </div>
             <q-btn
               color="primary"
-              icon="picture_as_pdf"
-              label="Download connect flyer (PDF)"
-              :loading="generatingFlyer"
-              @click="downloadFlyer"
+              icon="image"
+              label="Download connect slide (PNG)"
+              :loading="generatingSlide"
+              @click="downloadSlide"
             />
           </div>
 
@@ -179,7 +179,7 @@ import { Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useRoleStore, type Role } from '@/stores/role-store';
-import { generateFlyerPdf } from '@/utils/generateFlyer';
+import { generateConnectSlidePng } from '@/utils/generateConnectSlide';
 import { STATE_OPTIONS, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 
 interface CampaignOption {
@@ -202,7 +202,7 @@ const stateOptions = ref<UsStateOption[]>(STATE_OPTIONS);
 const city = ref('');
 const activating = ref(false);
 const pickingNew = ref(false);
-const generatingFlyer = ref(false);
+const generatingSlide = ref(false);
 
 const currentPin = ref('');
 const newPin = ref('');
@@ -243,18 +243,18 @@ async function activate() {
   }
 }
 
-async function downloadFlyer() {
+async function downloadSlide() {
   if (!eventStore.activeEvent) return;
-  generatingFlyer.value = true;
+  generatingSlide.value = true;
   try {
-    await generateFlyerPdf({
+    await generateConnectSlidePng({
       eventName: eventStore.activeEvent.name,
       city: eventStore.activeEvent.city,
       state: eventStore.activeEvent.state,
       intakeUrl: intakeUrl.value,
     });
   } finally {
-    generatingFlyer.value = false;
+    generatingSlide.value = false;
   }
 }
 
