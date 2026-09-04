@@ -37,6 +37,15 @@ public class Contact
     // at this institution. Null until the pipeline has run.
     public bool? PersonVerified { get; set; }
 
+    // The rest of research-contact's output beyond ResearchConfidence/
+    // PersonVerified: proposed name/district spelling corrections, the
+    // central-office-vs-campus determination, and an as-of-dated title
+    // finding. Persisted verbatim (even though match-contact only ever sees
+    // these in-memory as they flow through) so a correction research found
+    // isn't silently lost the way it was before this field existed — see
+    // match-contact's Notes for the reviewer-facing summary of the same data.
+    public ResearchFindings? ResearchFindings { get; set; }
+
     public MatchStatus MatchStatus { get; set; } = MatchStatus.Pending;
 
     // Certainty of the Zoho lookup itself, separate from ExtractionConfidence.

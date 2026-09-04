@@ -22,18 +22,20 @@ from this file and live Zoho data every time.
 ## Input
 
 A file path (primary) or inline JSON (fallback, simple ASCII cases only) —
-exactly the output shape of `research-contact`. **`districtName`/`schoolName`
-are always the person's own original words, verbatim — `research-contact`
-never overwrites them, no matter how confident its research was.** Any
-real-world correction it found lives only in `alternateDistrictNames`, with
-its single best guess listed first. This is why a match found via
-`districtName` itself is trusted more than one found via an alternate — the
-distinction is meaningful precisely because it's never blurred upstream.
+exactly the output shape of `research-contact`. **`firstName`/`lastName`/
+`districtName`/`schoolName` are always the person's own original words,
+verbatim — `research-contact` never overwrites them, no matter how confident
+its research was.** Any real-world correction it found lives only in
+`alternateDistrictNames` (district) or `alternateNameSpellings` (person's
+name), each with its single best guess listed first. This is why a match
+found via the original field itself is trusted more than one found via an
+alternate — the distinction is meaningful precisely because it's never
+blurred upstream.
 ```json
 {
   "contactId": null,
   "firstName": "Latoya",
-  "lastName": "Pruitt",
+  "lastName": "Pruit",
   "email": null,
   "phone": null,
   "title": "Principal",
@@ -43,8 +45,17 @@ distinction is meaningful precisely because it's never blurred upstream.
   "source": "card_photo",
   "extractionConfidence": "medium",
   "alternateDistrictNames": ["Sunflower County School District"],
-  "researchConfidence": "medium",
-  "personVerified": false,
+  "alternateNameSpellings": ["Pruitt"],
+  "nameCorrectionConfidence": "high",
+  "institutionLevel": "specific_campus",
+  "institutionLevelCampusName": "Ruleville Central Elementary",
+  "institutionLevelConfidence": "high",
+  "institutionLevelAsOfDate": "2025",
+  "titleFinding": "Principal",
+  "titleFindingConfidence": "high",
+  "titleFindingAsOfDate": "2025",
+  "researchConfidence": "high",
+  "personVerified": true,
   "researchNotes": "..."
 }
 ```
@@ -52,15 +63,28 @@ If `firstName`, `lastName`, or `eventState` is missing/empty, skip to the
 output step with `matchStatus: "ambiguous"`, `matchConfidence: "low"`, and
 explain the missing field in `notes`. Never crash on malformed input.
 
-**`researchNotes` is never persisted on its own — only this skill's own
-`notes` field is.** The review UI flags any two contacts sharing a
-first+last name as a possible duplicate, regardless of event or district, so
-a reviewer looking at that flag needs whatever `research-contact` found about
-whether this looks like the same person or a same-named stranger. If
-`researchNotes` says anything about this name being tied to a different
-institution/state, or explicitly found nowhere else, carry that specific
-point forward into your own `notes` (briefly — one clause is enough) rather
-than dropping it once you've absorbed it for your own Zoho matching.
+**None of `researchNotes`, `alternateNameSpellings`, `institutionLevel*`, or
+`titleFinding*` are persisted on their own — only this skill's own `notes`
+field is** (they do get saved to the database in full elsewhere, but this
+skill's `notes` is the only one of these a reviewer actually reads — the
+review UI shows it behind a "Show match reasoning" toggle and it's what
+carries through to the Zoho export). That makes summarizing them into `notes`
+this skill's job, not an optional courtesy:
+- **Always** state, briefly, whatever `research-contact` found for
+  `institutionLevel` (central office vs. a named campus) and `titleFinding` +
+  its as-of date, whenever either is non-null/non-"unknown" — a reviewer has
+  no other way to see these.
+- **Always** state a proposed `alternateNameSpellings` correction when
+  present, even if it didn't end up changing your `matchStatus` — e.g. "web
+  research suggests 'Pruitt' rather than 'Pruit' (high confidence)".
+- The review UI flags any two contacts sharing a first+last name as a
+  possible duplicate, regardless of event or district, so a reviewer looking
+  at that flag needs whatever `research-contact` found about whether this
+  looks like the same person or a same-named stranger. If `researchNotes`
+  says anything about this name being tied to a different institution/state,
+  or explicitly found nowhere else, carry that specific point forward too.
+- Keep the whole summary tight — a sentence or two per point, not a
+  transcript of `researchNotes`.
 
 ## Steps
 
@@ -143,7 +167,11 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
    - Compare the input `firstName`/`lastName` (and `email`/`phone` if
      provided) against each linked Contact. A strong match (same normalized
      full name, no conflicting email/phone) is the only path to
-     `existing_contact`.
+     `existing_contact`. If the original spelling doesn't clear that bar,
+     also try each entry in `alternateNameSpellings` the same way — same
+     rationale as `alternateDistrictNames`: `research-contact` already did
+     the work of deciding the variant is plausible, so it's an equally valid
+     comparison, not a last resort.
    - Every other linked Contact is still corroborating context for a human
      reviewer — a similar title, a phone number matching the account's
      listed line — fold a one-line summary into `notes` even when none of
@@ -191,7 +219,11 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
 - For `existing_contact` specifically: exactly one linked Contact clears an
   equivalent bar, with no conflicting email/phone. `personVerified: true`
   from the input is a positive signal that can help this bar clear High even
-  when the name-match alone would only reach Medium.
+  when the name-match alone would only reach Medium. **The Contact match was
+  found via the original `firstName`/`lastName`, not an
+  `alternateNameSpellings` entry** — OR it was found via an alternate but
+  `nameCorrectionConfidence` was `"high"` and otherwise clean and unique
+  (same rule as the district-level one above).
 
 **Medium**:
 - A real qualifying difference survives normalization;
@@ -199,6 +231,8 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
 - A campus name is a clean hit but its parent resolution hit a tagging gap;
 - The candidate was found via `alternateDistrictNames` rather than the
   original `districtName`, without a `"high"` `researchConfidence` to back it;
+- The Contact match was found via `alternateNameSpellings` rather than the
+  original name, without a `"high"` `nameCorrectionConfidence` to back it;
 - A Contact-level near-match where a detail conflicts, or the name match is
   only fuzzy.
 
@@ -259,7 +293,7 @@ indentation requirement, just valid JSON):
       "candidateMatches": [
         {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8}
       ],
-      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. No existing linked Contact named Latoya Pruitt at this account. No active Deal found for this account."
+      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. Web research also proposes 'Pruitt' rather than the input's 'Pruit' (high confidence) and places this person at a specific campus (Ruleville Central Elementary, as of 2025) as Principal (as of 2025), not the district's central office. No existing linked Contact named Latoya Pruitt/Pruitt at this account. No active Deal found for this account."
     }
 
 `candidateMatches` is `null` (not `[]`) when there's nothing worth surfacing —

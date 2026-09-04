@@ -110,6 +110,18 @@ public class MatchingBackgroundService : BackgroundService
                 ? null
                 : ConfidenceLevelConverter.FromProviderValue(researchOutput.ResearchConfidence);
             contact.PersonVerified = researchOutput.PersonVerified;
+            contact.ResearchFindings = new ResearchFindings(
+                researchOutput.AlternateDistrictNames,
+                researchOutput.AlternateNameSpellings,
+                researchOutput.NameCorrectionConfidence,
+                researchOutput.InstitutionLevel,
+                researchOutput.InstitutionLevelCampusName,
+                researchOutput.InstitutionLevelConfidence,
+                researchOutput.InstitutionLevelAsOfDate,
+                researchOutput.TitleFinding,
+                researchOutput.TitleFindingConfidence,
+                researchOutput.TitleFindingAsOfDate,
+                researchOutput.ResearchNotes);
 
             matchElement = await SkillRunner.RunSkillAsync("match-contact", researchOutput, _options.RepoRoot, _logger);
         }
@@ -181,7 +193,11 @@ public class MatchingBackgroundService : BackgroundService
         string? ContactId, string FirstName, string LastName, string? Email, string? Phone,
         string? Title, string DistrictName, string? SchoolName, string EventState,
         string Source, string? ExtractionConfidence,
-        List<string>? AlternateDistrictNames, string? ResearchConfidence, bool PersonVerified, string? ResearchNotes);
+        List<string>? AlternateDistrictNames, string? ResearchConfidence, bool PersonVerified, string? ResearchNotes,
+        List<string>? AlternateNameSpellings, string? NameCorrectionConfidence,
+        string? InstitutionLevel, string? InstitutionLevelCampusName,
+        string? InstitutionLevelConfidence, string? InstitutionLevelAsOfDate,
+        string? TitleFinding, string? TitleFindingConfidence, string? TitleFindingAsOfDate);
 
     private sealed record MatchOutput(
         string? ContactId, string MatchStatus, string? MatchConfidence,

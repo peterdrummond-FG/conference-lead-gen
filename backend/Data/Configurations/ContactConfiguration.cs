@@ -46,6 +46,19 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
                 v => (v ?? new List<CandidateMatch>()).Aggregate(0, (hash, x) => HashCode.Combine(hash, x)),
                 v => v == null ? null : v.ToList()));
 
+        // jsonb, same rationale as CandidateMatches above. Equality/hashing
+        // via the serialized form rather than hand-writing record+list
+        // structural comparisons for every property.
+        builder.Property(c => c.ResearchFindings)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonOpts),
+                v => JsonSerializer.Deserialize<ResearchFindings>(v, JsonOpts))
+            .Metadata.SetValueComparer(new ValueComparer<ResearchFindings?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOpts) == JsonSerializer.Serialize(b, JsonOpts),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOpts).GetHashCode(),
+                v => v));
+
         // Content hash for card-photo dedup: a re-dropped/re-processed photo
         // is a no-op, not a duplicate contact. Unique only where not null,
         // since form submissions never populate it.
