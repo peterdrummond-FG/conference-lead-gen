@@ -14,7 +14,7 @@ export const CONTACT_SELECT =
   "*, event:events(name,state), school_district:school_districts(name), school:schools(name)";
 
 // deno-lint-ignore no-explicit-any
-export function toListItem(c: any, duplicateNames?: Record<string, string>) {
+export function toListItem(c: any, duplicateNames?: Record<string, DuplicateContext>) {
   return {
     id: c.id,
     firstName: c.first_name,
@@ -47,7 +47,10 @@ export function toListItem(c: any, duplicateNames?: Record<string, string>) {
     candidateMatches: c.candidate_matches,
     localDuplicateOfContactId: c.local_duplicate_of_contact_id,
     localDuplicateOfContactName: c.local_duplicate_of_contact_id
-      ? duplicateNames?.[c.local_duplicate_of_contact_id] ?? null
+      ? duplicateNames?.[c.local_duplicate_of_contact_id]?.name ?? null
+      : null,
+    localDuplicateOfContactContext: c.local_duplicate_of_contact_id
+      ? duplicateNames?.[c.local_duplicate_of_contact_id]?.context ?? null
       : null,
     reviewStatus: c.review_status,
     notes: c.notes,
@@ -60,34 +63,53 @@ export function toListItem(c: any, duplicateNames?: Record<string, string>) {
   };
 }
 
-// deno-lint-ignore no-explicit-any
-export async function attachDuplicateNames(supabase: any, rows: any[]): Promise<Record<string, string>> {
-  const ids = [...new Set(rows.map((r) => r.local_duplicate_of_contact_id).filter(Boolean))];
-  if (ids.length === 0) return {};
-
-  const { data, error } = await supabase.from("contacts").select("id, first_name, last_name").in("id", ids);
-  if (error) throw error;
-
-  const map: Record<string, string> = {};
-  for (const d of data ?? []) map[d.id] = `${d.first_name} ${d.last_name}`;
-  return map;
+export interface DuplicateContext {
+  name: string;
+  context: string;
 }
 
 // deno-lint-ignore no-explicit-any
+export async function attachDuplicateNames(supabase: any, rows: any[]): Promise<Record<string, DuplicateContext>> {
+  const ids = [...new Set(rows.map((r) => r.local_duplicate_of_contact_id).filter(Boolean))];
+  if (ids.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, first_name, last_name, school_district:school_districts(name), event:events(name,state)")
+    .in("id", ids);
+  if (error) throw error;
+
+  const map: Record<string, DuplicateContext> = {};
+  for (const d of data ?? []) {
+    const district = d.school_district?.name ?? "no district on file";
+    const event = d.event?.name ?? "unknown event";
+    const state = d.event?.state ?? "unknown state";
+    map[d.id] = { name: `${d.first_name} ${d.last_name}`, context: `${district} · ${event} (${state})` };
+  }
+  return map;
+}
+
+// Deliberately name-only, with no event/district scoping: a common name
+// showing up at a different event, or under a different (possibly garbled)
+// district, is exactly the case a reviewer most needs surfaced — a sales
+// rep or traveling principal can legitimately show up at another event, and
+// a miskeyed district must not hide a real duplicate. This is a "possible
+// duplicate, go check" signal for a human, never an auto-merge — the
+// reviewer weighs research/match confidence (and now the other contact's
+// district/event context, see DuplicateContext) to tell "same person,
+// conflicting data" apart from "two different people, common name."
+// deno-lint-ignore no-explicit-any
 export async function findLocalDuplicate(
   supabase: any,
-  eventId: string,
   firstName: string,
   lastName: string,
-  districtId: string,
 ): Promise<string | null> {
   const { data } = await supabase
     .from("contacts")
     .select("id")
-    .eq("event_id", eventId)
-    .eq("school_district_id", districtId)
     .ilike("first_name", firstName.trim())
     .ilike("last_name", lastName.trim())
+    .order("created_at")
     .limit(1)
     .maybeSingle();
   return data?.id ?? null;

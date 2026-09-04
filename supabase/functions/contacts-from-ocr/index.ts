@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
   const districtId = await resolveDistrict(supabase, targetEvent.state, body.districtName);
   const schoolId = await resolveSchool(supabase, districtId, body.schoolName);
 
-  const duplicateOfId = await findLocalDuplicate(supabase, targetEvent.id, body.firstName, body.lastName, districtId);
+  const duplicateOfId = await findLocalDuplicate(supabase, body.firstName, body.lastName);
 
   const { data, error } = await supabase
     .from("contacts")

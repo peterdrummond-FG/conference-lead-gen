@@ -40,7 +40,11 @@
                 <div class="text-caption text-grey">
                   {{ c.districtName }}<span v-if="c.schoolName"> · {{ c.schoolName }}</span>
                 </div>
+                <div class="text-caption text-grey">{{ c.eventName }} ({{ c.eventState }})</div>
                 <div class="text-caption text-grey">{{ sourceLabel(c.source) }} · {{ formatDate(c.createdAt) }}</div>
+                <div v-if="c.personVerified !== null" :class="['text-caption', c.personVerified ? 'text-green-8' : 'text-grey']">
+                  Research verified: {{ c.personVerified ? 'Strong' : 'Weak' }}
+                </div>
               </q-card-section>
             </q-card>
           </div>

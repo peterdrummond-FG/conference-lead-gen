@@ -37,6 +37,7 @@ export interface ContactListItem {
   candidateMatches: CandidateMatch[] | null;
   localDuplicateOfContactId: string | null;
   localDuplicateOfContactName: string | null;
+  localDuplicateOfContactContext: string | null;
   reviewStatus: string;
   notes: string | null;
   interactionNotes: string | null;

@@ -105,7 +105,10 @@
 
         <q-banner v-if="contact.localDuplicateOfContactName" dense class="bg-orange-1 text-orange-10 q-mt-sm">
           <div class="row items-center q-gutter-sm">
-            <span>Possible duplicate of {{ contact.localDuplicateOfContactName }} — likely the same person scanned or submitted twice.</span>
+            <span>
+              Possible duplicate — another contact named {{ contact.localDuplicateOfContactName }} already exists<template v-if="contact.localDuplicateOfContactContext"> ({{ contact.localDuplicateOfContactContext }})</template>.
+              Could be the same person with conflicting info, or two different people who share a name — check research/match confidence on both before deciding.
+            </span>
             <q-btn dense flat size="sm" color="orange-10" label="Resolve duplicate" @click="showDuplicateDialog = true" />
           </div>
           <div v-if="contact.matchStatus === 'existing_contact'" class="text-caption q-mt-xs">

@@ -49,13 +49,7 @@ Deno.serve(async (req) => {
     if (!school) return errorResponse(req, 404, `No school with id '${body.schoolId}'.`);
   }
 
-  const duplicateOfId = await findLocalDuplicate(
-    supabase,
-    activeEvent.id,
-    body.firstName,
-    body.lastName,
-    body.schoolDistrictId,
-  );
+  const duplicateOfId = await findLocalDuplicate(supabase, body.firstName, body.lastName);
 
   const { data, error } = await supabase
     .from("contacts")

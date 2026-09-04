@@ -88,6 +88,23 @@ exception.
    corroborating evidence for `match-contact` later, not a Zoho lookup — you
    have no Zoho access in this skill.
 
+   The review UI flags two contacts sharing a first+last name as a possible
+   duplicate regardless of event or district — a sales rep or a traveling
+   principal can legitimately turn up at a different event, so that flag
+   fires even when the two are genuinely different people who happen to
+   share a name. Your `researchNotes` is the reviewer's main tool for telling
+   those cases apart, so be explicit about what your person-focused search
+   turned up either way:
+   - If it turns up this name credibly tied to a **different** institution
+     or state than the one on this card, say so plainly (e.g. "A Chad
+     Schmelar appears in a 2024 staff directory for a different district in
+     a different state — this may be a different person of the same name,
+     not a data-entry conflict"). This is exactly the signal that separates
+     a common-name collision from a garbled/duplicate entry.
+   - If the search turns up nothing at all for this name, say that plainly
+     too, rather than defaulting to a vague "no corroboration found" that
+     reads the same whether you found conflicting evidence or none.
+
 4. **Never overwrite `districtName`/`schoolName` — always pass them through
    byte-for-byte exactly as given, even when you're highly confident about a
    correction.** This is not a confidence-based judgment call: `match-contact`

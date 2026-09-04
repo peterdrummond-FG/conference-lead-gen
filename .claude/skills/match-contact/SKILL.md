@@ -52,6 +52,16 @@ If `firstName`, `lastName`, or `eventState` is missing/empty, skip to the
 output step with `matchStatus: "ambiguous"`, `matchConfidence: "low"`, and
 explain the missing field in `notes`. Never crash on malformed input.
 
+**`researchNotes` is never persisted on its own — only this skill's own
+`notes` field is.** The review UI flags any two contacts sharing a
+first+last name as a possible duplicate, regardless of event or district, so
+a reviewer looking at that flag needs whatever `research-contact` found about
+whether this looks like the same person or a same-named stranger. If
+`researchNotes` says anything about this name being tied to a different
+institution/state, or explicitly found nowhere else, carry that specific
+point forward into your own `notes` (briefly — one clause is enough) rather
+than dropping it once you've absorbed it for your own Zoho matching.
+
 ## Steps
 
 ### Normalize names before comparing
