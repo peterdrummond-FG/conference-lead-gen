@@ -518,6 +518,21 @@ async function claimAudioMessage(id) {
   return data;
 }
 
+// Builds a Whisper --initial_prompt from the same event/rep-scoped
+// candidate roster linkTranscriptToContacts uses below, to bias
+// transcription toward the actual names it needs to get right (see
+// whisper-runner.mjs's header comment — this is what turned "our church
+// melody"/"Judge Miller" into "Chad Schmeller" in testing). No candidates
+// yet (e.g. the memo arrived before any card photo) just means no prompt.
+async function buildNamePrompt(message) {
+  if (!message.event_id) return undefined;
+  const candidates = await findCandidateContacts(message.event_id, message.from_phone);
+  if (candidates.length === 0) return undefined;
+  const names = candidates.map((c) => [c.first_name, c.last_name].filter(Boolean).join(' ')).filter(Boolean);
+  if (names.length === 0) return undefined;
+  return `Contacts at this event: ${names.join(', ')}.`;
+}
+
 async function processAudioMessage(message) {
   const { data: blob, error: downloadError } = await supabase.storage
     .from('voice-memos')
@@ -531,7 +546,8 @@ async function processAudioMessage(message) {
   await writeFile(localPath, bytes);
 
   try {
-    const transcript = await transcribeAudio(localPath);
+    const prompt = await buildNamePrompt(message);
+    const transcript = await transcribeAudio(localPath, { prompt });
     const matchedContactIds = await linkTranscriptToContacts(message, transcript);
 
     // An empty matchedContactIds array is a valid, non-error outcome — a
