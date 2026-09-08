@@ -128,7 +128,6 @@ async function renderQrCanvas(url: string): Promise<HTMLCanvasElement> {
 
 export interface ConnectSlideDetails {
   eventName: string;
-  city: string;
   state: string;
   intakeUrl: string;
 }
@@ -176,7 +175,7 @@ export async function renderConnectSlide(
   ctx.fillStyle = CKH_GOLD;
   ctx.fillRect(COL_X, 578, 200, 5);
 
-  // Event name, then City, State
+  // Event name, then its state
   ctx.fillStyle = '#FFFFFF';
   ctx.font = `600 40px ${FONT_STACK}`;
   const eventLines = wrapText(ctx, details.eventName, COL_WIDTH, 2);
@@ -187,7 +186,7 @@ export async function renderConnectSlide(
   ctx.fillStyle = MUTED_BLUE;
   ctx.font = `400 32px ${FONT_STACK}`;
   ctx.fillText(
-    `${details.city}, ${details.state}`,
+    details.state,
     COL_X,
     660 + (eventLines.length - 1) * 50 + 48,
   );
@@ -240,7 +239,7 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `ckh-connect-slide-${details.city.toLowerCase().replace(/\s+/g, '-')}.png`;
+  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}.png`;
   link.click();
   URL.revokeObjectURL(url);
 }

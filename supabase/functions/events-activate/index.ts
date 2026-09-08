@@ -1,10 +1,10 @@
-// POST { zohoCampaignId, name, state, city } -> the newly activated Event.
+// POST { zohoCampaignId, name, state } -> the newly activated Event.
 // Staff-gated (/setup). Atomicity ("deactivate current + insert new") lives
 // in the events_activate Postgres function, not here.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireStaffPin } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-import { VALID_EVENT_STATES } from "../_shared/usStates.ts";
+import { VALID_US_STATES } from "../_shared/usStates.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -18,16 +18,14 @@ Deno.serve(async (req) => {
     typeof body.zohoCampaignId !== "string" ||
     typeof body.name !== "string" ||
     typeof body.state !== "string" ||
-    typeof body.city !== "string" ||
-    !body.state.trim() ||
-    !body.city.trim()
+    !body.state.trim()
   ) {
-    return errorResponse(req, 400, "zohoCampaignId, name, state, and city are required");
+    return errorResponse(req, 400, "zohoCampaignId, name, and state are required");
   }
 
   const state = body.state.trim();
-  if (!VALID_EVENT_STATES.has(state)) {
-    return errorResponse(req, 400, `state must be a full US state name (or "National"), got '${state}'`);
+  if (!VALID_US_STATES.has(state)) {
+    return errorResponse(req, 400, `state must be a full US state name, got '${state}'`);
   }
 
   const supabase = serviceClient();
@@ -35,7 +33,6 @@ Deno.serve(async (req) => {
     p_zoho_campaign_id: body.zohoCampaignId,
     p_name: body.name,
     p_state: state,
-    p_city: body.city.trim(),
   });
   if (error) return errorResponse(req, 500, error.message);
 
@@ -43,7 +40,6 @@ Deno.serve(async (req) => {
     id: data.id,
     name: data.name,
     state: data.state,
-    city: data.city,
     folderCode: data.folder_code,
   }, 201);
 });

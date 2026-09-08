@@ -1,7 +1,10 @@
 import { ref } from 'vue';
 
+// id is null for a locally-built option representing typed text that didn't
+// match anything in the list — never persisted as a new row, just carried
+// along as plain text (see onNewDistrict/onNewSchool).
 export interface TypeaheadOption {
-  id: string;
+  id: string | null;
   name: string;
 }
 

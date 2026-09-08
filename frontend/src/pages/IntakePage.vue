@@ -14,7 +14,6 @@
         </div>
 
         <div v-else key="form">
-          <div class="intake-kicker">{{ eventStore.activeEvent?.city }}, {{ eventStore.activeEvent?.state }}</div>
           <div class="intake-title">{{ eventStore.activeEvent?.name }}</div>
           <div class="intake-subtitle">Tell us a bit about yourself.</div>
 
@@ -48,6 +47,19 @@
             <q-input v-model="form.title" label="Title" borderless />
 
             <q-select
+              v-model="form.state"
+              :options="stateOptions"
+              option-label="name"
+              use-input
+              fill-input
+              hide-selected
+              borderless
+              input-debounce="0"
+              label="State (optional)"
+              @filter="filterStates"
+            />
+
+            <q-select
               v-model="form.district"
               :options="districtTypeahead.options.value"
               option-label="name"
@@ -57,8 +69,8 @@
               borderless
               input-debounce="300"
               new-value-mode="add-unique"
-              label="School District *"
-              :rules="[(v: TypeaheadOption | null) => !!v || 'Required']"
+              label="School District (optional)"
+              :disable="!form.state"
               @filter="districtTypeahead.filterFn"
               @new-value="onNewDistrict"
             />
@@ -73,7 +85,7 @@
               borderless
               input-debounce="300"
               new-value-mode="add-unique"
-              label="School (optional)"
+              label="School / Campus (optional)"
               :disable="!form.district"
               @filter="schoolTypeahead.filterFn"
               @new-value="onNewSchool"
@@ -103,6 +115,7 @@ import { reactive, ref, watch, onMounted } from 'vue';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
+import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import type { QForm } from 'quasar';
 
 const eventStore = useEventStore();
@@ -110,6 +123,7 @@ const eventStore = useEventStore();
 const formRef = ref<QForm | null>(null);
 const submitting = ref(false);
 const submitted = ref(false);
+const stateOptions = ref<UsStateOption[]>(US_STATES);
 
 const form = reactive({
   firstName: '',
@@ -117,13 +131,16 @@ const form = reactive({
   email: '',
   phone: '',
   title: '',
+  state: null as UsStateOption | null,
   district: null as TypeaheadOption | null,
   school: null as TypeaheadOption | null,
 });
 
-// A school belongs to one district — if the rep changes their mind on
-// district after already picking a school, the stale school (from the old
-// district) must not silently survive into the submitted contact.
+// State gates district, district gates school — changing an upstream field
+// invalidates whatever was picked downstream of it.
+watch(() => form.state, () => {
+  form.district = null;
+});
 watch(() => form.district, () => {
   form.school = null;
 });
@@ -136,32 +153,39 @@ function contactMethodRule() {
   return (!!form.email || !!form.phone) || 'Provide an email or phone number';
 }
 
+function filterStates(val: string, update: (cb: () => void) => void) {
+  update(() => {
+    stateOptions.value = filterStateOptions(val);
+  });
+}
+
 const districtTypeahead = useTypeahead(async (search: string) => {
-  const state = eventStore.activeEvent?.state;
-  if (!state) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/districts-list', { params: { search, state } });
+  if (!form.state) return [];
+  const { data } = await api.get<TypeaheadOption[]>('/districts-list', {
+    params: { search, state: form.state.name },
+  });
   return data;
 });
 
 const schoolTypeahead = useTypeahead(async (search: string) => {
-  if (!form.district) return [];
+  // A district the rep typed but that didn't match anything real (id: null)
+  // has no schools to search — the campus field just stays free-text there.
+  if (!form.district?.id) return [];
   const { data } = await api.get<TypeaheadOption[]>('/schools-list', {
     params: { search, districtId: form.district.id },
   });
   return data;
 });
 
+// A typed value with no match in the list is kept as plain text on submit
+// (schoolDistrictNameRaw/schoolNameRaw) rather than becoming a new
+// school_districts/schools row — see contacts-create.
 function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  api.post<TypeaheadOption>('/districts-create', { name: val }).then(({ data }) => {
-    done(data, 'add-unique');
-  });
+  done({ id: null, name: val }, 'add-unique');
 }
 
 function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  if (!form.district) return;
-  api.post<TypeaheadOption>('/schools-create', { districtId: form.district.id, name: val }).then(({ data }) => {
-    done(data, 'add-unique');
-  });
+  done({ id: null, name: val }, 'add-unique');
 }
 
 function resetForm() {
@@ -170,6 +194,7 @@ function resetForm() {
   form.email = '';
   form.phone = '';
   form.title = '';
+  form.state = null;
   form.district = null;
   form.school = null;
   formRef.value?.resetValidation();
@@ -177,7 +202,7 @@ function resetForm() {
 
 async function onSubmit() {
   const valid = await formRef.value?.validate();
-  if (!valid || !form.district) return;
+  if (!valid) return;
 
   submitting.value = true;
   try {
@@ -187,8 +212,11 @@ async function onSubmit() {
       email: form.email || null,
       phone: form.phone || null,
       title: form.title || null,
-      schoolDistrictId: form.district.id,
+      state: form.state?.name ?? null,
+      schoolDistrictId: form.district?.id ?? null,
+      schoolDistrictNameRaw: form.district && !form.district.id ? form.district.name : null,
       schoolId: form.school?.id ?? null,
+      schoolNameRaw: form.school && !form.school.id ? form.school.name : null,
     });
 
     submitted.value = true;
@@ -216,15 +244,6 @@ onMounted(async () => {
 .intake-shell {
   width: 100%;
   max-width: 640px;
-}
-
-.intake-kicker {
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--q-primary);
-  margin-bottom: 8px;
 }
 
 .intake-title {

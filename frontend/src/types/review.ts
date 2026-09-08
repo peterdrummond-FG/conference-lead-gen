@@ -15,11 +15,13 @@ export interface ContactListItem {
   source: string;
   eventId: string;
   eventName: string;
-  eventState: string;
-  schoolDistrictId: string;
-  districtName: string;
+  state: string | null;
+  schoolDistrictId: string | null;
+  districtName: string | null;
+  schoolDistrictNameRaw: string | null;
   schoolId: string | null;
   schoolName: string | null;
+  schoolNameRaw: string | null;
   extractionConfidence: string | null;
   researchConfidence: string | null;
   personVerified: boolean | null;
@@ -54,8 +56,11 @@ export interface UpdateContactPayload {
   email?: string | null;
   phone?: string | null;
   title?: string | null;
-  schoolDistrictId?: string;
+  state?: string | null;
+  schoolDistrictId?: string | null;
+  schoolDistrictNameRaw?: string | null;
   schoolId?: string | null;
+  schoolNameRaw?: string | null;
   matchedZohoAccountId?: string;
   matchedZohoAccountName?: string;
   matchedZohoContactId?: string | null;
@@ -75,7 +80,10 @@ export interface MergeDuplicatesPayload {
   email: string | null;
   phone: string | null;
   title: string | null;
-  schoolDistrictId: string;
+  state: string | null;
+  schoolDistrictId: string | null;
+  schoolDistrictNameRaw: string | null;
   schoolId: string | null;
+  schoolNameRaw: string | null;
   discardContactIds: string[];
 }

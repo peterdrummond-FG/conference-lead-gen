@@ -1,5 +1,6 @@
-// POST ?id=<keeperId> { firstName, lastName, email, phone, title,
-//   schoolDistrictId, schoolId, discardContactIds } -> { id, createdAt }
+// POST ?id=<keeperId> { firstName, lastName, email, phone, title, state,
+//   schoolDistrictId, schoolDistrictNameRaw, schoolId, schoolNameRaw,
+//   discardContactIds } -> { id, createdAt }
 // Staff-gated. Port of DuplicateDetection.FindDuplicateGroupAsync + the
 // merge-duplicates endpoint in ContactEndpoints.cs.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
@@ -20,9 +21,12 @@ Deno.serve(async (req) => {
   if (
     !body ||
     typeof body.firstName !== "string" || typeof body.lastName !== "string" ||
-    typeof body.schoolDistrictId !== "string" || !Array.isArray(body.discardContactIds)
+    !Array.isArray(body.discardContactIds)
   ) {
-    return errorResponse(req, 400, "firstName, lastName, schoolDistrictId, and discardContactIds are required.");
+    return errorResponse(req, 400, "firstName, lastName, and discardContactIds are required.");
+  }
+  if (body.schoolId && !body.schoolDistrictId) {
+    return errorResponse(req, 400, "schoolId requires schoolDistrictId — a school can't be picked without its district.");
   }
 
   const supabase = serviceClient();
@@ -51,11 +55,16 @@ Deno.serve(async (req) => {
   if (badDiscardId) return errorResponse(req, 400, `Contact '${badDiscardId}' is not part of this duplicate group.`);
   if (body.discardContactIds.includes(id)) return errorResponse(req, 400, "Cannot discard the contact being kept.");
 
-  const { data: district } = await supabase.from("school_districts").select("id").eq("id", body.schoolDistrictId).maybeSingle();
-  if (!district) return errorResponse(req, 404, `No district with id '${body.schoolDistrictId}'.`);
+  if (body.schoolDistrictId) {
+    const { data: district } = await supabase.from("school_districts").select("id").eq("id", body.schoolDistrictId).maybeSingle();
+    if (!district) return errorResponse(req, 404, `No district with id '${body.schoolDistrictId}'.`);
+  }
   if (body.schoolId) {
-    const { data: school } = await supabase.from("schools").select("id").eq("id", body.schoolId).maybeSingle();
+    const { data: school } = await supabase.from("schools").select("id, district_id").eq("id", body.schoolId).maybeSingle();
     if (!school) return errorResponse(req, 404, `No school with id '${body.schoolId}'.`);
+    if (school.district_id !== body.schoolDistrictId) {
+      return errorResponse(req, 400, `School '${body.schoolId}' does not belong to district '${body.schoolDistrictId}'.`);
+    }
   }
 
   // deno-lint-ignore no-explicit-any
@@ -65,8 +74,11 @@ Deno.serve(async (req) => {
     email: body.email ?? null,
     phone: body.phone ?? null,
     title: body.title ?? null,
-    school_district_id: body.schoolDistrictId,
+    state: body.state ?? null,
+    school_district_id: body.schoolDistrictId ?? null,
+    school_district_name_raw: body.schoolDistrictId ? null : (body.schoolDistrictNameRaw?.trim() || null),
     school_id: body.schoolId ?? null,
+    school_name_raw: body.schoolId ? null : (body.schoolNameRaw?.trim() || null),
     local_duplicate_of_contact_id: null,
   };
   // The pipeline's own auto-approve rule can't know a *later* card will turn

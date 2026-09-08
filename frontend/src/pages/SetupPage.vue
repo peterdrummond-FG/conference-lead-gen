@@ -5,8 +5,8 @@
         <q-card-section>
           <div class="text-h5">Event Setup</div>
           <div class="text-caption text-grey">
-            Pick today's conference to lock this table's State/City and Lead
-            Source for the rest of the day.
+            Pick today's conference to lock this table's Lead Source for the
+            rest of the day.
           </div>
         </q-card-section>
 
@@ -16,7 +16,7 @@
               Active: {{ eventStore.activeEvent.name }}
             </div>
             <div class="text-caption">
-              {{ eventStore.activeEvent.city }}, {{ eventStore.activeEvent.state }}
+              {{ eventStore.activeEvent.state }}
             </div>
           </q-banner>
 
@@ -87,11 +87,14 @@
           />
 
           <!--
-            Zoho's Campaigns module has no State/City fields at all (confirmed
+            Zoho's Campaigns module has no State field at all (confirmed
             against live data — every one of 671 real conference campaigns has
-            neither), so the rep supplies them directly rather than anything
-            being copied from the campaign. Shown once a campaign is picked,
-            since that's the point at which they're actually needed.
+            none), so the rep supplies the conference's location directly
+            rather than anything being copied from the campaign. Shown once a
+            campaign is picked, since that's the point at which it's actually
+            needed. This is the conference's own location, used only as a
+            fallback signal when resolving card-photo contacts — it never
+            gates or defaults the intake form's own attendee-supplied state.
           -->
           <div v-if="selectedCampaign" class="row q-col-gutter-md q-mt-sm">
             <q-select
@@ -103,16 +106,9 @@
               fill-input
               hide-selected
               input-debounce="0"
-              label="State *"
-              hint="Type a state code or name — or 'National' for a nationwide conference"
+              label="Conference location (state) *"
               :rules="[(v: UsStateOption | null) => !!v || 'Required']"
               @filter="filterStates"
-            />
-            <q-input
-              v-model="city"
-              class="col"
-              label="City *"
-              :rules="[(v: string) => !!v || 'Required']"
             />
           </div>
 
@@ -120,7 +116,7 @@
             <q-btn
               color="primary"
               label="Activate"
-              :disable="!selectedCampaign || !stateOption || !city"
+              :disable="!selectedCampaign || !stateOption"
               :loading="activating"
               @click="activate"
             />
@@ -180,7 +176,7 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useRoleStore, type Role } from '@/stores/role-store';
 import { generateConnectSlidePng } from '@/utils/generateConnectSlide';
-import { STATE_OPTIONS, filterStateOptions, type UsStateOption } from '@/constants/usStates';
+import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 
 interface CampaignOption {
   zohoCampaignId: string;
@@ -198,8 +194,7 @@ const roleStore = useRoleStore();
 const campaignOptions = ref<CampaignOption[]>([]);
 const selectedCampaign = ref<CampaignOption | null>(null);
 const stateOption = ref<UsStateOption | null>(null);
-const stateOptions = ref<UsStateOption[]>(STATE_OPTIONS);
-const city = ref('');
+const stateOptions = ref<UsStateOption[]>(US_STATES);
 const activating = ref(false);
 const pickingNew = ref(false);
 const generatingSlide = ref(false);
@@ -224,20 +219,18 @@ function filterStates(val: string, update: (cb: () => void) => void) {
 }
 
 async function activate() {
-  if (!selectedCampaign.value || !stateOption.value || !city.value) return;
+  if (!selectedCampaign.value || !stateOption.value) return;
   activating.value = true;
   try {
     await api.post('/events-activate', {
       zohoCampaignId: selectedCampaign.value.zohoCampaignId,
       name: selectedCampaign.value.name,
       state: stateOption.value.name,
-      city: city.value,
     });
     await eventStore.fetchActive();
     pickingNew.value = false;
     selectedCampaign.value = null;
     stateOption.value = null;
-    city.value = '';
   } finally {
     activating.value = false;
   }
@@ -249,7 +242,6 @@ async function downloadSlide() {
   try {
     await generateConnectSlidePng({
       eventName: eventStore.activeEvent.name,
-      city: eventStore.activeEvent.city,
       state: eventStore.activeEvent.state,
       intakeUrl: intakeUrl.value,
     });

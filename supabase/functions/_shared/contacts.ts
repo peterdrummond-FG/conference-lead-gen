@@ -11,7 +11,7 @@
 // A plain follow-up query (attachDuplicateNames below) sidesteps the
 // ambiguity entirely.
 export const CONTACT_SELECT =
-  "*, event:events(name,state), school_district:school_districts(name), school:schools(name)";
+  "*, event:events(name), school_district:school_districts(name), school:schools(name)";
 
 // deno-lint-ignore no-explicit-any
 export function toListItem(c: any, duplicateNames?: Record<string, DuplicateContext>) {
@@ -25,11 +25,13 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     source: c.source,
     eventId: c.event_id,
     eventName: c.event?.name ?? null,
-    eventState: c.event?.state ?? null,
+    state: c.state ?? null,
     schoolDistrictId: c.school_district_id,
     districtName: c.school_district?.name ?? null,
+    schoolDistrictNameRaw: c.school_district_name_raw ?? null,
     schoolId: c.school_id,
     schoolName: c.school?.name ?? null,
+    schoolNameRaw: c.school_name_raw ?? null,
     extractionConfidence: c.extraction_confidence,
     researchConfidence: c.research_confidence,
     personVerified: c.person_verified,
@@ -75,15 +77,15 @@ export async function attachDuplicateNames(supabase: any, rows: any[]): Promise<
 
   const { data, error } = await supabase
     .from("contacts")
-    .select("id, first_name, last_name, school_district:school_districts(name), event:events(name,state)")
+    .select("id, first_name, last_name, state, school_district:school_districts(name), school_district_name_raw, event:events(name)")
     .in("id", ids);
   if (error) throw error;
 
   const map: Record<string, DuplicateContext> = {};
   for (const d of data ?? []) {
-    const district = d.school_district?.name ?? "no district on file";
+    const district = d.school_district?.name ?? d.school_district_name_raw ?? "no district on file";
     const event = d.event?.name ?? "unknown event";
-    const state = d.event?.state ?? "unknown state";
+    const state = d.state ?? "unknown state";
     map[d.id] = { name: `${d.first_name} ${d.last_name}`, context: `${district} · ${event} (${state})` };
   }
   return map;
@@ -115,30 +117,47 @@ export async function findLocalDuplicate(
   return data?.id ?? null;
 }
 
-const NO_DISTRICT_PLACEHOLDER = "(none provided on card)";
+export interface DistrictResolution {
+  id: string | null;
+  state: string | null;
+  raw: string | null;
+}
 
+// Card photos have no reliable state of their own (OCR doesn't extract one —
+// see process-cards's SKILL.md), so conferenceState (the event's "conference
+// location", a soft fallback signal, not a filter) is tried first as a
+// disambiguator, then an unscoped name match, in case two states happen to
+// share an identically-named district. A typed name that doesn't resolve to
+// exactly one district is kept as plain text (raw) rather than guessed at or
+// inserted as a new row — that insert-on-miss behavior (including the old
+// "(none provided on card)" placeholder) is what created the free-text junk
+// this schema replaced.
 // deno-lint-ignore no-explicit-any
 export async function resolveDistrict(
   supabase: any,
-  state: string,
+  conferenceState: string | null,
   districtNameRaw: string | null | undefined,
-): Promise<string> {
-  const name = districtNameRaw?.trim() || NO_DISTRICT_PLACEHOLDER;
-  const { data: existing } = await supabase
-    .from("school_districts")
-    .select("id")
-    .eq("state", state)
-    .ilike("name", name)
-    .maybeSingle();
-  if (existing) return existing.id;
+): Promise<DistrictResolution> {
+  const name = districtNameRaw?.trim();
+  if (!name) return { id: null, state: null, raw: null };
 
-  const { data, error } = await supabase
+  if (conferenceState) {
+    const { data: scoped } = await supabase
+      .from("school_districts")
+      .select("id, state")
+      .eq("state", conferenceState)
+      .ilike("name", name)
+      .maybeSingle();
+    if (scoped) return { id: scoped.id, state: scoped.state, raw: null };
+  }
+
+  const { data: matches } = await supabase
     .from("school_districts")
-    .insert({ name, state })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data.id;
+    .select("id, state")
+    .ilike("name", name);
+  if (matches?.length === 1) return { id: matches[0].id, state: matches[0].state, raw: null };
+
+  return { id: null, state: null, raw: name };
 }
 
 // Port of DuplicateDetection.FindDuplicateGroupAsync — widens a single
@@ -167,27 +186,25 @@ export async function findDuplicateGroup(supabase: any, contactId: string) {
   return group ?? [];
 }
 
+export interface SchoolResolution {
+  id: string | null;
+  raw: string | null;
+}
+
 // deno-lint-ignore no-explicit-any
 export async function resolveSchool(
   supabase: any,
   districtId: string,
   schoolNameRaw: string | null | undefined,
-): Promise<string | null> {
-  if (!schoolNameRaw?.trim()) return null;
-  const name = schoolNameRaw.trim();
+): Promise<SchoolResolution> {
+  const name = schoolNameRaw?.trim();
+  if (!name) return { id: null, raw: null };
   const { data: existing } = await supabase
     .from("schools")
     .select("id")
     .eq("district_id", districtId)
     .ilike("name", name)
     .maybeSingle();
-  if (existing) return existing.id;
-
-  const { data, error } = await supabase
-    .from("schools")
-    .insert({ name, district_id: districtId })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data.id;
+  if (existing) return { id: existing.id, raw: null };
+  return { id: null, raw: name };
 }

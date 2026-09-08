@@ -38,9 +38,9 @@
                 <div class="text-caption">{{ c.phone || 'No phone' }}</div>
                 <div class="text-caption">{{ c.title || 'No title' }}</div>
                 <div class="text-caption text-grey">
-                  {{ c.districtName }}<span v-if="c.schoolName"> · {{ c.schoolName }}</span>
+                  {{ c.districtName || c.schoolDistrictNameRaw || 'No district on file' }}<span v-if="c.schoolName || c.schoolNameRaw"> · {{ c.schoolName || c.schoolNameRaw }}</span>
                 </div>
-                <div class="text-caption text-grey">{{ c.eventName }} ({{ c.eventState }})</div>
+                <div class="text-caption text-grey">{{ c.eventName }}<span v-if="c.state"> ({{ c.state }})</span></div>
                 <div class="text-caption text-grey">{{ sourceLabel(c.source) }} · {{ formatDate(c.createdAt) }}</div>
                 <div v-if="c.personVerified !== null" :class="['text-caption', c.personVerified ? 'text-green-8' : 'text-grey']">
                   Research verified: {{ c.personVerified ? 'Strong' : 'Weak' }}
@@ -94,6 +94,18 @@
             </div>
 
             <q-select
+              v-model="draft.state"
+              :options="stateOptions"
+              option-label="name"
+              use-input
+              fill-input
+              hide-selected
+              input-debounce="0"
+              class="col-6 col-sm-3"
+              label="State (optional)"
+              @filter="filterStates"
+            />
+            <q-select
               v-model="draft.district"
               :options="districtTypeahead.options.value"
               option-label="name"
@@ -101,9 +113,12 @@
               fill-input
               hide-selected
               input-debounce="300"
-              class="col-6"
-              label="School District"
+              new-value-mode="add-unique"
+              class="col-6 col-sm-3"
+              label="School District (optional)"
+              :disable="!draft.state"
               @filter="districtTypeahead.filterFn"
+              @new-value="onNewDistrict"
             />
             <q-select
               v-model="draft.school"
@@ -113,10 +128,12 @@
               fill-input
               hide-selected
               input-debounce="300"
+              new-value-mode="add-unique"
               class="col-6"
-              label="School (optional)"
+              label="School / Campus (optional)"
               :disable="!draft.district"
               @filter="schoolTypeahead.filterFn"
+              @new-value="onNewSchool"
             />
           </div>
         </q-card-section>
@@ -134,6 +151,8 @@
 import { ref, reactive, computed, watch, onUnmounted } from 'vue';
 import { api } from '@/boot/axios';
 import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
+import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
+import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { ContactListItem } from '@/types/review';
 
 const props = defineProps<{ modelValue: boolean; contactId: string }>();
@@ -195,16 +214,22 @@ function othersWith(field: 'email' | 'phone' | 'title') {
   return others.value.filter((c) => c[field]);
 }
 
+const stateOptions = ref<UsStateOption[]>(US_STATES);
+
 const draft = reactive({
   firstName: '',
   lastName: '',
   email: '',
   phone: '',
   title: '',
+  state: null as UsStateOption | null,
   district: null as TypeaheadOption | null,
   school: null as TypeaheadOption | null,
 });
 
+watch(() => draft.state, () => {
+  draft.district = null;
+});
 watch(() => draft.district, () => {
   draft.school = null;
 });
@@ -220,26 +245,40 @@ watch(keeperId, () => {
   draft.email = keeper.value.email ?? '';
   draft.phone = keeper.value.phone ?? '';
   draft.title = keeper.value.title ?? '';
-  draft.district = { id: keeper.value.schoolDistrictId, name: keeper.value.districtName };
-  draft.school = keeper.value.schoolId
-    ? { id: keeper.value.schoolId, name: keeper.value.schoolName ?? '' }
-    : null;
+  draft.state = stateOptionFor(keeper.value.state);
+  draft.district = districtOptionFor(keeper.value);
+  draft.school = schoolOptionFor(keeper.value);
 });
 
+function filterStates(val: string, update: (cb: () => void) => void) {
+  update(() => {
+    stateOptions.value = filterStateOptions(val);
+  });
+}
+
 const districtTypeahead = useTypeahead(async (search: string) => {
+  if (!draft.state) return [];
   const { data } = await api.get<TypeaheadOption[]>('/districts-list', {
-    params: { search, state: keeper.value?.eventState },
+    params: { search, state: draft.state.name },
   });
   return data;
 });
 
 const schoolTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.district) return [];
+  if (!draft.district?.id) return [];
   const { data } = await api.get<TypeaheadOption[]>('/schools-list', {
     params: { search, districtId: draft.district.id },
   });
   return data;
 });
+
+function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
+  done({ id: null, name: val }, 'add-unique');
+}
+
+function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
+  done({ id: null, name: val }, 'add-unique');
+}
 
 async function load() {
   loading.value = true;
@@ -277,8 +316,11 @@ async function merge() {
       email: draft.email || null,
       phone: draft.phone || null,
       title: draft.title || null,
-      schoolDistrictId: draft.district?.id ?? keeper.value?.schoolDistrictId,
+      state: draft.state?.name ?? null,
+      schoolDistrictId: draft.district?.id ?? null,
+      schoolDistrictNameRaw: draft.district && !draft.district.id ? draft.district.name : null,
       schoolId: draft.school?.id ?? null,
+      schoolNameRaw: draft.school && !draft.school.id ? draft.school.name : null,
       discardContactIds: others.value.map((c) => c.id),
     }, { params: { id: keeperId.value } });
     emit('resolved');

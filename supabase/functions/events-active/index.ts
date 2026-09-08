@@ -1,5 +1,5 @@
 // GET -> the currently active Event, or null. Public — Intake needs this to
-// show its fixed State/City context without a PIN.
+// know which event contacts are attached to without a PIN.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
@@ -21,7 +21,6 @@ Deno.serve(async (req) => {
     id: data.id,
     name: data.name,
     state: data.state,
-    city: data.city,
     activatedAt: data.activated_at,
     folderCode: data.folder_code,
   });

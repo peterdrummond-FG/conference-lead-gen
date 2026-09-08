@@ -1,10 +1,9 @@
 // Deno-side twin of frontend/src/constants/usStates.ts (kept in sync by
 // hand — the two runtimes don't share a module graph). Names must match
 // school_districts.state exactly, since districts-list filters on it with
-// plain equality. "National" is the one non-postal sentinel value, meaning
-// a nationwide conference with no single home state.
-export const VALID_EVENT_STATES: ReadonlySet<string> = new Set([
-  "National",
+// plain equality. Used both for events.state ("conference location") and
+// for validating a contact's own attendee-supplied state.
+export const VALID_US_STATES: ReadonlySet<string> = new Set([
   "Alabama",
   "Alaska",
   "Arizona",

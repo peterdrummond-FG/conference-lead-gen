@@ -96,7 +96,7 @@
           <q-chip v-if="isStuck" dense size="sm" class="tag-chip tone-red">Stuck — needs manual retry</q-chip>
         </div>
         <div class="text-caption text-grey">
-          {{ contact.eventName }} · {{ contact.districtName }}<span v-if="contact.schoolName"> · {{ contact.schoolName }}</span>
+          {{ contact.eventName }} · {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
         </div>
         <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey">
           Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
@@ -145,6 +145,19 @@
           <q-input v-model="draft.title" dense outlined class="col-12 col-sm-6" label="Title" />
 
           <q-select
+            v-model="draft.state"
+            :options="stateOptions"
+            option-label="name"
+            use-input
+            fill-input
+            hide-selected
+            input-debounce="0"
+            class="col-6 col-sm-3"
+            label="State (optional)"
+            :hint="contact.source === 'card_photo' ? 'Suggested from district/conference — confirm or change' : undefined"
+            @filter="filterStates"
+          />
+          <q-select
             v-model="draft.district"
             :options="districtTypeahead.options.value"
             option-label="name"
@@ -153,8 +166,9 @@
             hide-selected
             input-debounce="300"
             new-value-mode="add-unique"
-            class="col-6"
-            label="School District"
+            class="col-6 col-sm-3"
+            label="School District (optional)"
+            :disable="!draft.state"
             @filter="districtTypeahead.filterFn"
             @new-value="onNewDistrict"
           />
@@ -168,7 +182,7 @@
             input-debounce="300"
             new-value-mode="add-unique"
             class="col-6"
-            label="School (optional)"
+            label="School / Campus (optional)"
             :disable="!draft.district"
             @filter="schoolTypeahead.filterFn"
             @new-value="onNewSchool"
@@ -238,6 +252,8 @@
 import { reactive, computed, ref, watch } from 'vue';
 import { api } from '@/boot/axios';
 import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
+import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
+import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import { useContactPhoto } from '@/composables/useContactPhoto';
 import DuplicateResolutionDialog from '@/components/DuplicateResolutionDialog.vue';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
@@ -266,22 +282,25 @@ const showNotes = ref(false);
 const thumbnailPhotoUrl = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const fullPhotoUrl = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
 
+const stateOptions = ref<UsStateOption[]>(US_STATES);
+
 const draft = reactive({
   firstName: props.contact.firstName,
   lastName: props.contact.lastName,
   email: props.contact.email ?? '',
   phone: props.contact.phone ?? '',
   title: props.contact.title ?? '',
-  district: { id: props.contact.schoolDistrictId, name: props.contact.districtName } as TypeaheadOption | null,
-  school: props.contact.schoolId
-    ? ({ id: props.contact.schoolId, name: props.contact.schoolName ?? '' } as TypeaheadOption)
-    : null as TypeaheadOption | null,
+  state: stateOptionFor(props.contact.state),
+  district: districtOptionFor(props.contact),
+  school: schoolOptionFor(props.contact),
   interactionNotes: props.contact.interactionNotes ?? '',
 });
 
-// A school belongs to one district — if the reviewer changes their mind on
-// district after already picking a school, the stale school (from the old
-// district) must not silently survive into the saved contact.
+// State gates district, district gates school — changing an upstream field
+// invalidates whatever was picked downstream of it.
+watch(() => draft.state, () => {
+  draft.district = null;
+});
 watch(() => draft.district, () => {
   draft.school = null;
 });
@@ -289,46 +308,56 @@ watch(() => draft.district, () => {
 const newAccountId = ref('');
 const newAccountName = ref('');
 
-// Scoped by the CONTACT's own event state, not whichever event is currently
-// active — a card-photo contact is often reviewed well after its event
-// ended, possibly with a different one active by then.
+function filterStates(val: string, update: (cb: () => void) => void) {
+  update(() => {
+    stateOptions.value = filterStateOptions(val);
+  });
+}
+
 const districtTypeahead = useTypeahead(async (search: string) => {
+  if (!draft.state) return [];
   const { data } = await api.get<TypeaheadOption[]>('/districts-list', {
-    params: { search, state: props.contact.eventState },
+    params: { search, state: draft.state.name },
   });
   return data;
 });
 
 const schoolTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.district) return [];
+  if (!draft.district?.id) return [];
   const { data } = await api.get<TypeaheadOption[]>('/schools-list', {
     params: { search, districtId: draft.district.id },
   });
   return data;
 });
 
+// A typed value with no match in the list is kept as plain text on save
+// (schoolDistrictNameRaw/schoolNameRaw) rather than becoming a new
+// school_districts/schools row — see contacts-patch.
 function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  api.post<TypeaheadOption>('/districts-create', { name: val, eventId: props.contact.eventId }).then(({ data }) => {
-    done(data, 'add-unique');
-  });
+  done({ id: null, name: val }, 'add-unique');
 }
 
 function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  if (!draft.district) return;
-  api.post<TypeaheadOption>('/schools-create', { districtId: draft.district.id, name: val }).then(({ data }) => {
-    done(data, 'add-unique');
-  });
+  done({ id: null, name: val }, 'add-unique');
 }
 
-const isDirty = computed(() =>
-  draft.firstName !== props.contact.firstName ||
-  draft.lastName !== props.contact.lastName ||
-  draft.email !== (props.contact.email ?? '') ||
-  draft.phone !== (props.contact.phone ?? '') ||
-  draft.title !== (props.contact.title ?? '') ||
-  draft.district?.id !== props.contact.schoolDistrictId ||
-  (draft.school?.id ?? null) !== props.contact.schoolId ||
-  draft.interactionNotes !== (props.contact.interactionNotes ?? ''));
+const isDirty = computed(() => {
+  const currentDistrict = districtOptionFor(props.contact);
+  const currentSchool = schoolOptionFor(props.contact);
+  return (
+    draft.firstName !== props.contact.firstName ||
+    draft.lastName !== props.contact.lastName ||
+    draft.email !== (props.contact.email ?? '') ||
+    draft.phone !== (props.contact.phone ?? '') ||
+    draft.title !== (props.contact.title ?? '') ||
+    (draft.state?.name ?? null) !== props.contact.state ||
+    (draft.district?.id ?? null) !== (currentDistrict?.id ?? null) ||
+    (draft.district?.name ?? null) !== (currentDistrict?.name ?? null) ||
+    (draft.school?.id ?? null) !== (currentSchool?.id ?? null) ||
+    (draft.school?.name ?? null) !== (currentSchool?.name ?? null) ||
+    draft.interactionNotes !== (props.contact.interactionNotes ?? '')
+  );
+});
 
 // /review re-fetches its whole contact list after every action and reuses
 // this component instance keyed by contact.id — without this, an
@@ -343,10 +372,9 @@ watch(() => props.contact, (newContact) => {
   draft.email = newContact.email ?? '';
   draft.phone = newContact.phone ?? '';
   draft.title = newContact.title ?? '';
-  draft.district = { id: newContact.schoolDistrictId, name: newContact.districtName };
-  draft.school = newContact.schoolId
-    ? { id: newContact.schoolId, name: newContact.schoolName ?? '' }
-    : null;
+  draft.state = stateOptionFor(newContact.state);
+  draft.district = districtOptionFor(newContact);
+  draft.school = schoolOptionFor(newContact);
   draft.interactionNotes = newContact.interactionNotes ?? '';
 });
 
@@ -357,8 +385,11 @@ function save() {
     email: draft.email || null,
     phone: draft.phone || null,
     title: draft.title || null,
-    schoolDistrictId: draft.district?.id ?? props.contact.schoolDistrictId,
+    state: draft.state?.name ?? null,
+    schoolDistrictId: draft.district?.id ?? null,
+    schoolDistrictNameRaw: draft.district && !draft.district.id ? draft.district.name : null,
     schoolId: draft.school?.id ?? null,
+    schoolNameRaw: draft.school && !draft.school.id ? draft.school.name : null,
     interactionNotes: draft.interactionNotes || null,
   });
 }

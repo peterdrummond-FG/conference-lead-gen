@@ -1,18 +1,12 @@
-// The canonical set of values Setup's State field can produce. Names must
-// match school_districts.state exactly (as loaded from Zoho's Accounts
-// export) since districts-list filters contacts' event state against it
-// with a plain equality check — no fuzzy matching downstream of this list.
-//
-// "National" isn't a postal state (code: null) — it's a sentinel for a
-// national conference with attendees from across the country. districts-list
-// treats it as "don't filter by state" rather than trying to match it
-// against real district data.
+// The canonical set of values the State field can produce, on both the
+// intake form (an attendee's own state) and Setup (a conference's location).
+// Names must match school_districts.state exactly (as loaded from Zoho's
+// Accounts export) since districts-list filters on it with a plain equality
+// check — no fuzzy matching downstream of this list.
 export interface UsStateOption {
-  code: string | null;
+  code: string;
   name: string;
 }
-
-export const NATIONAL_OPTION: UsStateOption = { code: null, name: 'National' };
 
 export const US_STATES: UsStateOption[] = [
   { code: 'AL', name: 'Alabama' },
@@ -68,16 +62,10 @@ export const US_STATES: UsStateOption[] = [
   { code: 'WY', name: 'Wyoming' },
 ];
 
-// National pinned first — it's a different kind of option, not just another
-// state alphabetically between Mississippi and Nebraska.
-export const STATE_OPTIONS: UsStateOption[] = [NATIONAL_OPTION, ...US_STATES];
-
 export function filterStateOptions(search: string): UsStateOption[] {
   const term = search.trim().toLowerCase();
-  if (!term) return STATE_OPTIONS;
-  return STATE_OPTIONS.filter(
-    (s) =>
-      s.name.toLowerCase().includes(term) ||
-      (s.code !== null && s.code.toLowerCase().startsWith(term)),
+  if (!term) return US_STATES;
+  return US_STATES.filter(
+    (s) => s.name.toLowerCase().includes(term) || s.code.toLowerCase().startsWith(term),
   );
 }

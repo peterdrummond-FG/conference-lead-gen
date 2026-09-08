@@ -6,7 +6,6 @@ export interface ActiveEvent {
   id: string;
   name: string;
   state: string;
-  city: string;
   activatedAt: string;
   folderCode: string | null;
 }

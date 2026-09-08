@@ -15,9 +15,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   let query = supabase.from("school_districts").select("*").order("name").limit(50);
   if (search) query = query.ilike("name", `%${search}%`);
-  // "National" means a nationwide conference with no single home state —
-  // search across every district rather than filtering by one.
-  if (state && state !== "National") query = query.eq("state", state);
+  if (state) query = query.eq("state", state);
 
   const { data, error } = await query;
   if (error) return errorResponse(req, 500, error.message);

@@ -53,8 +53,17 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { id: existingByHash.id, alreadyProcessed: true, createdAt: existingByHash.created_at });
   }
 
-  const districtId = await resolveDistrict(supabase, targetEvent.state, body.districtName);
-  const schoolId = await resolveSchool(supabase, districtId, body.schoolName);
+  const district = await resolveDistrict(supabase, targetEvent.state, body.districtName);
+  // A school can only be matched within a resolved district's scope — if the
+  // district itself didn't resolve to a real row, any school name is kept as
+  // plain text too rather than guessed at.
+  const school = district.id
+    ? await resolveSchool(supabase, district.id, body.schoolName)
+    : { id: null, raw: body.schoolName?.trim() || null };
+  // A confident district match's own state is more specific than the
+  // conference's; otherwise the conference location is a reasonable
+  // reviewer-editable guess at the attendee's state.
+  const state = district.state ?? targetEvent.state ?? null;
 
   const duplicateOfId = await findLocalDuplicate(supabase, body.firstName, body.lastName);
 
@@ -70,8 +79,11 @@ Deno.serve(async (req) => {
       email: body.email?.trim() || null,
       phone: body.phone?.trim() || null,
       title: body.title || null,
-      school_district_id: districtId,
-      school_id: schoolId,
+      state,
+      school_district_id: district.id,
+      school_district_name_raw: district.raw,
+      school_id: school.id,
+      school_name_raw: school.raw,
       extraction_confidence: body.extractionConfidence,
       match_status: "pending",
       review_status: "needs_review",
