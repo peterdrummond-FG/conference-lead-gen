@@ -14,7 +14,12 @@ Deno.serve(async (req) => {
   const search = url.searchParams.get("search")?.trim() ?? "";
 
   const supabase = serviceClient();
-  let query = supabase.from("campaigns").select("*").order("name").limit(50);
+  let query = supabase
+    .from("campaigns")
+    .select("*")
+    .ilike("name", "%2026%")
+    .order("name", { ascending: false })
+    .limit(50);
   if (search) query = query.ilike("name", `%${search}%`);
 
   const { data, error } = await query;
