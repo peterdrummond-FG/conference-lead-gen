@@ -2,12 +2,15 @@
 // false (Twilio's own POST is never a Supabase-authenticated call — it
 // carries its own X-Twilio-Signature instead, checked below).
 //
-// Flow: no media + Body matching an event's folder code -> bind this phone
-// number to that event (phone_event_bindings). Media present -> classify
-// each attachment photo/audio off its content-type, insert one
-// inbound_messages row per item, and download+upload each to Storage in
-// the background (EdgeRuntime.waitUntil) after the TwiML reply is already
-// sent, since Twilio expects a fast ack.
+// Flow: no media -> either a folder-code bind attempt, or a step in the
+// Stage 16 "setup a new conference" SMS conversation (see
+// conference_setup_sessions/match_events_by_name in
+// 20260909170000_conference_setup_sms.sql) -> bind this phone number to an
+// event (phone_event_bindings) either way. Media present -> classify each
+// attachment photo/audio off its content-type, insert one inbound_messages
+// row per item, and download+upload each to Storage in the background
+// (EdgeRuntime.waitUntil) after the TwiML reply is already sent, since
+// Twilio expects a fast ack.
 // npm:twilio@5's CJS/ESM interop doesn't expose validateRequest as a named
 // export under Deno — it's only reachable off the default export (verified
 // via a BOOT_ERROR in function_logs on the first deploy attempt).
@@ -15,6 +18,27 @@ import twilioPkg from "npm:twilio@5";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 const { validateRequest } = twilioPkg;
+
+// A session older than this is abandoned rather than resumed — a rep who
+// goes quiet mid-setup and later texts an unrelated folder code shouldn't
+// have that text misread as a stale reply.
+const SESSION_STALE_MS = 15 * 60 * 1000;
+
+// Deliberately a small fixed set rather than a looser regex — a false
+// trigger would hijack what the rep meant as a folder-code bind attempt.
+const START_TRIGGER_PHRASES = new Set([
+  "setup a new conference",
+  "set up a new conference",
+  "new conference",
+  "setup conference",
+  "set up conference",
+]);
+
+interface SetupCandidate {
+  id: string;
+  name: string;
+  state: string;
+}
 
 function twiml(message: string): Response {
   const xml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(message)}</Message></Response>`;
@@ -29,6 +53,10 @@ function extFromContentType(ct: string): string {
   const sub = ct.split("/")[1]?.split(";")[0] ?? "";
   if (sub) return sub;
   return "bin";
+}
+
+function normalizeBody(text: string): string {
+  return text.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 Deno.serve(async (req) => {
@@ -60,8 +88,131 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  // No media: a plain text message is only ever a folder-code bind attempt.
+  // No media: either a step in an in-progress "setup a new conference"
+  // conversation, a folder-code bind attempt, or the phrase that starts a
+  // new conversation.
   if (numMedia === 0) {
+    const normalized = normalizeBody(body);
+
+    const { data: rawSession } = await supabase
+      .from("conference_setup_sessions")
+      .select("step, candidates, updated_at")
+      .eq("phone_number", from)
+      .maybeSingle();
+
+    const isStale = !!rawSession && Date.now() - new Date(rawSession.updated_at).getTime() > SESSION_STALE_MS;
+    if (isStale) {
+      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
+    }
+    const session = isStale ? null : rawSession;
+
+    if (session && normalized === "cancel") {
+      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+      return twiml("Setup cancelled.");
+    }
+
+    if (session?.step === "awaiting_selection") {
+      const candidates = (session.candidates ?? []) as SetupCandidate[];
+      const choice = Number.parseInt(normalized, 10);
+      const picked = Number.isInteger(choice) ? candidates[choice - 1] : undefined;
+
+      if (!picked) {
+        await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "failed",
+          body,
+          error: "reply did not match a candidate number",
+        });
+        return twiml(`Please reply with a number from 1-${candidates.length}, or text cancel.`);
+      }
+
+      await supabase.from("phone_event_bindings").upsert({
+        phone_number: from,
+        event_id: picked.id,
+        updated_at: new Date().toISOString(),
+      });
+      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        event_id: picked.id,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+      return twiml(`${picked.name} activated — you can now send contact cards for this event.`);
+    }
+
+    if (session?.step === "awaiting_name") {
+      const { data: matches, error: matchError } = await supabase.rpc("match_events_by_name", { p_query: body });
+      if (matchError) console.error("match_events_by_name failed", matchError);
+      const candidates: SetupCandidate[] = (matches ?? []).map(
+        (m: SetupCandidate) => ({ id: m.id, name: m.name, state: m.state }),
+      );
+
+      if (candidates.length === 0) {
+        await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "failed",
+          body,
+          error: "no fuzzy match found",
+        });
+        return twiml("I couldn't find a close match. Try the name again, or text cancel.");
+      }
+
+      await supabase.from("conference_setup_sessions").upsert({
+        phone_number: from,
+        step: "awaiting_selection",
+        candidates,
+        updated_at: new Date().toISOString(),
+      });
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+
+      const list = candidates.map((c, i) => `${i + 1}. ${c.name} (${c.state})`).join("\n");
+      return twiml(`Are any of these the conference you want to activate?\n${list}\nReply with the number, or text cancel.`);
+    }
+
+    if (START_TRIGGER_PHRASES.has(normalized)) {
+      await supabase.from("conference_setup_sessions").upsert({
+        phone_number: from,
+        step: "awaiting_name",
+        candidates: null,
+        updated_at: new Date().toISOString(),
+      });
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+      return twiml("What's the name of the conference?");
+    }
+
+    // Fallback: exact folder-code bind attempt (unchanged from before Stage 16).
     // folder_code is always generated lowercase (events_activate); a rep's
     // phone keyboard routinely auto-capitalizes the first letter of a text.
     const { data: event } = await supabase
