@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   const matchStatus = url.searchParams.get("matchStatus")?.trim() ?? "";
 
   const supabase = serviceClient();
-  let query = supabase.from("contacts").select(CONTACT_SELECT).order("created_at");
+  let query = supabase.from("contacts").select(CONTACT_SELECT).order("created_at", { ascending: false });
   query = query.eq("review_status", reviewStatus || "needs_review");
   if (matchStatus) query = query.eq("match_status", matchStatus);
 
