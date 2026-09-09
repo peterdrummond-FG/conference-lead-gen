@@ -119,6 +119,27 @@ Deno.serve(async (req) => {
       return twiml("Setup cancelled.");
     }
 
+    // A repeated trigger phrase mid-conversation (e.g. a rep re-sending it
+    // after not seeing a reply) restarts the flow rather than being read as
+    // the conference name/selection the current step was expecting.
+    if (session && START_TRIGGER_PHRASES.has(normalized)) {
+      await supabase.from("conference_setup_sessions").upsert({
+        phone_number: from,
+        step: "awaiting_name",
+        candidates: null,
+        updated_at: new Date().toISOString(),
+      });
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+      return twiml("Starting over — what's the name of the conference?");
+    }
+
     if (session?.step === "awaiting_selection") {
       const candidates = (session.candidates ?? []) as SetupCandidate[];
       const choice = Number.parseInt(normalized, 10);
