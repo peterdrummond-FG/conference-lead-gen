@@ -463,15 +463,16 @@ function sourceLabel(source: string) {
 }
 
 const matchStatusLabel = computed(() => {
+  const hasSchoolMatch = Boolean(props.contact.schoolName || props.contact.schoolNameRaw);
   switch (props.contact.matchStatus) {
     case 'pending':
       return 'Account: Matching…';
     case 'existing_contact':
       return 'Account: Existing contact';
     case 'new_contact_existing_account':
-      return 'Account: New contact, existing school';
+      return hasSchoolMatch ? 'Account: New contact, existing school' : 'Account: New contact, existing district';
     case 'new_account':
-      return 'Account: New school/district';
+      return hasSchoolMatch ? 'Account: New school' : 'Account: New district';
     case 'ambiguous':
       return 'Account: Needs review';
     default:
