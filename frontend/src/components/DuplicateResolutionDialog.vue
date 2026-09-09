@@ -15,7 +15,7 @@
           <div v-for="c in group" :key="c.id" class="col-12 col-sm-6 col-md-4">
             <q-card bordered flat :class="['cursor-pointer', keeperId === c.id ? 'bg-blue-1' : '']" @click="selectKeeper(c)">
               <q-img
-                v-if="c.hasPhoto"
+                v-if="c.hasPhoto && !photoErrors[c.id]"
                 :src="photoUrls[c.id]"
                 fit="contain"
                 style="height: 180px"
@@ -28,6 +28,9 @@
                   </div>
                 </template>
               </q-img>
+              <div v-else-if="c.hasPhoto && photoErrors[c.id]" class="bg-grey-2 flex flex-center text-caption text-grey" style="height: 180px">
+                Photo failed to load
+              </div>
               <div v-else class="bg-grey-2 flex flex-center text-caption text-grey" style="height: 180px">
                 No photo on file
               </div>
@@ -52,11 +55,12 @@
 
         <q-dialog v-model="zoomOpen">
           <q-img
-            v-if="zoomContactId"
+            v-if="zoomContactId && !fullPhotoErrors[zoomContactId]"
             :src="fullPhotoUrls[zoomContactId]"
             fit="contain"
             style="max-width: 90vw; max-height: 90vh"
           />
+          <q-card v-else-if="zoomContactId" class="q-pa-md text-grey">Photo failed to load</q-card>
         </q-dialog>
 
         <q-card-section v-if="keeper">
@@ -179,16 +183,26 @@ const zoomOpen = computed({
 // instance.
 const photoUrls = reactive<Record<string, string>>({});
 const fullPhotoUrls = reactive<Record<string, string>>({});
+// Tracks a fetch failure per contact/mode separately from "no photo" (an
+// unset entry) — neither <q-img> here has an #error slot, and even if they
+// did, a falsy :src never triggers a real <img> load attempt for it to fire
+// on. This is what lets the template render an explicit "failed to load"
+// state instead of silently falling back to the "no photo on file" one.
+const photoErrors = reactive<Record<string, boolean>>({});
+const fullPhotoErrors = reactive<Record<string, boolean>>({});
 
 function revokeAllPhotoUrls() {
   for (const url of Object.values(photoUrls)) URL.revokeObjectURL(url);
   for (const url of Object.values(fullPhotoUrls)) URL.revokeObjectURL(url);
   for (const key of Object.keys(photoUrls)) delete photoUrls[key];
   for (const key of Object.keys(fullPhotoUrls)) delete fullPhotoUrls[key];
+  for (const key of Object.keys(photoErrors)) delete photoErrors[key];
+  for (const key of Object.keys(fullPhotoErrors)) delete fullPhotoErrors[key];
 }
 
 async function loadPhotoUrl(id: string, full: boolean) {
   const store = full ? fullPhotoUrls : photoUrls;
+  const errors = full ? fullPhotoErrors : photoErrors;
   if (store[id]) return;
   try {
     const { data } = await api.get<Blob>('/contacts-photo', {
@@ -197,7 +211,7 @@ async function loadPhotoUrl(id: string, full: boolean) {
     });
     store[id] = URL.createObjectURL(data);
   } catch {
-    // leave unset — the q-img's default/error slot covers a missing photo
+    errors[id] = true;
   }
 }
 

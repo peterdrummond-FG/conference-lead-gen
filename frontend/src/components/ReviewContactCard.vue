@@ -6,7 +6,7 @@
       <div v-if="contact.source === 'card_photo'" class="q-mr-sm" style="width: 220px">
         <div class="text-caption text-grey q-mb-xs">Original card</div>
         <q-img
-          v-if="contact.hasPhoto"
+          v-if="contact.hasPhoto && !thumbnailPhotoError"
           :src="thumbnailPhotoUrl ?? undefined"
           fit="contain"
           style="width: 220px; height: 220px; cursor: zoom-in"
@@ -23,6 +23,13 @@
           </template>
         </q-img>
         <div
+          v-else-if="contact.hasPhoto && thumbnailPhotoError"
+          class="rounded-borders bg-grey-2 flex flex-center text-caption text-grey"
+          style="width: 220px; height: 220px"
+        >
+          Photo failed to load
+        </div>
+        <div
           v-else
           class="rounded-borders bg-grey-2 flex flex-center text-caption text-grey"
           style="width: 220px; height: 220px"
@@ -36,18 +43,22 @@
 
       <q-dialog v-model="showFullImage">
         <q-img
+          v-if="!thumbnailPhotoError"
           :src="thumbnailPhotoUrl ?? undefined"
           fit="contain"
           style="max-width: 90vw; max-height: 90vh"
         />
+        <q-card v-else class="q-pa-md text-grey">Photo failed to load</q-card>
       </q-dialog>
 
       <q-dialog v-model="showFullSheet">
         <q-img
+          v-if="!fullPhotoError"
           :src="fullPhotoUrl ?? undefined"
           fit="contain"
           style="max-width: 90vw; max-height: 90vh"
         />
+        <q-card v-else class="q-pa-md text-grey">Photo failed to load</q-card>
       </q-dialog>
 
       <div class="col">
@@ -279,8 +290,8 @@ const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
 const showNotes = ref(false);
 
-const thumbnailPhotoUrl = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
-const fullPhotoUrl = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
+const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
+const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
 
 const stateOptions = ref<UsStateOption[]>(US_STATES);
 

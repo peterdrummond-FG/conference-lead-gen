@@ -8,7 +8,7 @@
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { isServiceRoleCall } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-import { findLocalDuplicate, resolveDistrict, resolveSchool } from "../_shared/contacts.ts";
+import { resolveDistrict, resolveSchool } from "../_shared/contacts.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -33,10 +33,12 @@ Deno.serve(async (req) => {
 
   // Folder code, never a client-trusted EventId — cards are processed after
   // the event, possibly once a different one is already active.
+  // folder_code is always generated lowercase (events_activate) -- lowercase
+  // defensively here too, same reasoning as twilio-webhook's own lookup.
   const { data: targetEvent, error: eventError } = await supabase
     .from("events")
     .select("id, state")
-    .eq("folder_code", body.eventFolderCode)
+    .eq("folder_code", body.eventFolderCode.toLowerCase())
     .maybeSingle();
   if (eventError) return errorResponse(req, 500, eventError.message);
   if (!targetEvent) return errorResponse(req, 404, `No event with folder code '${body.eventFolderCode}'.`);
@@ -65,35 +67,32 @@ Deno.serve(async (req) => {
   // reviewer-editable guess at the attendee's state.
   const state = district.state ?? targetEvent.state ?? null;
 
-  const duplicateOfId = await findLocalDuplicate(supabase, body.firstName, body.lastName);
-
+  // Duplicate-name check + insert happen atomically inside this function --
+  // same reasoning as contacts-create (see insert_contact_with_duplicate_check).
   const { data, error } = await supabase
-    .from("contacts")
-    .insert({
-      event_id: targetEvent.id,
-      source: "card_photo",
-      first_name: body.firstName,
-      last_name: body.lastName,
-      // Deliberately not enforced the way contacts-create enforces it — a
-      // photographed card routinely has neither legible.
-      email: body.email?.trim() || null,
-      phone: body.phone?.trim() || null,
-      title: body.title || null,
-      state,
-      school_district_id: district.id,
-      school_district_name_raw: district.raw,
-      school_id: school.id,
-      school_name_raw: school.raw,
-      extraction_confidence: body.extractionConfidence,
-      match_status: "pending",
-      review_status: "needs_review",
-      local_duplicate_of_contact_id: duplicateOfId,
-      source_image_path: body.sourceImagePath,
-      source_image_hash: body.sourceImageHash,
-      cropped_image_path: body.croppedImagePath?.trim() || null,
-      source_message_id: body.inboundMessageId || null,
+    .rpc("insert_contact_with_duplicate_check", {
+      payload: {
+        event_id: targetEvent.id,
+        source: "card_photo",
+        first_name: body.firstName,
+        last_name: body.lastName,
+        // Deliberately not enforced the way contacts-create enforces it — a
+        // photographed card routinely has neither legible.
+        email: body.email?.trim() || null,
+        phone: body.phone?.trim() || null,
+        title: body.title || null,
+        state,
+        school_district_id: district.id,
+        school_district_name_raw: district.raw,
+        school_id: school.id,
+        school_name_raw: school.raw,
+        extraction_confidence: body.extractionConfidence,
+        source_image_path: body.sourceImagePath,
+        source_image_hash: body.sourceImageHash,
+        cropped_image_path: body.croppedImagePath?.trim() || null,
+        source_message_id: body.inboundMessageId || null,
+      },
     })
-    .select("id, created_at")
     .single();
 
   if (error) {

@@ -62,10 +62,12 @@ Deno.serve(async (req) => {
 
   // No media: a plain text message is only ever a folder-code bind attempt.
   if (numMedia === 0) {
+    // folder_code is always generated lowercase (events_activate); a rep's
+    // phone keyboard routinely auto-capitalizes the first letter of a text.
     const { data: event } = await supabase
       .from("events")
       .select("id")
-      .eq("folder_code", body)
+      .eq("folder_code", body.toLowerCase())
       .maybeSingle();
 
     if (!event) {

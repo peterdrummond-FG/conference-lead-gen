@@ -14,8 +14,15 @@ import { api } from '@/boot/axios';
 // short-lived blob: URL — the standard SPA pattern for an authenticated
 // image. Revokes the previous object URL on every refetch and on unmount
 // so this doesn't leak memory across a long /review session.
+// Returns { url, error } rather than a bare url ref: a failed fetch used to
+// just clear url to null, indistinguishable from "this contact has no
+// photo" — <q-img>'s own #error slot never fires for that case since a
+// falsy :src never triggers an actual <img> load attempt. `error` lets a
+// caller render a real "photo failed to load" state instead of a silent
+// blank tile.
 export function useContactPhoto(getContactId: () => string | null | undefined, options: { full?: () => boolean; enabled?: () => boolean } = {}) {
   const url = ref<string | null>(null);
+  const error = ref(false);
   let currentObjectUrl: string | null = null;
 
   function revoke() {
@@ -28,6 +35,7 @@ export function useContactPhoto(getContactId: () => string | null | undefined, o
   async function load() {
     revoke();
     url.value = null;
+    error.value = false;
 
     const id = getContactId();
     const enabled = options.enabled ? options.enabled() : true;
@@ -41,12 +49,12 @@ export function useContactPhoto(getContactId: () => string | null | undefined, o
       currentObjectUrl = URL.createObjectURL(data);
       url.value = currentObjectUrl;
     } catch {
-      url.value = null;
+      error.value = true;
     }
   }
 
   watchEffect(load);
   onUnmounted(revoke);
 
-  return url;
+  return { url, error };
 }

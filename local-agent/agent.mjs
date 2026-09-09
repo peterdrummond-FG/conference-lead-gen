@@ -106,37 +106,32 @@ async function processContact(contact) {
     throw new Error('match-contact violated its contract and returned matchStatus=pending');
   }
 
-  const update = {
-    research_confidence: researchOutput.researchConfidence ?? null,
-    person_verified: researchOutput.personVerified ?? null,
-    match_status: matchOutput.matchStatus,
-    match_confidence: matchOutput.matchConfidence ?? null,
-    matched_zoho_contact_id: matchOutput.matchedZohoContactId ?? null,
-    matched_zoho_contact_name: matchOutput.matchedZohoContactName ?? null,
-    matched_zoho_contact_email: matchOutput.matchedZohoContactEmail ?? null,
-    matched_zoho_contact_phone: matchOutput.matchedZohoContactPhone ?? null,
-    matched_zoho_contact_title: matchOutput.matchedZohoContactTitle ?? null,
-    matched_zoho_account_id: matchOutput.matchedZohoAccountId ?? null,
-    matched_zoho_account_name: matchOutput.matchedZohoAccountName ?? null,
-    has_active_opportunity: matchOutput.hasActiveOpportunity ?? null,
-    active_opportunity_name: matchOutput.activeOpportunityName ?? null,
-    candidate_matches: matchOutput.candidateMatches ?? null,
-    notes: matchOutput.notes ?? null,
-  };
-
-  // Verbatim auto-approve rule from MatchingBackgroundService.cs, guarded
-  // on still being needs_review so a reviewer's manual action that landed
-  // mid-flight is never clobbered.
-  const stillNeedsReview = contact.review_status === 'needs_review';
-  const noLocalDuplicate = !contact.local_duplicate_of_contact_id;
-  const highMatchConfidence = update.match_confidence === 'high';
+  // Auto-approve rule from MatchingBackgroundService.cs, now evaluated
+  // atomically inside finalize_contact_match against the row's *current*
+  // review_status/local_duplicate_of_contact_id at write time — not the
+  // stale snapshot `contact` holds from claim time — so a reviewer's manual
+  // action landing mid-flight (research-contact/match-contact can each take
+  // minutes) is never clobbered by this update.
   const extractionOk = contact.extraction_confidence == null || contact.extraction_confidence === 'high';
-  if (stillNeedsReview && noLocalDuplicate && highMatchConfidence && extractionOk) {
-    update.review_status = 'approved';
-    update.auto_approved = true;
-  }
-
-  const { error } = await supabase.from('contacts').update(update).eq('id', contact.id);
+  const { error } = await supabase.rpc('finalize_contact_match', {
+    p_contact_id: contact.id,
+    p_match_status: matchOutput.matchStatus,
+    p_match_confidence: matchOutput.matchConfidence ?? null,
+    p_matched_zoho_contact_id: matchOutput.matchedZohoContactId ?? null,
+    p_matched_zoho_contact_name: matchOutput.matchedZohoContactName ?? null,
+    p_matched_zoho_contact_email: matchOutput.matchedZohoContactEmail ?? null,
+    p_matched_zoho_contact_phone: matchOutput.matchedZohoContactPhone ?? null,
+    p_matched_zoho_contact_title: matchOutput.matchedZohoContactTitle ?? null,
+    p_matched_zoho_account_id: matchOutput.matchedZohoAccountId ?? null,
+    p_matched_zoho_account_name: matchOutput.matchedZohoAccountName ?? null,
+    p_has_active_opportunity: matchOutput.hasActiveOpportunity ?? null,
+    p_active_opportunity_name: matchOutput.activeOpportunityName ?? null,
+    p_candidate_matches: matchOutput.candidateMatches ?? null,
+    p_notes: matchOutput.notes ?? null,
+    p_research_confidence: researchOutput.researchConfidence ?? null,
+    p_person_verified: researchOutput.personVerified ?? null,
+    p_extraction_ok: extractionOk,
+  });
   if (error) throw error;
 }
 
@@ -185,11 +180,12 @@ async function matchingLoop() {
 // uploads any crop files process-cards wrote locally back to Storage
 // (the original never needs re-uploading — it's already there).
 //
-// Known limitation, accepted for the pilot (same judgment call as the
-// Twilio webhook's own "no auto-retry sweep for stuck media downloads"):
-// a crash mid-run leaves a row stuck at status='processing' with no
-// automatic recovery. Rare in practice; would need a manual status reset
-// via SQL if it ever happens.
+// A crash mid-run leaves a row stuck at status='processing' — claimed_at
+// (set by claimPhotoMessage/claimAudioMessage) plus reconcileStaleInbound
+// Messages (called once at startup, near the bottom of this file) resets
+// any such row back to its pending_* state so the next poll picks it back
+// up, the same way watch-cards.command's resume_staged reconciles the
+// folder-watcher's own .processing/ directory on restart.
 const PHOTO_POLL_INTERVAL_MS = Number(process.env.PHOTO_POLL_INTERVAL_MS ?? 20_000);
 // Same ceiling as watch-cards.command's CLAUDE_TIMEOUT_SECONDS — a
 // multi-card sheet needs well past what a single-card photo ever did.
@@ -211,11 +207,13 @@ async function findNextPendingPhotoMessage() {
 
 // Optimistic claim: the WHERE clause re-asserts status='pending_ocr', so a
 // row already claimed by (hypothetically) another agent process comes back
-// null here instead of being double-processed.
+// null here instead of being double-processed. claimed_at lets a startup
+// sweep (reconcileStaleInboundMessages, below) tell a genuinely stuck row
+// (crash mid-run) apart from one still legitimately being worked on.
 async function claimPhotoMessage(id) {
   const { data, error } = await supabase
     .from('inbound_messages')
-    .update({ status: 'processing' })
+    .update({ status: 'processing', claimed_at: new Date().toISOString() })
     .eq('id', id)
     .eq('status', 'pending_ocr')
     .select('*')
@@ -236,53 +234,60 @@ async function convertHeicToJpeg(srcPath) {
 }
 
 async function processPhotoMessage(message) {
-  const { data: event, error: eventError } = await supabase
-    .from('events')
-    .select('folder_code')
-    .eq('id', message.event_id)
-    .maybeSingle();
-  if (eventError) throw eventError;
-  if (!event?.folder_code) throw new Error(`event ${message.event_id} has no folder_code`);
-
-  const { data: blob, error: downloadError } = await supabase.storage
-    .from('contact-photos')
-    .download(message.storage_path);
-  if (downloadError || !blob) throw downloadError ?? new Error('Storage download returned no data');
-
-  const bytes = Buffer.from(await blob.arrayBuffer());
-  // A real content hash, same as the local watcher's — lets a photo sent
-  // both via SMS and dropped locally (or sent twice via SMS) still dedup
-  // through contacts-from-ocr's existing sourceImageHash uniqueness check.
-  const hash = createHash('sha256').update(bytes).digest('hex');
-
-  const workDir = path.join(SMS_PHOTO_WORKDIR, event.folder_code);
-  await mkdir(workDir, { recursive: true });
-
-  let ext = (path.extname(message.storage_path).replace('.', '') || 'jpg').toLowerCase();
-  let localPath = path.join(workDir, `${hash}.${ext}`);
-  await writeFile(localPath, bytes);
-
-  if (ext === 'heic' || ext === 'heif') {
-    localPath = await convertHeicToJpeg(localPath);
-  }
-
-  // The original is already durably in Storage at message.storage_path
-  // (twilio-webhook uploaded it) — echoed back verbatim, not re-uploaded.
-  // Only crop files (written locally by Step 2) need uploading after
-  // success, at a key sharing that same directory prefix (see SKILL.md).
-  const storagePrefix = path.dirname(message.storage_path);
-
-  const prompt = [
-    `Use the process-cards skill on the photo at ${localPath}.`,
-    `Event folder code: ${event.folder_code}.`,
-    `Content hash: ${hash}.`,
-    `Local archive path — write any cropped card images (Step 2) into this same directory, which already exists — is: ${localPath}.`,
-    `Supabase Storage object key — include this exact string as sourceImagePath in your POST body — is: ${message.storage_path}.`,
-    `Inbound message id — include this exact string as inboundMessageId in your POST body — is: ${message.id}.`,
-    `Print only PROCESS_CARDS_OK ${hash} or PROCESS_CARDS_FAIL ${hash} <reason> as your entire final message.`,
-  ].join(' ');
-
+  // The whole body lives inside this one try/catch — an early failure (the
+  // events select, Storage download, mkdir/writeFile, HEIC conversion) used
+  // to throw uncaught, crashing the whole local-agent process via
+  // photoTick's missing try/catch and taking matchingLoop/transcriptionLoop
+  // down with it. Now every failure path, early or late, marks the row
+  // 'failed' and returns normally instead.
+  let workDir;
   try {
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('folder_code')
+      .eq('id', message.event_id)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event?.folder_code) throw new Error(`event ${message.event_id} has no folder_code`);
+
+    const { data: blob, error: downloadError } = await supabase.storage
+      .from('contact-photos')
+      .download(message.storage_path);
+    if (downloadError || !blob) throw downloadError ?? new Error('Storage download returned no data');
+
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    // A real content hash, same as the local watcher's — lets a photo sent
+    // both via SMS and dropped locally (or sent twice via SMS) still dedup
+    // through contacts-from-ocr's existing sourceImageHash uniqueness check.
+    const hash = createHash('sha256').update(bytes).digest('hex');
+
+    workDir = path.join(SMS_PHOTO_WORKDIR, event.folder_code);
+    await mkdir(workDir, { recursive: true });
+
+    let ext = (path.extname(message.storage_path).replace('.', '') || 'jpg').toLowerCase();
+    let localPath = path.join(workDir, `${hash}.${ext}`);
+    await writeFile(localPath, bytes);
+
+    if (ext === 'heic' || ext === 'heif') {
+      localPath = await convertHeicToJpeg(localPath);
+    }
+
+    // The original is already durably in Storage at message.storage_path
+    // (twilio-webhook uploaded it) — echoed back verbatim, not re-uploaded.
+    // Only crop files (written locally by Step 2) need uploading after
+    // success, at a key sharing that same directory prefix (see SKILL.md).
+    const storagePrefix = path.dirname(message.storage_path);
+
+    const prompt = [
+      `Use the process-cards skill on the photo at ${localPath}.`,
+      `Event folder code: ${event.folder_code}.`,
+      `Content hash: ${hash}.`,
+      `Local archive path — write any cropped card images (Step 2) into this same directory, which already exists — is: ${localPath}.`,
+      `Supabase Storage object key — include this exact string as sourceImagePath in your POST body — is: ${message.storage_path}.`,
+      `Inbound message id — include this exact string as inboundMessageId in your POST body — is: ${message.id}.`,
+      `Print only PROCESS_CARDS_OK ${hash} or PROCESS_CARDS_FAIL ${hash} <reason> as your entire final message.`,
+    ].join(' ');
+
     const { stdout, exitCode, timedOut } = await runClaudeRaw(prompt, REPO_ROOT, PHOTO_CLAUDE_TIMEOUT_MS);
     const lastLine = stdout.trim().split('\n').pop() ?? '';
 
@@ -315,7 +320,7 @@ async function processPhotoMessage(message) {
     log(`photo FAIL: ${message.id} — ${reason}`);
   } finally {
     // Scratch only — the durable copy is Storage, not this directory.
-    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    if (workDir) await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -371,19 +376,43 @@ const TRANSCRIPTION_POLL_INTERVAL_MS = Number(process.env.TRANSCRIPTION_POLL_INT
 // finish order — permanently orphans the memo: matched_contact_ids stays
 // empty forever with no way to reattach it short of manual SQL.
 const LINK_RETRY_WINDOW_MINUTES = 20;
+// How close a sole candidate's photo must be to this memo's arrival for the
+// single-candidate fast path below to trust it's about that person with no
+// name-matching check at all. Without this, a rep's only card-photo contact
+// at an event would catch *every* later voice memo verbatim, including ones
+// recorded hours afterward about something unrelated.
+const SINGLE_CANDIDATE_WINDOW_MINUTES = 20;
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
 
 // Shared write path for every branch below — append-not-overwrite, same as
 // before: a rep could leave more than one memo about the same contact
 // across an event, so each keeps a running log rather than clobbering the
 // last one.
+//
+// Each contact's update is independent: one contact's failure is logged and
+// skipped rather than thrown, so it can never discard work already done for
+// the others in the same batch (previously, the first failure threw and
+// abandoned the whole call — losing track of any already-successful
+// updates, since the caller only learns about matchedContactIds on a
+// normal return). Also idempotent — an excerpt already present in a
+// contact's notes is treated as already-attached rather than appended
+// again, so re-running the same correlation (a retry, or a second call
+// during multi-candidate attribution) can't duplicate the same text.
 async function attachExcerpts(items) {
   const matchedContactIds = [];
   for (const { contact, excerpt } of items) {
-    const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${excerpt}` : excerpt;
-    const { error } = await supabase.from('contacts').update({ interaction_notes: merged }).eq('id', contact.id);
-    if (error) throw error;
-    matchedContactIds.push(contact.id);
+    try {
+      if (contact.interaction_notes?.includes(excerpt)) {
+        matchedContactIds.push(contact.id);
+        continue;
+      }
+      const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${excerpt}` : excerpt;
+      const { error } = await supabase.from('contacts').update({ interaction_notes: merged }).eq('id', contact.id);
+      if (error) throw error;
+      matchedContactIds.push(contact.id);
+    } catch (err) {
+      log(`attachExcerpts FAIL for contact ${contact.id}: ${err.message ?? err}`);
+    }
   }
   return matchedContactIds;
 }
@@ -418,9 +447,17 @@ async function linkTranscriptToContacts(message, transcript) {
   if (candidates.length === 0) return []; // nothing to attach to yet; retry sweep will catch it later
 
   if (candidates.length === 1) {
-    // No ambiguity possible — skip the LLM call and attach the full
-    // transcript directly, same as the old behavior, at zero extra cost.
-    return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
+    const minutesSincePhoto = (new Date(message.received_at).getTime() - new Date(candidates[0].created_at).getTime()) / 60_000;
+    if (minutesSincePhoto >= 0 && minutesSincePhoto <= SINGLE_CANDIDATE_WINDOW_MINUTES) {
+      // No ambiguity possible and recent enough to trust without a name
+      // check — skip the LLM call and attach the full transcript directly,
+      // same as the old behavior, at zero extra cost.
+      return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
+    }
+    // Only candidate, but well outside the window (a rep's one card-photo
+    // contact all event, memo recorded hours later about something else) —
+    // fall through to attribute-voice-memo below so the transcript actually
+    // has to name this person before it gets attached to them.
   }
 
   const skillInput = {
@@ -509,7 +546,7 @@ async function findNextPendingAudioMessage() {
 async function claimAudioMessage(id) {
   const { data, error } = await supabase
     .from('inbound_messages')
-    .update({ status: 'processing' })
+    .update({ status: 'processing', claimed_at: new Date().toISOString() })
     .eq('id', id)
     .eq('status', 'pending_transcription')
     .select('*')
@@ -534,36 +571,62 @@ async function buildNamePrompt(message) {
 }
 
 async function processAudioMessage(message) {
-  const { data: blob, error: downloadError } = await supabase.storage
-    .from('voice-memos')
-    .download(message.storage_path);
-  if (downloadError || !blob) throw downloadError ?? new Error('Storage download returned no data');
-
-  await mkdir(AUDIO_WORKDIR, { recursive: true });
-  const ext = (path.extname(message.storage_path).replace('.', '') || 'm4a').toLowerCase();
-  const localPath = path.join(AUDIO_WORKDIR, `${message.id}.${ext}`);
-  const bytes = Buffer.from(await blob.arrayBuffer());
-  await writeFile(localPath, bytes);
-
+  // Three explicit stages, each marking failure precisely where it happens,
+  // instead of one try/catch/finally around everything:
+  //   1. download+stage the file — a failure here means we never even got a
+  //      transcript, so 'failed' is correct and final for this attempt.
+  //   2. transcribe — same: no transcript exists yet, 'failed' is correct.
+  //   3. once a transcript exists, persist it and mark 'completed'
+  //      immediately, *before* attribution — attribution (attachExcerpts,
+  //      which can partially fail per-contact) must never be able to lose a
+  //      transcript that already succeeded, or flip a real success back to
+  //      'failed'. A failure here just logs; matched_contact_ids stays
+  //      however far attribution got (possibly empty), which is exactly
+  //      what makes retryOrphanedTranscripts's own query pick the row back
+  //      up on a later tick.
+  let localPath;
   try {
-    const prompt = await buildNamePrompt(message);
-    const transcript = await transcribeAudio(localPath, { prompt });
-    const matchedContactIds = await linkTranscriptToContacts(message, transcript);
+    const { data: blob, error: downloadError } = await supabase.storage
+      .from('voice-memos')
+      .download(message.storage_path);
+    if (downloadError || !blob) throw downloadError ?? new Error('Storage download returned no data');
 
-    // An empty matchedContactIds array is a valid, non-error outcome — a
-    // memo with nothing to attach to (yet — see retryOrphanedTranscripts
-    // below) still transcribed successfully.
-    await supabase.from('inbound_messages').update({
-      transcript,
-      status: 'completed',
-      processed_at: new Date().toISOString(),
-      matched_contact_ids: matchedContactIds,
-    }).eq('id', message.id);
-    log(`transcription OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
+    await mkdir(AUDIO_WORKDIR, { recursive: true });
+    const ext = (path.extname(message.storage_path).replace('.', '') || 'm4a').toLowerCase();
+    localPath = path.join(AUDIO_WORKDIR, `${message.id}.${ext}`);
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    await writeFile(localPath, bytes);
   } catch (err) {
     const reason = err.message ?? String(err);
     await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
     log(`transcription FAIL: ${message.id} — ${reason}`);
+    return;
+  }
+
+  let transcript;
+  try {
+    const prompt = await buildNamePrompt(message);
+    transcript = await transcribeAudio(localPath, { prompt });
+  } catch (err) {
+    const reason = err.message ?? String(err);
+    await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
+    log(`transcription FAIL: ${message.id} — ${reason}`);
+    await rm(localPath, { force: true }).catch(() => {});
+    return;
+  }
+
+  await supabase.from('inbound_messages').update({
+    transcript,
+    status: 'completed',
+    processed_at: new Date().toISOString(),
+  }).eq('id', message.id);
+
+  try {
+    const matchedContactIds = await linkTranscriptToContacts(message, transcript);
+    await supabase.from('inbound_messages').update({ matched_contact_ids: matchedContactIds }).eq('id', message.id);
+    log(`transcription OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
+  } catch (err) {
+    log(`attribution FAIL: ${message.id} — ${err.message ?? err}`);
   } finally {
     await rm(localPath, { force: true }).catch(() => {});
   }
@@ -602,7 +665,34 @@ async function transcriptionLoop() {
 
 // ---------------------------------------------------------------------
 
+// Resets any inbound_messages row a previous run left stuck at
+// status='processing' (crashed/killed mid-photo-or-transcription) back to
+// its pending_* state, so this run's loops pick it back up normally instead
+// of it sitting stuck until a manual SQL fix. A restart is exactly when a
+// prior crash's stuck rows need finding, so this runs once at startup —
+// mirrors watch-cards.command's own resume_staged reconciliation of its
+// .processing/ directory. Threshold comfortably exceeds
+// PHOTO_CLAUDE_TIMEOUT_MS's 15-minute ceiling so a still-legitimately-
+// running job from a *different*, still-alive process is never reconciled
+// out from under itself.
+const STALE_PROCESSING_MINUTES = Number(process.env.STALE_PROCESSING_MINUTES ?? 30);
+
+async function reconcileStaleInboundMessages() {
+  const { data, error } = await supabase.rpc('reconcile_stale_inbound_messages', {
+    stale_minutes: STALE_PROCESSING_MINUTES,
+  });
+  if (error) {
+    log(`ERROR reconciling stale inbound_messages: ${error.message ?? error}`);
+    return;
+  }
+  if (data && data.length > 0) {
+    log(`reconciled ${data.length} stale inbound_messages row(s) back to pending`);
+  }
+}
+
 log('=== local-agent starting ===');
+
+await reconcileStaleInboundMessages();
 
 // Three independent, concurrently-running loops in one process — a slow
 // process-cards run (up to 15 min) must not delay the 20s matching poll,

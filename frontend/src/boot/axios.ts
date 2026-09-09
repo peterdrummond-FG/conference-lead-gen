@@ -25,6 +25,12 @@ const SUPABASE_ANON_KEY =
 
 const api = axios.create({ baseURL: FUNCTIONS_BASE_URL });
 
+// Set from the boot callback below (Quasar hands every boot file the app's
+// router instance) so the 401 handler can navigate, not just lock the
+// store — this module has no component context of its own to call
+// useRouter() from.
+let router: import('vue-router').Router | undefined;
+
 // Every Edge Function needs a valid Supabase JWT to pass the gateway's own
 // check (verify_jwt) — the anon key satisfies that for every call this app
 // makes. x-staff-pin is the app's OWN privilege check on top of that,
@@ -53,9 +59,17 @@ api.interceptors.response.use(
   (error) => {
     // A stored PIN that's since been changed (or was never valid server-
     // side) shows up as a 401 from a privileged function — treat that as
-    // "session died," same as the kiosk always booting locked.
+    // "session died," same as the kiosk always booting locked. Locking
+    // alone only hides the header (MainLayout's v-if) — without also
+    // navigating away, a reviewer sitting on /review or /export keeps
+    // seeing (and can keep interacting with) whatever contact data was
+    // already loaded on screen. Same lock()-then-navigate pattern
+    // MainLayout's own lockAndGoToIntake() already uses.
     if (error.response?.status === 401) {
       useKioskStore().lock();
+      if (router && router.currentRoute.value.path !== '/intake') {
+        void router.push('/intake');
+      }
     }
 
     const message: string =
@@ -66,7 +80,8 @@ api.interceptors.response.use(
   },
 );
 
-export default defineBoot(({ app }) => {
+export default defineBoot(({ app, router: appRouter }) => {
+  router = appRouter;
   app.config.globalProperties.$axios = axios;
   app.config.globalProperties.$api = api;
 });

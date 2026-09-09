@@ -101,6 +101,7 @@
                 class="intake-submit-btn"
                 label="Submit"
                 :loading="submitting"
+                :disable="submitting"
               />
             </div>
           </q-form>
@@ -201,11 +202,16 @@ function resetForm() {
 }
 
 async function onSubmit() {
-  const valid = await formRef.value?.validate();
-  if (!valid) return;
-
+  // Guard set synchronously, before the first await — a double-tap or a
+  // native form-submit racing the button's own :disable state could
+  // otherwise start a second onSubmit while the first is still awaiting
+  // validate(), posting two contacts-create calls for one submission.
+  if (submitting.value) return;
   submitting.value = true;
   try {
+    const valid = await formRef.value?.validate();
+    if (!valid) return;
+
     await api.post('/contacts-create', {
       firstName: form.firstName,
       lastName: form.lastName,

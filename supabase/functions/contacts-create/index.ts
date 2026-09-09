@@ -8,7 +8,6 @@
 // row here (that's what created the free-text junk this schema replaced).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-import { findLocalDuplicate } from "../_shared/contacts.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -63,28 +62,28 @@ Deno.serve(async (req) => {
     }
   }
 
-  const duplicateOfId = await findLocalDuplicate(supabase, body.firstName, body.lastName);
-
+  // The duplicate-name check and the insert happen atomically inside this
+  // function (an advisory lock keyed on the normalized name serializes
+  // concurrent inserts for the same person) -- doing the check and the
+  // insert as two separate round-trips here would let two near-simultaneous
+  // submissions for the same person both miss each other.
   const { data, error } = await supabase
-    .from("contacts")
-    .insert({
-      event_id: activeEvent.id,
-      source: "form",
-      first_name: body.firstName,
-      last_name: body.lastName,
-      email: body.email || null,
-      phone: body.phone || null,
-      title: body.title || null,
-      state: body.state || null,
-      school_district_id: body.schoolDistrictId || null,
-      school_district_name_raw: body.schoolDistrictId ? null : (body.schoolDistrictNameRaw?.trim() || null),
-      school_id: body.schoolId || null,
-      school_name_raw: body.schoolId ? null : (body.schoolNameRaw?.trim() || null),
-      match_status: "pending",
-      review_status: "needs_review",
-      local_duplicate_of_contact_id: duplicateOfId,
+    .rpc("insert_contact_with_duplicate_check", {
+      payload: {
+        event_id: activeEvent.id,
+        source: "form",
+        first_name: body.firstName,
+        last_name: body.lastName,
+        email: body.email || null,
+        phone: body.phone || null,
+        title: body.title || null,
+        state: body.state || null,
+        school_district_id: body.schoolDistrictId || null,
+        school_district_name_raw: body.schoolDistrictId ? null : (body.schoolDistrictNameRaw?.trim() || null),
+        school_id: body.schoolId || null,
+        school_name_raw: body.schoolId ? null : (body.schoolNameRaw?.trim() || null),
+      },
     })
-    .select("id, created_at")
     .single();
   if (error) return errorResponse(req, 500, error.message);
 

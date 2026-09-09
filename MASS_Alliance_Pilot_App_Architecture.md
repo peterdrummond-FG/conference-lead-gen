@@ -396,20 +396,23 @@ your actual Accounts data:
   nationwide search — per your call, a same-named district in another state
   should never surface as a candidate.
 
-**Web search is the fallback when Zoho alone can't tell.** Zoho's fuzzy match
-runs first, same as above. Only when that comes back weak or ambiguous — no
-confident Account/Contact hit — does the skill do a live web search on the
-person and their stated (or partial) institution, to confirm identity or
-resolve which real district/school they belong to (e.g. an attendee wrote just
-"Jefferson," or a card's district name doesn't cleanly match anything in Zoho).
-This applies to both intake paths, not just card photos — a form submission can
-be just as ambiguous as a card. Whatever the search turns up is folded in as
-**another candidate signal**, not a final answer: it can raise or lower
-`MatchConfidence` and adds context to `CandidateMatches`/`Notes` for the
-reviewer, but it never auto-creates an Account or auto-resolves an `ambiguous`
-row by itself — a human still makes that call in `/review`. High-confidence
-Zoho hits skip the web search entirely, so the common case (a real, unambiguous
-match) never pays for it.
+**Web search runs on every contact, unconditionally, before Zoho is ever
+queried.** `research-contact` (identity/institution verification) always runs
+first, followed by `match-contact` (pure Zoho classification) — Zoho is never
+checked first, so there is no "skip the search on a clean Zoho hit" shortcut,
+by deliberate choice: conference attendees almost always carry minimal,
+possibly-misspelled information, so verifying identity and resolving the
+institution's real name is treated as worth doing every time rather than
+gated behind a completeness check. This applies to both intake paths, not
+just card photos — a form submission can be just as ambiguous as a card.
+Whatever the search turns up is folded in as **another candidate signal**,
+not a final answer: it can raise or lower `MatchConfidence` and adds context
+to `CandidateMatches`/`Notes` for the reviewer, but it never auto-creates an
+Account or auto-resolves an `ambiguous` row by itself — a human still makes
+that call in `/review`. The tradeoff: every contact pays for at least one web
+search's latency/cost, even a clean, unambiguous case Zoho alone could have
+resolved instantly — accepted deliberately in favor of consistent
+verification quality over per-contact cost savings.
 
 **Where this runs**: this is two Claude Code CLI skills, not one —
 `research-contact` (identity/institution verification, web search when

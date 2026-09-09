@@ -91,32 +91,6 @@ export async function attachDuplicateNames(supabase: any, rows: any[]): Promise<
   return map;
 }
 
-// Deliberately name-only, with no event/district scoping: a common name
-// showing up at a different event, or under a different (possibly garbled)
-// district, is exactly the case a reviewer most needs surfaced — a sales
-// rep or traveling principal can legitimately show up at another event, and
-// a miskeyed district must not hide a real duplicate. This is a "possible
-// duplicate, go check" signal for a human, never an auto-merge — the
-// reviewer weighs research/match confidence (and now the other contact's
-// district/event context, see DuplicateContext) to tell "same person,
-// conflicting data" apart from "two different people, common name."
-// deno-lint-ignore no-explicit-any
-export async function findLocalDuplicate(
-  supabase: any,
-  firstName: string,
-  lastName: string,
-): Promise<string | null> {
-  const { data } = await supabase
-    .from("contacts")
-    .select("id")
-    .ilike("first_name", firstName.trim())
-    .ilike("last_name", lastName.trim())
-    .order("created_at")
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
-}
-
 export interface DistrictResolution {
   id: string | null;
   state: string | null;

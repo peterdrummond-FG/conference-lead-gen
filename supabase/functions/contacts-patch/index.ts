@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
   const { data: contact, error: fetchError } = await supabase
     .from("contacts")
-    .select("match_status")
+    .select("match_status, school_district_id, school_id")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) return errorResponse(req, 500, fetchError.message);
@@ -46,9 +46,23 @@ Deno.serve(async (req) => {
     const { data: d } = await supabase.from("school_districts").select("id").eq("id", body.schoolDistrictId).maybeSingle();
     if (!d) return errorResponse(req, 404, `No district with id '${body.schoolDistrictId}'.`);
   }
-  if (has(body, "schoolId") && body.schoolId) {
-    const { data: s } = await supabase.from("schools").select("id").eq("id", body.schoolId).maybeSingle();
-    if (!s) return errorResponse(req, 404, `No school with id '${body.schoolId}'.`);
+
+  // Effective post-update values (patched value if present in this request,
+  // else whatever's already on the row) — a partial patch that only touches
+  // schoolId (or only clears schoolDistrictId) must still end up consistent,
+  // same rule contacts-create/contacts-merge-duplicates already enforce.
+  const effectiveSchoolId = has(body, "schoolId") ? body.schoolId : contact.school_id;
+  const effectiveDistrictId = has(body, "schoolDistrictId") ? body.schoolDistrictId : contact.school_district_id;
+  if (effectiveSchoolId) {
+    if (!effectiveDistrictId) {
+      return errorResponse(req, 400, "schoolId requires schoolDistrictId — a school can't be picked without its district.");
+    }
+    const { data: s, error: sErr } = await supabase.from("schools").select("id, district_id").eq("id", effectiveSchoolId).maybeSingle();
+    if (sErr) return errorResponse(req, 500, sErr.message);
+    if (!s) return errorResponse(req, 404, `No school with id '${effectiveSchoolId}'.`);
+    if (s.district_id !== effectiveDistrictId) {
+      return errorResponse(req, 400, `School '${effectiveSchoolId}' does not belong to district '${effectiveDistrictId}'.`);
+    }
   }
 
   // deno-lint-ignore no-explicit-any
