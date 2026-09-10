@@ -17,7 +17,6 @@ Deno.serve(async (req) => {
   let query = supabase
     .from("campaigns")
     .select("*")
-    .ilike("name", "%2026%")
     .order("name", { ascending: false })
     .limit(50);
   if (search) query = query.ilike("name", `%${search}%`);

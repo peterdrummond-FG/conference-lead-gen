@@ -637,7 +637,7 @@
   },
   {
     "zohoCampaignId": "3001271000178213738",
-    "campaignName": "2023 02.08-10 AWSA's 2023 Middle and High School Principals Convention",
+    "campaignName": "2023 02.08-10 AWSA\u2019s 2023 Middle and High School Principals Convention",
     "state": null,
     "city": null
   },
@@ -2623,7 +2623,7 @@
   },
   {
     "zohoCampaignId": "3001271000370825288",
-    "campaignName": "2025 08.27 - (SC) Superintendents' Symposium",
+    "campaignName": "2025 08.27 - (SC) Superintendents\u2019 Symposium",
     "state": null,
     "city": null
   },
@@ -3079,19 +3079,19 @@
   },
   {
     "zohoCampaignId": "3001271000404625299",
-    "campaignName": "2026 04.29 (SC) SCASA Professional Development Coordinators' Roundtable",
+    "campaignName": "2026 04.29 (SC) SCASA Professional Development Coordinators\u2019 Roundtable",
     "state": null,
     "city": null
   },
   {
     "zohoCampaignId": "3001271000404625319",
-    "campaignName": "2026 01.23 (SC) SCASA Federal Programs/Grant Coordinators' Roundtable",
+    "campaignName": "2026 01.23 (SC) SCASA Federal Programs/Grant Coordinators\u2019 Roundtable",
     "state": null,
     "city": null
   },
   {
     "zohoCampaignId": "3001271000404625339",
-    "campaignName": "2026 02.25 (SC) SCASA Principals' Roundtable",
+    "campaignName": "2026 02.25 (SC) SCASA Principals\u2019 Roundtable",
     "state": null,
     "city": null
   },
@@ -3661,7 +3661,7 @@
   },
   {
     "zohoCampaignId": "3001271000459421060",
-    "campaignName": "2026 10.27-29 (AZ) ASA Fall Leadership Conference",
+    "campaignName": "2026 10.25-27 (AZ) ASA Fall Leadership Conference",
     "state": null,
     "city": null
   },
@@ -4002,12 +4002,6 @@
     "city": null
   },
   {
-    "zohoCampaignId": "3001271000474253204",
-    "campaignName": "2027 05.07 (CO) CASE Annual Awards Reception",
-    "state": null,
-    "city": null
-  },
-  {
     "zohoCampaignId": "3001271000474253211",
     "campaignName": "2027 07.27 (CO) CASE Women in Leadership Conference",
     "state": null,
@@ -4022,6 +4016,72 @@
   {
     "zohoCampaignId": "3001271000474261004",
     "campaignName": "2026 TBD Executive Committee Meeting",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000475140246",
+    "campaignName": "2026 12.06-08 (WV) WVAEMSP/WVASSP Annual Conference",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000475140260",
+    "campaignName": "2026 10.23-24 (WA) WA ALAS 5th Annual Conference",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476034002",
+    "campaignName": "2026 10.29 (NE) NCSA Webinar",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476034014",
+    "campaignName": "2027 01.20 (NE) NCSA Webinar",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476034027",
+    "campaignName": "2027 04.19 (NE) NCSA Webinar",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476074549",
+    "campaignName": "2026 11.08-09 (AZ) AZALAS Annual Conference",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476078158",
+    "campaignName": "2026 09.17 (WA) WASA Facilitating for Impact (West)",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476078166",
+    "campaignName": "2026 10.01 (WA) WASA Fall Conference",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476078185",
+    "campaignName": "2027 03.15-16 (WA) WASA Spring Conference for Small School Leaders",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476213143",
+    "campaignName": "2027 01.27 (AZ) AZALAS Mixer Event",
+    "state": null,
+    "city": null
+  },
+  {
+    "zohoCampaignId": "3001271000476213148",
+    "campaignName": "2027 05.07 (AZ) AZALAS End-of-Year Mixer Event",
     "state": null,
     "city": null
   }
