@@ -10,17 +10,12 @@
           <q-route-tab v-if="roleStore.role === 'customerSuccess'" to="/export" label="Export" />
         </q-tabs>
         <q-separator vertical spaced />
-        <q-btn-dropdown flat dense no-caps icon="switch_account" color="primary" :label="roleLabel">
-          <q-tooltip>Switch view</q-tooltip>
-          <q-list>
-            <q-item clickable v-close-popup :active="roleStore.role === 'sales'" @click="roleStore.setRole('sales')">
-              <q-item-section>Sales</q-item-section>
-            </q-item>
-            <q-item clickable v-close-popup :active="roleStore.role === 'customerSuccess'" @click="roleStore.setRole('customerSuccess')">
-              <q-item-section>Customer Success</q-item-section>
-            </q-item>
-          </q-list>
-        </q-btn-dropdown>
+        <!-- Read-only — switching identity happens in Setup's "Signed in
+             as" picker, which confirms a rep's own PIN before switching to
+             them. A clickable switcher here would bypass that check. -->
+        <q-btn flat dense no-caps icon="switch_account" color="primary" :label="roleLabel" to="/setup">
+          <q-tooltip>Signed in as — switch in Setup</q-tooltip>
+        </q-btn>
         <q-separator vertical spaced />
         <q-btn flat dense icon="lock" round color="grey-7" @click="lockAndGoToIntake">
           <q-tooltip>Lock kiosk</q-tooltip>
@@ -81,7 +76,10 @@ const route = useRoute();
 const kioskStore = useKioskStore();
 const roleStore = useRoleStore();
 
-const roleLabel = computed(() => (roleStore.role === 'customerSuccess' ? 'Customer Success' : 'Sales'));
+const roleLabel = computed(() => {
+  if (roleStore.role === 'customerSuccess') return 'Customer Success';
+  return roleStore.activeRepName ?? 'Sales (not signed in)';
+});
 
 // The nav tab for a now-disallowed route (e.g. Export, Customer-Success-only)
 // disappears immediately via v-if above, but switching roles doesn't itself

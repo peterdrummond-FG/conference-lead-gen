@@ -113,6 +113,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
@@ -120,6 +121,15 @@ import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/u
 import type { QForm } from 'quasar';
 
 const eventStore = useEventStore();
+const route = useRoute();
+
+// Which physical QR code got scanned to land here — set on the URL by the
+// two slides SetupPage.vue generates (?channel=booth / ?channel=session).
+// Anything else (no param, a bookmarked/typed URL, a stale value) reads as
+// null rather than being guessed at.
+const qrChannel = route.query.channel === 'booth' || route.query.channel === 'session'
+  ? route.query.channel
+  : null;
 
 const formRef = ref<QForm | null>(null);
 const submitting = ref(false);
@@ -223,6 +233,7 @@ async function onSubmit() {
       schoolDistrictNameRaw: form.district && !form.district.id ? form.district.name : null,
       schoolId: form.school?.id ?? null,
       schoolNameRaw: form.school && !form.school.id ? form.school.name : null,
+      qrChannel,
     });
 
     submitted.value = true;

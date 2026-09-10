@@ -11,7 +11,7 @@
 // A plain follow-up query (attachDuplicateNames below) sidesteps the
 // ambiguity entirely.
 export const CONTACT_SELECT =
-  "*, event:events(name), school_district:school_districts(name), school:schools(name)";
+  "*, event:events(name), school_district:school_districts(name), school:schools(name), rep:reps(name)";
 
 // deno-lint-ignore no-explicit-any
 export function toListItem(c: any, duplicateNames?: Record<string, DuplicateContext>) {
@@ -23,6 +23,9 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     phone: c.phone,
     title: c.title,
     source: c.source,
+    qrChannel: c.qr_channel ?? null,
+    repId: c.rep_id ?? null,
+    repName: c.rep?.name ?? null,
     eventId: c.event_id,
     eventName: c.event?.name ?? null,
     state: c.state ?? null,

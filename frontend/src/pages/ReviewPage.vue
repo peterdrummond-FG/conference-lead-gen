@@ -9,6 +9,20 @@
       </q-tabs>
       <div v-if="contacts.length" class="text-caption text-grey">{{ contacts.length }} contact{{ contacts.length === 1 ? '' : 's' }}</div>
       <q-space />
+      <!-- A signed-in rep only ever sees their own leads — nothing to pick.
+           Customer Success sees everyone and can slice by rep. -->
+      <q-select
+        v-if="roleStore.role === 'customerSuccess'"
+        v-model="repFilter"
+        :options="repFilterOptions"
+        option-label="label"
+        dense
+        outlined
+        emit-value
+        map-options
+        style="min-width: 180px"
+        label="Rep"
+      />
       <q-btn
         v-if="tab === 'rejected'"
         color="negative"
@@ -34,18 +48,28 @@
     </div>
 
     <div v-else>
-      <ReviewContactCard
-        v-for="contact in pagedContacts"
-        :key="contact.id"
-        :contact="contact"
-        :selected="selectedMap[contact.id] ?? false"
-        @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
-        @approve="approve"
-        @reject="reject"
-        @update="update"
-        @retry-match="retryMatch"
-        @duplicates-resolved="load"
-      />
+      <div v-if="roleStore.role === 'sales' && !roleStore.activeRepId" class="text-center text-grey q-pa-lg">
+        Sign in as yourself in Setup to see your leads.
+      </div>
+
+      <div v-else-if="filteredContacts.length === 0" class="text-center text-grey q-pa-lg">
+        No contacts for this rep.
+      </div>
+
+      <template v-else>
+        <ReviewContactCard
+          v-for="contact in pagedContacts"
+          :key="contact.id"
+          :contact="contact"
+          :selected="selectedMap[contact.id] ?? false"
+          @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
+          @approve="approve"
+          @reject="reject"
+          @update="update"
+          @retry-match="retryMatch"
+          @duplicates-resolved="load"
+        />
+      </template>
 
       <div v-if="pageCount > 1" class="row justify-center q-mt-md">
         <q-pagination v-model="page" :max="pageCount" :max-pages="7" boundary-numbers />
@@ -59,7 +83,8 @@ import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { Dialog } from 'quasar';
 import { api } from '@/boot/axios';
 import ReviewContactCard from '@/components/ReviewContactCard.vue';
-import type { ContactListItem, UpdateContactPayload } from '@/types/review';
+import { useRoleStore } from '@/stores/role-store';
+import type { ContactListItem, Rep, UpdateContactPayload } from '@/types/review';
 
 // Every contact was previously rendered at once — with a few hundred rows
 // (each carrying a multi-megabyte card photo) that made for an enormous
@@ -68,15 +93,32 @@ import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 // keeps the live DOM small enough for lazy image loading to behave.
 const PER_PAGE = 20;
 
+const roleStore = useRoleStore();
 const tab = ref('needs_review');
 const contacts = ref<ContactListItem[]>([]);
 const loading = ref(false);
 const selectedMap = reactive<Record<string, boolean>>({});
 const page = ref(1);
+const reps = ref<Rep[]>([]);
+const repFilter = ref<string | null>(null);
 
 const selectedIds = computed(() => Object.keys(selectedMap).filter((id) => selectedMap[id]));
-const pageCount = computed(() => Math.max(1, Math.ceil(contacts.value.length / PER_PAGE)));
-const pagedContacts = computed(() => contacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
+const repFilterOptions = computed(() => [
+  { label: 'All reps', value: null },
+  ...reps.value.map((r) => ({ label: r.name, value: r.id })),
+]);
+// A signed-in rep is hard-scoped to their own leads — and to nothing at
+// all until they've actually signed in as themselves (Setup), rather than
+// falling back to "no filter" and showing everyone's. Customer Success
+// uses the repFilter select freely, including "All reps" (null = no filter).
+const filteredContacts = computed(() => {
+  if (roleStore.role === 'sales') {
+    return roleStore.activeRepId ? contacts.value.filter((c) => c.repId === roleStore.activeRepId) : [];
+  }
+  return repFilter.value ? contacts.value.filter((c) => c.repId === repFilter.value) : contacts.value;
+});
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / PER_PAGE)));
+const pagedContacts = computed(() => filteredContacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
 async function load() {
   loading.value = true;
@@ -153,5 +195,14 @@ watch(tab, () => {
   page.value = 1;
   void load();
 });
-onMounted(load);
+watch(repFilter, () => {
+  page.value = 1;
+});
+
+onMounted(async () => {
+  await Promise.all([
+    load(),
+    api.get<Rep[]>('/reps-list').then(({ data }) => { reps.value = data; }),
+  ]);
+});
 </script>

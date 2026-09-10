@@ -8,6 +8,8 @@ export interface ActiveEvent {
   state: string;
   activatedAt: string;
   folderCode: string | null;
+  boothRepId: string | null;
+  sessionRepId: string | null;
 }
 
 export const useEventStore = defineStore('event', {

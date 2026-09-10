@@ -14,6 +14,9 @@ export interface ContactListItem {
   phone: string | null;
   title: string | null;
   source: string;
+  qrChannel: 'booth' | 'session' | null;
+  repId: string | null;
+  repName: string | null;
   eventId: string;
   eventName: string;
   state: string | null;
@@ -78,6 +81,12 @@ export interface UpdateContactPayload {
   reviewStatus?: string;
   interactionNotes?: string | null;
   contactIntent?: 'hot' | 'warm' | 'cold' | null;
+}
+
+export interface Rep {
+  id: string;
+  name: string;
+  phoneNumber: string;
 }
 
 export interface MergeDuplicatesPayload {

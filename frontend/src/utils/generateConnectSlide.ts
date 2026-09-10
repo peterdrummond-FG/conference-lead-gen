@@ -126,10 +126,18 @@ async function renderQrCanvas(url: string): Promise<HTMLCanvasElement> {
   return qrCanvas;
 }
 
+export type ConnectSlideChannel = 'booth' | 'session';
+
+const CHANNEL_EYEBROW: Record<ConnectSlideChannel, string> = {
+  booth: 'AT OUR BOOTH',
+  session: "IN TODAY'S SESSION",
+};
+
 export interface ConnectSlideDetails {
   eventName: string;
   state: string;
   intakeUrl: string;
+  channel: ConnectSlideChannel;
 }
 
 // Draws the CKH-branded "scan to connect" slide onto an offscreen canvas.
@@ -164,10 +172,18 @@ export async function renderConnectSlide(
     logoHeight,
   );
 
-  // Headline + gold accent rule, standing in for the print flyer's nested
-  // gold border.
+  // Eyebrow tag identifying which of the two slides this is — the only
+  // visual difference between the booth and breakout-session versions
+  // besides the QR itself, so a rep glancing at two open files (or two
+  // printed pages) can tell them apart at a glance.
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = CKH_GOLD;
+  ctx.font = `700 30px ${FONT_STACK}`;
+  ctx.fillText(CHANNEL_EYEBROW[details.channel], COL_X, 480);
+
+  // Headline + gold accent rule, standing in for the print flyer's nested
+  // gold border.
   ctx.fillStyle = '#FFFFFF';
   fitFontSize(ctx, 'CONNECT WITH US', COL_WIDTH, 96, 60);
   ctx.fillText('CONNECT WITH US', COL_X, 540);
@@ -239,7 +255,7 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}.png`;
+  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}-${details.channel}.png`;
   link.click();
   URL.revokeObjectURL(url);
 }

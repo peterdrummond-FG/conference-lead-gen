@@ -23,6 +23,13 @@ function csvField(value: string): string {
 }
 
 // deno-lint-ignore no-explicit-any
+function channelLabel(c: any): string {
+  if (c.qr_channel === "booth") return "Booth";
+  if (c.qr_channel === "session") return "Breakout Session";
+  return "";
+}
+
+// deno-lint-ignore no-explicit-any
 function buildDescription(c: any): string {
   const parts: string[] = [];
   if (c.extraction_confidence) parts.push(`Extraction confidence: ${c.extraction_confidence}`);
@@ -58,7 +65,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Lead Source,Description"];
+  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Lead Source,Capture Channel,Description"];
   for (const c of contacts) {
     lines.push([
       csvField(""),
@@ -70,6 +77,7 @@ Deno.serve(async (req) => {
       csvField(c.matched_zoho_account_name ?? ""),
       csvField(c.matched_zoho_account_id ?? ""),
       csvField(c.event?.name ?? ""),
+      csvField(channelLabel(c)),
       csvField(buildDescription(c)),
     ].join(","));
   }

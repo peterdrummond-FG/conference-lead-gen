@@ -55,6 +55,27 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { id: existingByHash.id, alreadyProcessed: true, createdAt: existingByHash.created_at });
   }
 
+  // Whichever rep's phone this card was texted in from, if that number is
+  // in the reps roster — same attribution contacts-create does via the
+  // active event's channel assignment, just resolved from the sender's
+  // phone number instead since there's no QR channel involved here.
+  let repId: string | null = null;
+  if (body.inboundMessageId) {
+    const { data: message } = await supabase
+      .from("inbound_messages")
+      .select("from_phone")
+      .eq("id", body.inboundMessageId)
+      .maybeSingle();
+    if (message?.from_phone) {
+      const { data: rep } = await supabase
+        .from("reps")
+        .select("id")
+        .eq("phone_number", message.from_phone)
+        .maybeSingle();
+      repId = rep?.id ?? null;
+    }
+  }
+
   const district = await resolveDistrict(supabase, targetEvent.state, body.districtName);
   // A school can only be matched within a resolved district's scope — if the
   // district itself didn't resolve to a real row, any school name is kept as
@@ -74,6 +95,7 @@ Deno.serve(async (req) => {
       payload: {
         event_id: targetEvent.id,
         source: "card_photo",
+        rep_id: repId,
         first_name: body.firstName,
         last_name: body.lastName,
         // Deliberately not enforced the way contacts-create enforces it — a

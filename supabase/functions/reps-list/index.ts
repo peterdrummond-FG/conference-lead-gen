@@ -1,29 +1,23 @@
-// GET -> the currently active Event, or null. Public — Intake needs this to
-// know which event contacts are attached to without a PIN.
+// GET -> Rep[]. Staff-gated (used by /setup).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
+import { requireStaffPin } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "GET") return errorResponse(req, 405, "Method not allowed");
+  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
 
   const supabase = serviceClient();
   const { data, error } = await supabase
-    .from("events")
+    .from("reps")
     .select("*")
-    .eq("is_active", true)
-    .maybeSingle();
+    .order("name");
   if (error) return errorResponse(req, 500, error.message);
-  if (!data) return jsonResponse(req, null);
 
-  return jsonResponse(req, {
-    id: data.id,
-    name: data.name,
-    state: data.state,
-    activatedAt: data.activated_at,
-    folderCode: data.folder_code,
-    boothRepId: data.booth_rep_id,
-    sessionRepId: data.session_rep_id,
-  });
+  return jsonResponse(
+    req,
+    data.map((r) => ({ id: r.id, name: r.name, phoneNumber: r.phone_number })),
+  );
 });

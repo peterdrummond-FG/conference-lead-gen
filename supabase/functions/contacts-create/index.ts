@@ -1,11 +1,17 @@
 // POST { firstName, lastName, email?, phone?, title?, state?, schoolDistrictId?,
-//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw? }
+//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw?, qrChannel? }
 // -> { id, createdAt }, 201. Public (kiosk form, no PIN).
 //
 // State/district/school are all attendee-optional. A typed value that didn't
 // match an existing district/school row arrives as *NameRaw plain text
 // instead of an id — it is never turned into a new school_districts/schools
 // row here (that's what created the free-text junk this schema replaced).
+//
+// qrChannel ('booth' | 'session') is the ?channel= query param IntakePage.vue
+// read off the URL the attendee actually scanned — anything else (missing,
+// a bookmarked/typed URL, a stale value) is silently dropped to null rather
+// than rejected, since which QR drove the scan is a nice-to-have tag, not
+// something worth blocking a submission over.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
@@ -28,16 +34,27 @@ Deno.serve(async (req) => {
     return errorResponse(req, 400, "schoolId requires schoolDistrictId — a school can't be picked without its district.");
   }
 
+  const qrChannel = body.qrChannel === "booth" || body.qrChannel === "session" ? body.qrChannel : null;
+
   const supabase = serviceClient();
 
   // EventId is resolved server-side, never trusted from the client.
   const { data: activeEvent, error: eventError } = await supabase
     .from("events")
-    .select("id")
+    .select("id, booth_rep_id, session_rep_id")
     .eq("is_active", true)
     .maybeSingle();
   if (eventError) return errorResponse(req, 500, eventError.message);
   if (!activeEvent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
+
+  // Whichever rep is currently credited for this channel on the active
+  // event (set via events-assign-rep) — null if that channel has no rep
+  // assigned, or the scan carried no channel at all.
+  const repId = qrChannel === "booth"
+    ? activeEvent.booth_rep_id
+    : qrChannel === "session"
+    ? activeEvent.session_rep_id
+    : null;
 
   if (body.schoolDistrictId) {
     const { data: district, error: districtError } = await supabase
@@ -72,6 +89,8 @@ Deno.serve(async (req) => {
       payload: {
         event_id: activeEvent.id,
         source: "form",
+        qr_channel: qrChannel,
+        rep_id: repId,
         first_name: body.firstName,
         last_name: body.lastName,
         email: body.email || null,

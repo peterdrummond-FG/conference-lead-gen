@@ -70,6 +70,16 @@
             <q-tooltip>Import source — where this contact signed up</q-tooltip>
           </q-chip>
 
+          <q-chip v-if="contact.qrChannel" dense size="sm" class="tag-chip tone-blue">
+            {{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}
+            <q-tooltip>Which QR code this lead scanned</q-tooltip>
+          </q-chip>
+
+          <q-chip v-if="contact.repName" dense size="sm" class="tag-chip tone-teal">
+            {{ contact.repName }}
+            <q-tooltip>Rep credited with this lead</q-tooltip>
+          </q-chip>
+
           <q-chip v-if="contact.extractionConfidence" dense size="sm" :class="['tag-chip', `tone-${confidenceTone(contact.extractionConfidence)}`]">
             Import confidence: {{ capitalize(contact.extractionConfidence) }}
             <q-tooltip>
@@ -607,6 +617,11 @@ function capitalize(s: string) {
 .tone-blue {
   background: #E3F1FA;
   color: #0067AC;
+}
+
+.tone-teal {
+  background: #E0F2F1;
+  color: #00695C;
 }
 
 .tone-grey {
