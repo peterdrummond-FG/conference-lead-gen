@@ -96,19 +96,39 @@
             <q-tooltip>How confident the CRM match itself is</q-tooltip>
           </q-chip>
 
-          <q-chip v-if="contact.matchedZohoAccountId && contact.hasActiveOpportunity !== null" dense size="sm" :class="['tag-chip', contact.hasActiveOpportunity ? 'tone-green' : 'tone-grey']">
-            {{ contact.hasActiveOpportunity ? 'Active opportunity' : 'No active opportunity' }}
-            <q-tooltip>
-              <template v-if="contact.hasActiveOpportunity">{{ contact.activeOpportunityName || 'This account has an open or signed opportunity in Zoho.' }}</template>
-              <template v-else>Existing account, but no active opportunity currently open.</template>
-            </q-tooltip>
-          </q-chip>
-
           <q-chip v-if="isStuck" dense size="sm" class="tag-chip tone-red">Stuck — needs manual retry</q-chip>
+        </div>
+        <div class="row items-center q-gutter-xs q-mt-xs">
+          <span class="text-caption text-grey">Contact intent:</span>
+          <q-btn
+            v-for="opt in intentOptions"
+            :key="opt.value"
+            dense
+            no-caps
+            unelevated
+            size="sm"
+            :outline="contact.contactIntent !== opt.value"
+            :color="opt.color"
+            :label="opt.label"
+            class="q-px-sm"
+            @click="setContactIntent(opt.value)"
+          />
+          <q-btn
+            v-if="contact.contactIntent"
+            dense
+            flat
+            no-caps
+            size="sm"
+            color="grey-7"
+            label="Clear"
+            @click="setContactIntent(null)"
+          />
+          <q-tooltip>Optional — how the conversation with this person went. Auto-suggested from voice-memo notes unless set here.</q-tooltip>
         </div>
         <div class="text-caption text-grey">
           {{ contact.eventName }} · {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
         </div>
+        <div v-if="contact.glanceSummary" class="text-body2 q-mt-xs">{{ contact.glanceSummary }}</div>
         <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey">
           Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
           <q-btn dense flat size="sm" color="primary" label="Retry match" class="q-ml-sm" @click="$emit('retryMatch', contact.id)" />
@@ -135,6 +155,7 @@
               {{ contact.matchedZohoContactEmail || 'No email on file' }} · {{ contact.matchedZohoContactPhone || 'No phone on file' }}
             </div>
             <div class="text-caption">{{ contact.matchedZohoAccountName }}</div>
+            <div v-if="opportunityLine" class="text-caption">{{ opportunityLine }}</div>
           </div>
           <div class="q-mt-sm row q-gutter-sm">
             <q-btn dense color="positive" size="sm" label="Confirm match" @click="$emit('approve', contact.id)" />
@@ -147,6 +168,7 @@
           <div class="q-mt-xs">
             {{ contact.matchedZohoAccountName }}<span v-if="contact.matchedZohoAccountLevel"> · {{ capitalize(contact.matchedZohoAccountLevel) }}</span>
           </div>
+          <div v-if="opportunityLine" class="text-caption">{{ opportunityLine }}</div>
           <div class="text-caption">No existing contact found at this account — {{ contact.firstName }} {{ contact.lastName }} would be added as new.</div>
         </q-banner>
 
@@ -432,6 +454,16 @@ function resolveCandidate(candidate: CandidateMatch) {
   emit('update', props.contact.id, payload);
 }
 
+const intentOptions: { value: 'hot' | 'warm' | 'cold'; label: string; color: string }[] = [
+  { value: 'hot', label: 'Hot', color: 'red' },
+  { value: 'warm', label: 'Warm', color: 'orange' },
+  { value: 'cold', label: 'Cold', color: 'blue-8' },
+];
+
+function setContactIntent(value: 'hot' | 'warm' | 'cold' | null) {
+  emit('update', props.contact.id, { contactIntent: value });
+}
+
 function notAMatch() {
   const payload: UpdateContactPayload = {
     matchedZohoContactId: null,
@@ -495,6 +527,19 @@ const matchStatusLabel = computed(() => {
     default:
       return `Account: ${capitalize(props.contact.matchStatus)}`;
   }
+});
+
+// hasActiveOpportunity is only ever meaningful once an account is matched
+// (see match-contact's own null-together rule) — a null value at that point
+// means the check was skipped, not that there's confidently no opportunity,
+// so it gets its own wording rather than silently looking the same as "no".
+const opportunityLine = computed(() => {
+  if (!props.contact.matchedZohoAccountId) return null;
+  if (props.contact.hasActiveOpportunity === true) {
+    return `Active opportunity — ${props.contact.activeOpportunityName || 'unnamed'}`;
+  }
+  if (props.contact.hasActiveOpportunity === false) return 'No active opportunity';
+  return 'Opportunity status not yet checked';
 });
 
 const matchStatusTone = computed(() => {

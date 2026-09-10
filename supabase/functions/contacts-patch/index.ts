@@ -95,6 +95,17 @@ Deno.serve(async (req) => {
     if (has(body, jsonKey)) updates[column] = body[jsonKey];
   }
 
+  // contactIntent is reviewer-set, separate from the auto classification
+  // local-agent's intentLoop writes from voice-memo text. Any explicit PATCH
+  // here — including clearing it back to null — is a human decision, so it
+  // always flips contact_intent_is_manual. Setting it to null specifically
+  // means "clear my manual pick", which hands control back to auto
+  // classification rather than leaving the field stuck manual-and-empty.
+  if (has(body, "contactIntent")) {
+    updates.contact_intent = body.contactIntent;
+    updates.contact_intent_is_manual = body.contactIntent !== null;
+  }
+
   // Any explicit reviewStatus change here is a human decision — never
   // something merge-duplicates should later treat as safe to auto-undo.
   if (has(body, "reviewStatus")) updates.auto_approved = false;

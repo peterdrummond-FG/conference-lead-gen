@@ -44,7 +44,9 @@ export interface ContactListItem {
   localDuplicateOfContactContext: string | null;
   reviewStatus: string;
   notes: string | null;
+  glanceSummary: string | null;
   interactionNotes: string | null;
+  contactIntent: 'hot' | 'warm' | 'cold' | null;
   hasPhoto: boolean;
   hasCroppedPhoto: boolean;
   matchAttempts: number;
@@ -75,6 +77,7 @@ export interface UpdateContactPayload {
   matchConfidence?: string | null;
   reviewStatus?: string;
   interactionNotes?: string | null;
+  contactIntent?: 'hot' | 'warm' | 'cold' | null;
 }
 
 export interface MergeDuplicatesPayload {

@@ -82,29 +82,47 @@ output step with `matchStatus: "ambiguous"`, `matchConfidence: "low"`, and
 explain the missing field in `notes`. Never crash on malformed input.
 
 **None of `researchNotes`, `alternateNameSpellings`, `institutionLevel*`, or
-`titleFinding*` are persisted anywhere in the database — only this skill's
-own `notes` field is.** Anything from `research-contact`'s output that isn't
-folded into `notes` is gone permanently the moment this skill finishes —
-there is no other record of it, in this database or anywhere else. `notes`
-is also the only one of these fields a reviewer actually reads (the review
-UI shows it behind a "Show match reasoning" toggle, and it's what carries
-through to the Zoho export). That makes summarizing them into `notes` this
-skill's job, not an optional courtesy:
-- **Always** state, briefly, whatever `research-contact` found for
-  `institutionLevel` (central office vs. a named campus) and `titleFinding` +
-  its as-of date, whenever either is non-null/non-"unknown" — a reviewer has
-  no other way to see these.
-- **Always** state a proposed `alternateNameSpellings` correction when
-  present, even if it didn't end up changing your `matchStatus` — e.g. "web
-  research suggests 'Pruitt' rather than 'Pruit' (high confidence)".
-- The review UI flags any two contacts sharing a first+last name as a
-  possible duplicate, regardless of event or district, so a reviewer looking
-  at that flag needs whatever `research-contact` found about whether this
-  looks like the same person or a same-named stranger. If `researchNotes`
-  says anything about this name being tied to a different institution/state,
-  or explicitly found nowhere else, carry that specific point forward too.
-- Keep the whole summary tight — a sentence or two per point, not a
-  transcript of `researchNotes`.
+`titleFinding*` are persisted anywhere in the database as their own fields —
+only this skill's own `notes` and `glanceSummary` fields are.** Anything from
+`research-contact`'s output that isn't folded into one of those two is gone
+permanently the moment this skill finishes — there is no other record of it,
+in this database or anywhere else. That makes summarizing them this skill's
+job, not an optional courtesy. The two fields serve different readers:
+
+- **`glanceSummary`** is the ONE thing a reviewer sees without expanding
+  anything — it renders directly on the card, always visible. Exactly one
+  plain sentence answering "who is this person": their likely role
+  (`titleFinding`, e.g. "Principal") and whether they're at a specific campus
+  (`institutionLevelCampusName`) or the district's central office
+  (`institutionLevel`), e.g. `"Likely Principal at Ruleville Central
+  Elementary (as of 2025)."` or `"District-level central office contact — no
+  specific campus identified."` Populate it whenever `research-contact`
+  returned a non-null/non-"unknown" `institutionLevel` or `titleFinding`;
+  leave it `null` only when both are unknown — never pad it out with
+  match/account details that already have their own place on the card (the
+  matched account name, confidence chips, etc. — this field is about the
+  PERSON, not the match).
+- **`notes`** is the full reasoning, shown behind a "Show match reasoning"
+  toggle and carried through to the Zoho export — it can and should be more
+  detailed than `glanceSummary`:
+  - **Always** state, briefly, whatever `research-contact` found for
+    `institutionLevel` and `titleFinding` + its as-of date, whenever either is
+    non-null/non-"unknown" — don't assume the one-sentence `glanceSummary`
+    covers this well enough on its own; a reviewer reading match reasoning
+    still has no other way to see the fuller picture (as-of dates, source
+    confidence) than restating it here too.
+  - **Always** state a proposed `alternateNameSpellings` correction when
+    present, even if it didn't end up changing your `matchStatus` — e.g. "web
+    research suggests 'Pruitt' rather than 'Pruit' (high confidence)".
+  - The review UI flags any two contacts sharing a first+last name as a
+    possible duplicate, regardless of event or district, so a reviewer
+    looking at that flag needs whatever `research-contact` found about
+    whether this looks like the same person or a same-named stranger. If
+    `researchNotes` says anything about this name being tied to a different
+    institution/state, or explicitly found nowhere else, carry that specific
+    point forward too.
+  - Keep the whole summary tight — a sentence or two per point, not a
+    transcript of `researchNotes`.
 
 ## Steps
 
@@ -329,7 +347,8 @@ indentation requirement, just valid JSON):
       "candidateMatches": [
         {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8, "level": "district"}
       ],
-      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. Web research also proposes 'Pruitt' rather than the input's 'Pruit' (high confidence) and places this person at a specific campus (Ruleville Central Elementary, as of 2025) as Principal (as of 2025), not the district's central office. No existing linked Contact named Latoya Pruitt/Pruitt at this account. No active Deal found for this account."
+      "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. Web research also proposes 'Pruitt' rather than the input's 'Pruit' (high confidence) and places this person at a specific campus (Ruleville Central Elementary, as of 2025) as Principal (as of 2025), not the district's central office. No existing linked Contact named Latoya Pruitt/Pruitt at this account. No active Deal found for this account.",
+      "glanceSummary": "Likely Principal at Ruleville Central Elementary (as of 2025), not the district office."
     }
 
 `candidateMatches` is `null` (not `[]`) when there's nothing worth surfacing —
@@ -345,5 +364,8 @@ rule as `matchedZohoAccountId`/`Name` — all three set together, all three
 `matchedZohoContactId`'s same null-together rule. `hasActiveOpportunity`/
 `activeOpportunityName` follow `matchedZohoAccountId`'s presence instead (see
 step 6) — both `null` when no account was matched, otherwise
-`hasActiveOpportunity` is always a real `true`/`false`. Re-verify field names
-and enum strings against this file before printing.
+`hasActiveOpportunity` is always a real `true`/`false`. `glanceSummary` is
+independent of all of the above — it's about the person, derived purely from
+`research-contact`'s `institutionLevel`/`titleFinding`, `null` only when
+`research-contact` found neither. Re-verify field names and enum strings
+against this file before printing.

@@ -144,6 +144,7 @@ async function processContact(contact) {
     p_active_opportunity_name: matchOutput.activeOpportunityName ?? null,
     p_candidate_matches: matchOutput.candidateMatches ?? null,
     p_notes: matchOutput.notes ?? null,
+    p_glance_summary: matchOutput.glanceSummary ?? null,
     p_research_confidence: researchOutput.researchConfidence ?? null,
     p_person_verified: researchOutput.personVerified ?? null,
     p_extraction_ok: extractionOk,
@@ -680,6 +681,87 @@ async function transcriptionLoop() {
 }
 
 // ---------------------------------------------------------------------
+// Contact-intent classification poll loop
+// ---------------------------------------------------------------------
+// Runs the classify-contact-intent skill against interaction_notes (rep-
+// typed text and voice-memo transcripts alike) whenever that text differs
+// from contact_intent_classified_notes — the snapshot last fed to the
+// classifier, standing in for an updated_at column contacts doesn't have —
+// and only while contact_intent_is_manual is false. A reviewer's own pick on
+// the review card always wins and is never revisited here; see
+// 20260910140000_add_contact_intent.sql.
+const INTENT_POLL_INTERVAL_MS = Number(process.env.INTENT_POLL_INTERVAL_MS ?? 20_000);
+const VALID_CONTACT_INTENTS = new Set(['hot', 'warm', 'cold', null]);
+
+async function findContactsNeedingIntentClassification() {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, interaction_notes, contact_intent_classified_notes')
+    .eq('contact_intent_is_manual', false)
+    .not('interaction_notes', 'is', null)
+    .neq('interaction_notes', '')
+    .limit(200);
+  if (error) throw error;
+  // contact_intent_classified_notes != interaction_notes isn't a filter
+  // PostgREST can express against another column on the same row — compare
+  // client-side instead. Pilot-scale row counts make this cheap.
+  return (data ?? []).filter((c) => c.interaction_notes !== c.contact_intent_classified_notes);
+}
+
+async function classifyContactIntent(contact) {
+  const result = await runSkill(
+    'classify-contact-intent',
+    { contactId: contact.id, interactionNotes: contact.interaction_notes },
+    REPO_ROOT,
+  );
+  const intent = result.contactIntent ?? null;
+  if (!VALID_CONTACT_INTENTS.has(intent)) {
+    throw new Error(`classify-contact-intent returned an invalid contactIntent: ${JSON.stringify(result.contactIntent)}`);
+  }
+
+  // Optimistic write: the WHERE clause re-asserts both contact_intent_is_manual=false
+  // and the exact interaction_notes text this result was classified from — a
+  // reviewer's manual pick, or a newer note landing mid-classification,
+  // lands a no-op update here instead of clobbering something fresher. The
+  // next tick re-reads current state and (for a newer note) reclassifies it.
+  const { error } = await supabase
+    .from('contacts')
+    .update({ contact_intent: intent, contact_intent_classified_notes: contact.interaction_notes })
+    .eq('id', contact.id)
+    .eq('contact_intent_is_manual', false)
+    .eq('interaction_notes', contact.interaction_notes);
+  if (error) throw error;
+}
+
+async function intentTick() {
+  let candidates;
+  try {
+    candidates = await findContactsNeedingIntentClassification();
+  } catch (err) {
+    log(`ERROR finding contacts needing intent classification: ${err.message ?? err}`);
+    return;
+  }
+
+  for (const contact of candidates) {
+    try {
+      await classifyContactIntent(contact);
+      log(`intent classified: ${contact.id}`);
+    } catch (err) {
+      log(`intent classification FAIL: ${contact.id} — ${err.message ?? err}`);
+    }
+  }
+}
+
+async function intentLoop() {
+  log(`intent loop starting (poll every ${INTENT_POLL_INTERVAL_MS}ms)`);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    await intentTick();
+    await sleep(INTENT_POLL_INTERVAL_MS);
+  }
+}
+
+// ---------------------------------------------------------------------
 
 // Resets any inbound_messages row a previous run left stuck at
 // status='processing' (crashed/killed mid-photo-or-transcription) back to
@@ -710,7 +792,8 @@ log('=== local-agent starting ===');
 
 await reconcileStaleInboundMessages();
 
-// Three independent, concurrently-running loops in one process — a slow
+// Four independent, concurrently-running loops in one process — a slow
 // process-cards run (up to 15 min) must not delay the 20s matching poll,
-// and transcription runs independently of both.
-await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop()]);
+// and transcription/intent classification each run independently of the
+// others.
+await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop()]);
