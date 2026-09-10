@@ -106,6 +106,21 @@ async function processContact(contact) {
     throw new Error('match-contact violated its contract and returned matchStatus=pending');
   }
 
+  // Real Zoho record ids in this org are long numeric strings (e.g.
+  // "3001271000007193584") — caught a run once where the model's own prose
+  // reasoning concluded no account existed, but the structured fields it
+  // emitted alongside that reasoning claimed a "high confidence" match
+  // against a fabricated id ("ase") and name ("asdf") anyway. Treat that
+  // self-contradiction the same as the pending check above: a pipeline
+  // failure to retry, never a result to trust blindly.
+  const ZOHO_ID_PATTERN = /^\d{15,}$/;
+  const isValidZohoId = (id) => id == null || ZOHO_ID_PATTERN.test(id);
+  if (!isValidZohoId(matchOutput.matchedZohoAccountId) || !isValidZohoId(matchOutput.matchedZohoContactId)) {
+    throw new Error(
+      `match-contact returned a malformed Zoho id (account=${JSON.stringify(matchOutput.matchedZohoAccountId)}, contact=${JSON.stringify(matchOutput.matchedZohoContactId)}) — refusing to persist a fabricated match.`,
+    );
+  }
+
   // Auto-approve rule from MatchingBackgroundService.cs, now evaluated
   // atomically inside finalize_contact_match against the row's *current*
   // review_status/local_duplicate_of_contact_id at write time — not the
