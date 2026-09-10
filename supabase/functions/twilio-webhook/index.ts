@@ -8,9 +8,15 @@
 // 20260909170000_conference_setup_sms.sql) -> bind this phone number to an
 // event (phone_event_bindings) either way. Media present -> classify each
 // attachment photo/audio off its content-type, insert one inbound_messages
-// row per item, and download+upload each to Storage in the background
+// row per item. Audio downloads+uploads to Storage fully in the background
 // (EdgeRuntime.waitUntil) after the TwiML reply is already sent, since
-// Twilio expects a fast ack.
+// Twilio expects a fast ack. Photos are downloaded inline instead (still
+// ack'd well within Twilio's timeout) so a whole-image sha256 match against
+// contacts.source_image_hash — a rep re-sending the exact same shot — can
+// be reported back in that same reply instead of silently no-op'ing deep in
+// process-cards minutes later with no feedback to the rep at all; the
+// Storage upload itself still happens in the background either way, reusing
+// the bytes already downloaded for hashing.
 // npm:twilio@5's CJS/ESM interop doesn't expose validateRequest as a named
 // export under Deno — it's only reachable off the default export (verified
 // via a BOOT_ERROR in function_logs on the first deploy attempt).
@@ -294,6 +300,16 @@ Deno.serve(async (req) => {
   }
 
   let received = 0;
+  // Duplicate photos (a rep re-sending the exact same shot, e.g. while
+  // testing) used to disappear silently: process-cards would correctly
+  // no-op them against contacts.source_image_hash, but nothing ever told
+  // the rep that — they'd just see the same generic "Got it" reply as a
+  // brand-new card and assume the pipeline was broken. Checked here,
+  // synchronously, so the very first reply already says so — this can't
+  // wait for local-agent's background OCR pass, which may run minutes
+  // later or not be running at all.
+  const noteworthy: string[] = [];
+
   for (let i = 0; i < numMedia; i++) {
     const mediaUrl = params[`MediaUrl${i}`];
     const contentType = params[`MediaContentType${i}`] ?? "";
@@ -327,6 +343,74 @@ Deno.serve(async (req) => {
     if (kind === "unrecognized" || !mediaUrl) continue;
 
     const messageId = inserted.id;
+    const bucket = kind === "photo" ? "contact-photos" : "voice-memos";
+    const key = `sms/${messageId}.${extFromContentType(contentType)}`;
+
+    if (kind === "photo") {
+      // Photos only: download inline (not in the background) so the hash
+      // is known before the TwiML reply is built. Audio has no dedup
+      // concept, so it keeps the original fully-backgrounded path below.
+      try {
+        const res = await fetch(mediaUrl, {
+          headers: { Authorization: "Basic " + btoa(`${accountSid}:${authToken}`) },
+        });
+        if (!res.ok) throw new Error(`Twilio media fetch failed: HTTP ${res.status}`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const hashBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+        const hash = Array.from(hashBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+        // A plain (unsuffixed) hash match only ever corresponds to a prior
+        // single-card submission — process-cards suffixes multi-card hashes
+        // with -01/-02/etc, so this can't false-positive against one card
+        // of an unrelated multi-card sheet.
+        const { data: existingContact } = await supabase
+          .from("contacts")
+          .select("first_name, last_name")
+          .eq("source_image_hash", hash)
+          .maybeSingle();
+
+        // Upload in the background either way (still worth archiving a
+        // duplicate submission) — reuses the bytes already downloaded above
+        // rather than fetching from Twilio a second time.
+        // deno-lint-ignore no-explicit-any
+        (globalThis as any).EdgeRuntime?.waitUntil((async () => {
+          try {
+            const { error: uploadError } = await supabase.storage
+              .from(bucket)
+              .upload(key, bytes, { contentType, upsert: true });
+            if (uploadError) throw uploadError;
+            await supabase.from("inbound_messages").update({ storage_path: key }).eq("id", messageId);
+          } catch (err) {
+            console.error(`media upload failed for ${messageId}`, err);
+            // Don't clobber a status this request already finalized below
+            // (completed, for the duplicate path) with a stale failure.
+            await supabase
+              .from("inbound_messages")
+              .update({ status: "failed", error: String(err instanceof Error ? err.message : err) })
+              .eq("id", messageId)
+              .eq("status", "pending_ocr");
+          }
+        })());
+
+        if (existingContact) {
+          await supabase.from("inbound_messages").update({
+            status: "completed",
+            processed_at: new Date().toISOString(),
+          }).eq("id", messageId);
+          const name = [existingContact.first_name, existingContact.last_name].filter(Boolean).join(" ") || "an existing contact";
+          noteworthy.push(`Already have this one — ${name}.`);
+        }
+      } catch (err) {
+        console.error(`media download failed for ${messageId}`, err);
+        await supabase
+          .from("inbound_messages")
+          .update({ status: "failed", error: String(err instanceof Error ? err.message : err) })
+          .eq("id", messageId);
+        noteworthy.push(`Couldn't download that photo — try resending it.`);
+      }
+      continue;
+    }
+
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil((async () => {
       try {
@@ -335,8 +419,6 @@ Deno.serve(async (req) => {
         });
         if (!res.ok) throw new Error(`Twilio media fetch failed: HTTP ${res.status}`);
         const bytes = new Uint8Array(await res.arrayBuffer());
-        const bucket = kind === "photo" ? "contact-photos" : "voice-memos";
-        const key = `sms/${messageId}.${extFromContentType(contentType)}`;
 
         const { error: uploadError } = await supabase.storage
           .from(bucket)
@@ -354,5 +436,5 @@ Deno.serve(async (req) => {
     })());
   }
 
-  return twiml(`Got it — ${received} item(s) received.`);
+  return twiml([`Got it — ${received} item(s) received.`, ...noteworthy].join(" "));
 });
