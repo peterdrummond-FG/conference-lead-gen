@@ -46,8 +46,9 @@
                 <span class="text-weight-bold">SETUP</span>
                 to
                 <span class="text-weight-bold">{{ twilioNumber }}</span>
-                to activate SMS-based conference lead capture, then reply to the prompts to find and
-                confirm today's event by name. Do this again if you switch phones or events.
+                to activate SMS-based conference lead capture.
+                <span class="text-grey">Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.</span>
+                Then reply to the prompts to find and confirm today's event by name. Do this again if you switch phones or events.
               </li>
               <li>Text a photo of a business card — one card filling the frame, or several laid out together on the table.</li>
               <li>
