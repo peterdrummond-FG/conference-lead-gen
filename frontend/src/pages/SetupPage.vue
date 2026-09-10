@@ -46,7 +46,7 @@
                 <span class="text-weight-bold">SETUP</span>
                 to
                 <span class="text-weight-bold">{{ twilioNumber }}</span>
-                to activate SMS-based conference lead capture.
+                to activate SMS-based conference lead capture. By texting SETUP, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture.
                 <span class="text-grey">Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.</span>
                 Then reply to the prompts to find and confirm today's event by name. Do this again if you switch phones or events.
               </li>
