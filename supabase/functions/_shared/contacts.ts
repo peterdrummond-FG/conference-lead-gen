@@ -44,6 +44,7 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     matchedZohoContactTitle: c.matched_zoho_contact_title,
     matchedZohoAccountId: c.matched_zoho_account_id,
     matchedZohoAccountName: c.matched_zoho_account_name,
+    matchedZohoAccountLevel: c.matched_zoho_account_level,
     hasActiveOpportunity: c.has_active_opportunity,
     activeOpportunityName: c.active_opportunity_name,
     candidateMatches: c.candidate_matches,

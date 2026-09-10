@@ -124,6 +124,7 @@ async function processContact(contact) {
     p_matched_zoho_contact_title: matchOutput.matchedZohoContactTitle ?? null,
     p_matched_zoho_account_id: matchOutput.matchedZohoAccountId ?? null,
     p_matched_zoho_account_name: matchOutput.matchedZohoAccountName ?? null,
+    p_matched_zoho_account_level: matchOutput.matchedZohoAccountLevel ?? null,
     p_has_active_opportunity: matchOutput.hasActiveOpportunity ?? null,
     p_active_opportunity_name: matchOutput.activeOpportunityName ?? null,
     p_candidate_matches: matchOutput.candidateMatches ?? null,

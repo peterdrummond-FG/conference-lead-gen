@@ -142,6 +142,14 @@
           </div>
         </q-banner>
 
+        <q-banner v-else-if="contact.matchStatus === 'new_contact_existing_account' && contact.matchedZohoAccountName" dense class="bg-blue-1 text-blue-10 q-mt-sm">
+          <div class="text-weight-medium">Matched Account</div>
+          <div class="q-mt-xs">
+            {{ contact.matchedZohoAccountName }}<span v-if="contact.matchedZohoAccountLevel"> · {{ capitalize(contact.matchedZohoAccountLevel) }}</span>
+          </div>
+          <div class="text-caption">No existing contact found at this account — {{ contact.firstName }} {{ contact.lastName }} would be added as new.</div>
+        </q-banner>
+
         <DuplicateResolutionDialog
           v-model="showDuplicateDialog"
           :contact-id="contact.id"
@@ -217,7 +225,7 @@
             <q-item v-for="c in contact.candidateMatches" :key="c.zohoId" clickable @click="resolveCandidate(c)">
               <q-item-section>
                 <q-item-label>{{ c.name }}</q-item-label>
-                <q-item-label caption>{{ c.type }} · score {{ c.score.toFixed(2) }}</q-item-label>
+                <q-item-label caption>{{ c.type }}<span v-if="c.level"> ({{ c.level }})</span> · score {{ c.score.toFixed(2) }}</q-item-label>
               </q-item-section>
             </q-item>
           </q-list>
@@ -417,6 +425,7 @@ function resolveCandidate(candidate: CandidateMatch) {
       : {
           matchedZohoAccountId: candidate.zohoId,
           matchedZohoAccountName: candidate.name,
+          matchedZohoAccountLevel: candidate.level ?? null,
           matchStatus: 'new_contact_existing_account',
           matchConfidence: 'high',
         };
@@ -463,6 +472,10 @@ function sourceLabel(source: string) {
 }
 
 const matchStatusLabel = computed(() => {
+  // Only 'new_account' has no matched Zoho record to check — for that case
+  // alone, the contact's own claimed school/district is the best available
+  // signal. Every other status has a real matched account, so its actual
+  // level (not a guess from the contact's own fields) drives the wording.
   const hasSchoolMatch = Boolean(props.contact.schoolName || props.contact.schoolNameRaw);
   switch (props.contact.matchStatus) {
     case 'pending':
@@ -470,7 +483,11 @@ const matchStatusLabel = computed(() => {
     case 'existing_contact':
       return 'Account: Existing contact';
     case 'new_contact_existing_account':
-      return hasSchoolMatch ? 'Account: New contact, existing school' : 'Account: New contact, existing district';
+      // matchedZohoAccountLevel is null on rows matched before this field
+      // existed — fall back to the old (less reliable) heuristic for those.
+      return (props.contact.matchedZohoAccountLevel ?? (hasSchoolMatch ? 'school' : 'district')) === 'school'
+        ? 'Account: New contact, existing school'
+        : 'Account: New contact, existing district';
     case 'new_account':
       return hasSchoolMatch ? 'Account: New school' : 'Account: New district';
     case 'ambiguous':

@@ -3,6 +3,7 @@ export interface CandidateMatch {
   zohoId: string;
   name: string;
   score: number;
+  level?: 'district' | 'school' | null;
 }
 
 export interface ContactListItem {
@@ -34,6 +35,7 @@ export interface ContactListItem {
   matchedZohoContactTitle: string | null;
   matchedZohoAccountId: string | null;
   matchedZohoAccountName: string | null;
+  matchedZohoAccountLevel: 'district' | 'school' | null;
   hasActiveOpportunity: boolean | null;
   activeOpportunityName: string | null;
   candidateMatches: CandidateMatch[] | null;
@@ -63,6 +65,7 @@ export interface UpdateContactPayload {
   schoolNameRaw?: string | null;
   matchedZohoAccountId?: string;
   matchedZohoAccountName?: string;
+  matchedZohoAccountLevel?: 'district' | 'school' | null;
   matchedZohoContactId?: string | null;
   matchedZohoContactName?: string | null;
   matchedZohoContactEmail?: string | null;

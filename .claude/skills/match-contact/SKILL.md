@@ -184,6 +184,16 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
    contains genuine duplicate rows for the same district, so a tie is a
    first-class outcome to detect, not an edge case to dismiss.
 
+   Every candidate you list already carries its `Organization_Level` from the
+   query that surfaced it (step 2 or step 3) — translate that directly into
+   `level: "district"` (`'District / Parent entity'`) or `level: "school"`
+   (`'Campus / Child entity'`) on that candidate's `candidateMatches` entry.
+   Whichever candidate ends up as `matchedZohoAccountId`, carry its same
+   `level` into the top-level `matchedZohoAccountLevel` — a reviewer relies on
+   this to know whether "existing account" means a district office or a
+   single campus, and it must reflect the record actually matched, never a
+   guess from the input's own `schoolName`/`districtName` text.
+
 5. **Once a leading Account candidate exists, pull its linked Contacts**
    (a related-records query against that Account for its Contacts list) —
    `First_Name`, `Last_Name`, `Email`, `Phone`, `Title` for each. Do this
@@ -313,10 +323,11 @@ indentation requirement, just valid JSON):
       "matchedZohoContactTitle": null,
       "matchedZohoAccountId": "3001271000007193584",
       "matchedZohoAccountName": "Sunflower County School District",
+      "matchedZohoAccountLevel": "district",
       "hasActiveOpportunity": false,
       "activeOpportunityName": null,
       "candidateMatches": [
-        {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8}
+        {"type": "account", "zohoId": "3001271000007193584", "name": "Sunflower County School District", "score": 0.8, "level": "district"}
       ],
       "notes": "Input district name 'Indianola School District' did not match anything in Zoho for Mississippi. research-contact resolved this to 'Sunflower County School District' based on general geographic knowledge (Indianola, MS is in Sunflower County) — confirmed as a real Account in Zoho, medium confidence since the match came via an alternate name rather than the original input. Web research also proposes 'Pruitt' rather than the input's 'Pruit' (high confidence) and places this person at a specific campus (Ruleville Central Elementary, as of 2025) as Principal (as of 2025), not the district's central office. No existing linked Contact named Latoya Pruitt/Pruitt at this account. No active Deal found for this account."
     }
@@ -327,7 +338,10 @@ candidates at all. `matchedZohoAccountName`/`matchedZohoContactName` are the
 display name of whatever `matchedZohoAccountId`/`matchedZohoContactId` point
 at — set both id and name together, null together (a caller needs the name
 for a CSV export and shouldn't have to re-derive it by searching
-`candidateMatches`). `matchedZohoContactEmail`/`Phone`/`Title` follow
+`candidateMatches`). `matchedZohoAccountLevel` (`"district"` or `"school"`,
+from that Account's `Organization_Level`) follows the same null-together
+rule as `matchedZohoAccountId`/`Name` — all three set together, all three
+`null` together. `matchedZohoContactEmail`/`Phone`/`Title` follow
 `matchedZohoContactId`'s same null-together rule. `hasActiveOpportunity`/
 `activeOpportunityName` follow `matchedZohoAccountId`'s presence instead (see
 step 6) — both `null` when no account was matched, otherwise

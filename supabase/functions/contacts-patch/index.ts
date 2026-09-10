@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
     schoolNameRaw: "school_name_raw",
     matchedZohoAccountId: "matched_zoho_account_id",
     matchedZohoAccountName: "matched_zoho_account_name",
+    matchedZohoAccountLevel: "matched_zoho_account_level",
     matchedZohoContactId: "matched_zoho_contact_id",
     matchedZohoContactName: "matched_zoho_contact_name",
     matchedZohoContactEmail: "matched_zoho_contact_email",
