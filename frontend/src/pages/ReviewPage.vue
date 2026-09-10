@@ -91,24 +91,41 @@ async function load() {
   }
 }
 
+// After a status change, the contact only needs to disappear from the
+// current list when its new status no longer matches the active tab —
+// otherwise (e.g. re-approving while already on the Approved tab) it just
+// stays put with its updated fields, same card, no reshuffle.
+function applyStatusChange(id: string, reviewStatus: string) {
+  if (reviewStatus === tab.value) {
+    const contact = contacts.value.find((c) => c.id === id);
+    if (contact) contact.reviewStatus = reviewStatus;
+    return;
+  }
+  contacts.value = contacts.value.filter((c) => c.id !== id);
+  delete selectedMap[id];
+  if (page.value > pageCount.value) page.value = pageCount.value;
+}
+
 async function approve(id: string) {
   await api.patch(`/contacts-patch`, { reviewStatus: 'approved' }, { params: { id } });
-  await load();
+  applyStatusChange(id, 'approved');
 }
 
 async function reject(id: string) {
   await api.patch(`/contacts-patch`, { reviewStatus: 'rejected' }, { params: { id } });
-  await load();
+  applyStatusChange(id, 'rejected');
 }
 
 async function update(id: string, payload: UpdateContactPayload) {
   await api.patch(`/contacts-patch`, payload, { params: { id } });
-  await load();
+  const contact = contacts.value.find((c) => c.id === id);
+  if (contact) Object.assign(contact, payload);
 }
 
 async function retryMatch(id: string) {
+  // Matching runs async on the server via a queue — there's nothing new to
+  // show immediately, so there's nothing here worth reloading the list for.
   await api.post(`/contacts-retry-match`, undefined, { params: { id } });
-  await load();
 }
 
 async function bulkApprove() {
