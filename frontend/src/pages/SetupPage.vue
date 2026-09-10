@@ -26,6 +26,9 @@
             <div class="text-caption text-grey">
               Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
             </div>
+            <div class="text-caption text-grey q-mt-xs">
+              Already know this code? After you've activated Conference Lead Capture, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event.
+            </div>
           </div>
 
           <q-separator class="q-my-md" />
@@ -40,10 +43,11 @@
             <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
               <li>
                 Text
-                <span class="text-weight-bold">{{ eventStore.activeEvent.folderCode }}</span>
+                <span class="text-weight-bold">SETUP</span>
                 to
                 <span class="text-weight-bold">{{ twilioNumber }}</span>
-                to bind your phone to today's event. Do this again if you switch phones or events.
+                to activate SMS-based conference lead capture, then reply to the prompts to find and
+                confirm today's event by name. Do this again if you switch phones or events.
               </li>
               <li>Text a photo of a business card — one card filling the frame, or several laid out together on the table.</li>
               <li>

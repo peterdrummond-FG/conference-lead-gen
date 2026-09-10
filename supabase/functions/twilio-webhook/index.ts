@@ -27,6 +27,7 @@ const SESSION_STALE_MS = 15 * 60 * 1000;
 // Deliberately a small fixed set rather than a looser regex — a false
 // trigger would hijack what the rep meant as a folder-code bind attempt.
 const START_TRIGGER_PHRASES = new Set([
+  "setup",
   "setup a new conference",
   "set up a new conference",
   "new conference",
