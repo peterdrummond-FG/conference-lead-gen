@@ -175,8 +175,8 @@ const zoomOpen = computed({
   set: (v: boolean) => { if (!v) zoomContactId.value = null; },
 });
 
-// Stage 15: contacts-photo needs an authenticated request (staff PIN +
-// anon-key bearer), which a plain <img src> can't send — same reasoning
+// Stage 15: contacts-photo needs an authenticated request (the caller's own
+// bearer token), which a plain <img src> can't send — same reasoning
 // as useContactPhoto.ts, but this dialog renders a *list* of photos
 // (one per card in the duplicate group) plus one zoomed one, so it keeps
 // its own small id -> blob-URL maps rather than one fixed composable

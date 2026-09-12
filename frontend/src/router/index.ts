@@ -7,9 +7,9 @@ import {
 } from 'vue-router';
 
 import routes from './routes';
-import { useKioskStore } from '@/stores/kiosk-store';
-import { useRoleStore } from '@/stores/role-store';
-import type { Role } from '@/stores/role-store';
+import { useSessionStore } from '@/stores/session-store';
+import { useKioskModeStore } from '@/stores/kiosk-mode-store';
+import type { Role } from '@/types/review';
 
 /*
  * If not building with SSR mode, you can
@@ -35,23 +35,31 @@ export default defineRouter((/* { store, ssrContext } */) => {
     history: createHistory(import.meta.env.QUASAR_VUE_ROUTER_BASE)
   });
 
-  // Locked kiosk mode only ever shows Intake, regardless of what URL was
-  // typed or bookmarked. Once unlocked, a route can still declare which
-  // roles may see it (see routes.ts) — Sales can't reach /export by URL
-  // any more than by clicking a tab that isn't there.
-  Router.beforeEach((to) => {
-    const kioskStore = useKioskStore();
-    if (kioskStore.locked && to.path !== '/intake') {
-      return '/intake';
+  // Intake and its /booth, /session aliases carry no `meta.roles` — they're
+  // the public attendee-facing QR form and stay reachable regardless of
+  // auth state. Every other route requires a real login (Review is the
+  // default landing page once logged in, not Setup or Intake).
+  Router.beforeEach(async (to) => {
+    // This device being locked into kiosk mode overrides everything else,
+    // including an active login — the whole point is that whoever's
+    // physically at this screen only ever sees Intake, regardless of who's
+    // signed in underneath.
+    const kioskModeStore = useKioskModeStore();
+    if (kioskModeStore.locked && to.path !== '/intake') return '/intake';
+
+    const sessionStore = useSessionStore();
+    await sessionStore.initialize();
+    const isLoggedIn = !!sessionStore.user;
+
+    if (to.path === '/login') {
+      return isLoggedIn ? '/review' : true;
     }
 
     const allowedRoles = to.meta.roles as Role[] | undefined;
-    if (allowedRoles) {
-      const roleStore = useRoleStore();
-      if (!allowedRoles.includes(roleStore.role)) {
-        return '/intake';
-      }
-    }
+    if (!allowedRoles) return true;
+
+    if (!isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } };
+    if (!allowedRoles.includes(sessionStore.user!.role)) return '/review';
 
     return true;
   });

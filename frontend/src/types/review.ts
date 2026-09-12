@@ -54,6 +54,7 @@ export interface ContactListItem {
   hasCroppedPhoto: boolean;
   matchAttempts: number;
   lastMatchAttemptAt: string | null;
+  syncedAt: string | null;
   createdAt: string;
 }
 
@@ -83,10 +84,15 @@ export interface UpdateContactPayload {
   contactIntent?: 'hot' | 'warm' | 'cold' | null;
 }
 
-export interface Rep {
+export type Role = 'admin' | 'solutionsSuccess' | 'sales';
+
+export interface Profile {
   id: string;
   name: string;
-  phoneNumber: string;
+  role: Role;
+  phoneNumber: string | null;
+  currentEventId: string | null;
+  email: string | null;
 }
 
 export interface MergeDuplicatesPayload {

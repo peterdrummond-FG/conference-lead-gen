@@ -4,14 +4,15 @@
 // Staff-gated. Port of DuplicateDetection.FindDuplicateGroupAsync + the
 // merge-duplicates endpoint in ContactEndpoints.cs.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "POST") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -33,18 +34,19 @@ Deno.serve(async (req) => {
 
   const { data: keeper, error: keeperError } = await supabase
     .from("contacts")
-    .select("id, local_duplicate_of_contact_id, review_status, auto_approved")
+    .select("id, local_duplicate_of_contact_id, review_status, auto_approved, rep_id")
     .eq("id", id)
     .maybeSingle();
   if (keeperError) return errorResponse(req, 500, keeperError.message);
   if (!keeper) return errorResponse(req, 404, `No contact with id '${id}'.`);
+  if (user.role === "sales" && keeper.rep_id !== user.id) return errorResponse(req, 404, `No contact with id '${id}'.`);
 
   const anchorIds = new Set<string>([keeper.id]);
   if (keeper.local_duplicate_of_contact_id) anchorIds.add(keeper.local_duplicate_of_contact_id);
 
   const { data: group, error: groupError } = await supabase
     .from("contacts")
-    .select("id, local_duplicate_of_contact_id, notes")
+    .select("id, local_duplicate_of_contact_id, notes, rep_id")
     .or(
       `id.in.(${[...anchorIds].join(",")}),local_duplicate_of_contact_id.in.(${[...anchorIds].join(",")})`,
     );
@@ -54,6 +56,15 @@ Deno.serve(async (req) => {
   const badDiscardId = body.discardContactIds.find((discardId: string) => !groupIds.has(discardId));
   if (badDiscardId) return errorResponse(req, 400, `Contact '${badDiscardId}' is not part of this duplicate group.`);
   if (body.discardContactIds.includes(id)) return errorResponse(req, 400, "Cannot discard the contact being kept.");
+  // A sales rep merging their own duplicate can't smuggle in another rep's
+  // contact id as something to discard/reject.
+  if (user.role === "sales") {
+    const foreignDiscardId = body.discardContactIds.find((discardId: string) => {
+      const c = group.find((g) => g.id === discardId);
+      return c?.rep_id !== user.id;
+    });
+    if (foreignDiscardId) return errorResponse(req, 400, `Contact '${foreignDiscardId}' is not part of this duplicate group.`);
+  }
 
   if (body.schoolDistrictId) {
     const { data: district } = await supabase.from("school_districts").select("id").eq("id", body.schoolDistrictId).maybeSingle();

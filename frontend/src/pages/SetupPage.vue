@@ -27,7 +27,7 @@
               Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
             </div>
             <div class="text-caption text-grey q-mt-xs">
-              Already know this code? After you've activated Conference Lead Capture, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event.
+              Already know this code? After you've activated Conference Lead Capture, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event instead of texting SETUP. By texting this code, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
             </div>
           </div>
 
@@ -84,12 +84,27 @@
             </div>
           </div>
 
-          <div class="q-mt-md">
+          <!-- Sales reps have no say in which conference the whole app is
+               running for — only whether they're personally linked to it. -->
+          <div v-if="canManageEvents" class="q-mt-md">
             <q-btn flat color="primary" label="Pick a different event" @click="pickingNew = true" />
+          </div>
+
+          <div v-if="isSales" class="q-mt-md">
+            <q-separator class="q-mb-md" />
+            <div class="text-caption text-grey q-mb-xs">
+              {{ sessionStore.user?.currentEventName ? `You're linked to: ${sessionStore.user.currentEventName}` : "You're not linked to this event yet." }}
+            </div>
+            <q-btn
+              flat no-caps color="primary"
+              :label="isLinkedToActiveEvent ? 'Unlink myself' : 'Link myself to this event'"
+              :loading="linkingMyself"
+              @click="toggleMyCurrentEvent"
+            />
           </div>
         </q-card-section>
 
-        <q-card-section v-if="!eventStore.activeEvent || pickingNew">
+        <q-card-section v-if="canManageEvents && (!eventStore.activeEvent || pickingNew)">
           <q-select
             v-model="selectedCampaign"
             :options="campaignOptions"
@@ -140,21 +155,19 @@
         </q-card-section>
       </q-card>
 
-      <q-card>
+      <q-card v-if="eventStore.activeEvent && canManageEvents">
         <q-card-section>
-          <div class="text-h6">Sales Reps</div>
+          <div class="text-h6">Assign today's event</div>
           <div class="text-caption text-grey">
-            Whose leads are whose — reps texting in cards get matched to this list by phone number.
+            Which sales rep gets credit for booth vs. breakout-session leads.
           </div>
         </q-card-section>
-
-        <q-card-section v-if="eventStore.activeEvent && roleStore.role === 'customerSuccess'">
-          <div class="text-caption text-weight-medium q-mb-sm">Assign today's event</div>
+        <q-card-section>
           <div class="row q-col-gutter-md">
             <q-select
               class="col"
               :model-value="eventStore.activeEvent.boothRepId"
-              :options="reps"
+              :options="salesProfiles"
               option-label="name"
               option-value="id"
               emit-value
@@ -162,12 +175,12 @@
               clearable
               dense
               label="Booth rep"
-              @update:model-value="(v: string | null) => assignRep('booth', v)"
+              @update:model-value="(v: string | null) => assignChannelRep('booth', v)"
             />
             <q-select
               class="col"
               :model-value="eventStore.activeEvent.sessionRepId"
-              :options="reps"
+              :options="salesProfiles"
               option-label="name"
               option-value="id"
               emit-value
@@ -175,89 +188,74 @@
               clearable
               dense
               label="Breakout-session rep"
-              @update:model-value="(v: string | null) => assignRep('session', v)"
+              @update:model-value="(v: string | null) => assignChannelRep('session', v)"
             />
-          </div>
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-section>
-          <q-list v-if="reps.length" dense separator>
-            <q-item v-for="rep in reps" :key="rep.id">
-              <q-item-section>
-                <q-item-label>{{ rep.name }}</q-item-label>
-                <q-item-label caption>{{ rep.phoneNumber }}</q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <q-btn flat round dense icon="delete" color="grey-7" @click="deleteRep(rep.id)" />
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <div v-else class="text-caption text-grey">No reps added yet.</div>
-
-          <div class="text-caption text-grey q-mt-sm">
-            Adding yourself? Set your own PIN here — you'll use it to switch "Signed in as" to your
-            name below.
-          </div>
-          <div class="row q-col-gutter-sm q-mt-xs items-start">
-            <q-input class="col" v-model="newRepName" label="Name" dense />
-            <q-input class="col" v-model="newRepPhone" label="Phone" dense />
-            <q-input class="col" v-model="newRepPin" label="Your PIN (optional)" type="password" dense />
-            <div class="col-auto">
-              <q-btn
-                color="primary"
-                label="Add"
-                :loading="addingRep"
-                :disable="!newRepName || !newRepPhone"
-                @click="addRep"
-              />
-            </div>
           </div>
         </q-card-section>
       </q-card>
 
-      <q-card>
+      <q-card v-if="canManageEvents">
         <q-card-section>
-          <div class="text-h6">Kiosk settings</div>
-          <div class="text-caption text-grey">Who's using this app, and the PIN that unlocks it from the kiosk screen.</div>
-        </q-card-section>
-
-        <q-card-section>
-          <div class="text-caption text-weight-medium q-mb-xs">Signed in as</div>
-          <div class="text-caption text-grey q-mb-sm">
-            For demonstration purposes — pick a rep to preview their own Review view (their PIN
-            confirms it). Customer Success sees everyone's leads, with each one's rep shown.
+          <div class="text-h6">Manage Users</div>
+          <div class="text-caption text-grey">
+            {{ isAdmin ? 'Create and manage Solutions Success and Sales accounts.' : 'Create and manage Sales accounts.' }}
           </div>
-          <q-select
-            :model-value="signedInAsValue"
-            :options="signedInAsOptions"
-            option-label="label"
-            option-value="value"
-            emit-value
-            map-options
-            dense
-            outlined
-            label="Signed in as"
-            @update:model-value="selectSignedInAs"
-          />
         </q-card-section>
 
-        <q-separator />
+        <q-card-section>
+          <q-list v-if="profiles.length" dense separator>
+            <q-item v-for="p in profiles" :key="p.id">
+              <q-item-section>
+                <q-item-label>{{ p.name }} <span class="text-grey">({{ roleLabel(p.role) }})</span></q-item-label>
+                <q-item-label caption>
+                  {{ p.email }}<template v-if="p.phoneNumber"> · {{ p.phoneNumber }}</template>
+                </q-item-label>
+                <q-item-label v-if="p.role === 'sales'" caption>
+                  {{ isLinkedToCurrentEvent(p) ? `Linked to ${eventStore.activeEvent?.name}` : 'Not linked to the current event' }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section v-if="p.role === 'sales' && eventStore.activeEvent" side>
+                <q-btn
+                  flat dense no-caps color="primary"
+                  :label="isLinkedToCurrentEvent(p) ? 'Unlink' : 'Link to current event'"
+                  @click="toggleCurrentEvent(p)"
+                />
+              </q-item-section>
+              <q-item-section side>
+                <q-btn flat round dense icon="delete" color="grey-7" @click="deleteProfile(p.id)" />
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-else class="text-caption text-grey">No accounts yet.</div>
 
-        <q-card-section class="q-gutter-sm">
-          <div class="text-caption text-weight-medium">Change kiosk PIN</div>
-          <q-input v-model="currentPin" type="password" inputmode="numeric" label="Current PIN" dense />
-          <q-input v-model="newPin" type="password" inputmode="numeric" label="New PIN" dense />
-          <div class="text-right">
-            <q-btn
-              flat
-              color="primary"
-              label="Update PIN"
-              :disable="!currentPin || !newPin"
-              :loading="changingPin"
-              @click="changePin"
+          <q-separator class="q-my-md" />
+
+          <div class="text-caption text-weight-medium q-mb-sm">Add a user</div>
+          <div class="q-gutter-sm">
+            <q-input v-model="newName" label="Name" dense />
+            <q-input v-model="newEmail" type="email" label="Email" dense />
+            <q-input v-model="newPassword" type="password" label="Temporary password" dense />
+            <q-select
+              v-if="isAdmin"
+              v-model="newRole"
+              :options="creatableRoleOptions"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              label="Role"
+              dense
             />
+            <q-input v-if="newRole === 'sales'" v-model="newPhone" label="Phone" dense />
+            <div class="text-right">
+              <q-btn
+                color="primary"
+                label="Create account"
+                :loading="creatingProfile"
+                :disable="!newName || !newEmail || !newPassword"
+                @click="createProfile"
+              />
+            </div>
           </div>
         </q-card-section>
       </q-card>
@@ -267,13 +265,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Dialog, Notify } from 'quasar';
+import { Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
-import { useRoleStore } from '@/stores/role-store';
+import { useSessionStore } from '@/stores/session-store';
 import { generateConnectSlidePng, type ConnectSlideChannel } from '@/utils/generateConnectSlide';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
-import type { Rep } from '@/types/review';
+import type { Profile, Role } from '@/types/review';
 
 interface CampaignOption {
   zohoCampaignId: string;
@@ -287,7 +285,7 @@ interface CampaignOption {
 const twilioNumber = '+1 (936) 218-1311';
 
 const eventStore = useEventStore();
-const roleStore = useRoleStore();
+const sessionStore = useSessionStore();
 const campaignOptions = ref<CampaignOption[]>([]);
 const selectedCampaign = ref<CampaignOption | null>(null);
 const stateOption = ref<UsStateOption | null>(null);
@@ -297,23 +295,42 @@ const pickingNew = ref(false);
 const generatingBoothSlide = ref(false);
 const generatingSessionSlide = ref(false);
 
-const currentPin = ref('');
-const newPin = ref('');
-const changingPin = ref(false);
+const isAdmin = computed(() => sessionStore.user?.role === 'admin');
+const isSales = computed(() => sessionStore.user?.role === 'sales');
+// Picking/activating a conference, assigning booth/session reps, and
+// managing accounts are all admin/solutionsSuccess actions — a sales rep
+// reaching Setup is here only to download QR slides and link themself to
+// the event, never to reconfigure it.
+const canManageEvents = computed(() => isAdmin.value || sessionStore.user?.role === 'solutionsSuccess');
+const linkingMyself = ref(false);
 
-const reps = ref<Rep[]>([]);
-const newRepName = ref('');
-const newRepPhone = ref('');
-const newRepPin = ref('');
-const addingRep = ref(false);
+const profiles = ref<Profile[]>([]);
+const salesProfiles = computed(() => profiles.value.filter((p) => p.role === 'sales'));
 
-const signedInAsOptions = computed(() => [
-  { label: 'Customer Success', value: 'cs' },
-  ...reps.value.map((r) => ({ label: r.name, value: r.id })),
-]);
-const signedInAsValue = computed(() => (
-  roleStore.role === 'customerSuccess' ? 'cs' : roleStore.activeRepId
+const isLinkedToActiveEvent = computed(() => (
+  !!eventStore.activeEvent && sessionStore.user?.currentEventId === eventStore.activeEvent.id
 ));
+
+const creatableRoleOptions = [
+  { label: 'Solutions Success', value: 'solutionsSuccess' },
+  { label: 'Sales', value: 'sales' },
+];
+const newName = ref('');
+const newEmail = ref('');
+const newPassword = ref('');
+const newPhone = ref('');
+const newRole = ref<Role>('sales');
+const creatingProfile = ref(false);
+
+function roleLabel(role: Role) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'solutionsSuccess') return 'Solutions Success';
+  return 'Sales';
+}
+
+function isLinkedToCurrentEvent(p: Profile) {
+  return !!eventStore.activeEvent && p.currentEventId === eventStore.activeEvent.id;
+}
 
 // Short, memorable URLs (routes.ts redirects these into /intake?channel=...)
 // — the QR itself is always scanned, but the slide also spells the URL out
@@ -369,80 +386,62 @@ async function downloadSlide(channel: ConnectSlideChannel) {
   }
 }
 
-async function loadReps() {
-  const { data } = await api.get<Rep[]>('/reps-list');
-  reps.value = data;
+async function loadProfiles() {
+  const { data } = await api.get<Profile[]>('/profiles-list');
+  profiles.value = data;
 }
 
-async function addRep() {
-  addingRep.value = true;
+async function createProfile() {
+  creatingProfile.value = true;
   try {
-    await api.post('/reps-upsert', {
-      name: newRepName.value,
-      phoneNumber: newRepPhone.value,
-      // Omitted (not sent as null) when left blank, so re-adding yourself by
-      // phone number to fix a typo'd name doesn't wipe out a PIN you'd
-      // already set — see reps-upsert's pinProvided handling.
-      ...(newRepPin.value ? { pin: newRepPin.value } : {}),
+    await api.post('/profiles-create', {
+      name: newName.value,
+      email: newEmail.value,
+      password: newPassword.value,
+      role: isAdmin.value ? newRole.value : 'sales',
+      ...(newRole.value === 'sales' && newPhone.value ? { phoneNumber: newPhone.value } : {}),
     });
-    newRepName.value = '';
-    newRepPhone.value = '';
-    newRepPin.value = '';
-    await loadReps();
+    newName.value = '';
+    newEmail.value = '';
+    newPassword.value = '';
+    newPhone.value = '';
+    await loadProfiles();
   } finally {
-    addingRep.value = false;
+    creatingProfile.value = false;
   }
 }
 
-function selectSignedInAs(value: string) {
-  if (value === 'cs') {
-    roleStore.setRole('customerSuccess');
-    return;
-  }
-  const rep = reps.value.find((r) => r.id === value);
-  if (!rep) return;
-
-  Dialog.create({
-    title: `Sign in as ${rep.name}`,
-    message: 'Enter your PIN to confirm.',
-    prompt: { model: '', type: 'password', isValid: (v: string) => !!v },
-    cancel: true,
-    persistent: true,
-  }).onOk(async (pin: string) => {
-    const { data } = await api.post<{ valid: boolean }>('/reps-verify-pin', { repId: rep.id, pin });
-    if (data.valid) {
-      roleStore.setRole('sales');
-      roleStore.setActiveRep(rep.id, rep.name);
-    } else {
-      Notify.create({ type: 'negative', message: 'Incorrect PIN.' });
-    }
-  });
+async function deleteProfile(id: string) {
+  await api.post('/profiles-delete', { id });
+  await loadProfiles();
 }
 
-async function deleteRep(id: string) {
-  await api.post('/reps-delete', { id });
-  await loadReps();
-}
-
-async function assignRep(channel: 'booth' | 'session', repId: string | null) {
+async function assignChannelRep(channel: 'booth' | 'session', repId: string | null) {
   await api.post('/events-assign-rep', { channel, repId });
   await eventStore.fetchActive();
 }
 
-async function changePin() {
-  changingPin.value = true;
+async function toggleCurrentEvent(p: Profile) {
+  const eventId = isLinkedToCurrentEvent(p) ? null : (eventStore.activeEvent?.id ?? null);
+  await api.post('/profiles-assign-current-event', { repId: p.id, eventId });
+  await loadProfiles();
+  Notify.create({ type: 'positive', message: eventId ? `${p.name} linked to this event.` : `${p.name} unlinked.` });
+}
+
+async function toggleMyCurrentEvent() {
+  linkingMyself.value = true;
   try {
-    await api.put('/auth-change-pin', { currentPin: currentPin.value, newPin: newPin.value });
-    Notify.create({ type: 'positive', message: 'Kiosk PIN updated.' });
-    currentPin.value = '';
-    newPin.value = '';
+    const eventId = isLinkedToActiveEvent.value ? null : (eventStore.activeEvent?.id ?? null);
+    await api.post('/profiles-set-current-event', { eventId });
+    await sessionStore.fetchMe();
+    Notify.create({ type: 'positive', message: eventId ? 'Linked to this event.' : 'Unlinked.' });
   } finally {
-    changingPin.value = false;
+    linkingMyself.value = false;
   }
 }
 
 onMounted(() => {
   void eventStore.fetchActive();
-  void loadReps();
+  if (canManageEvents.value) void loadProfiles();
 });
 </script>

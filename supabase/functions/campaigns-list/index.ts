@@ -1,14 +1,16 @@
 // GET ?search=  -> Campaign[]
 // Staff-gated (used by /setup).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "GET") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
+  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const url = new URL(req.url);
   const search = url.searchParams.get("search")?.trim() ?? "";

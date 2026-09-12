@@ -4,14 +4,16 @@
 // the currently active event — contacts-create reads this back off when a
 // QR/form submission comes in tagged with the same channel.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "POST") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
+  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const body = await req.json().catch(() => null);
   if (!body || (body.channel !== "booth" && body.channel !== "session")) {
@@ -32,9 +34,9 @@ Deno.serve(async (req) => {
   if (!activeEvent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
 
   if (body.repId) {
-    const { data: rep, error: repError } = await supabase.from("reps").select("id").eq("id", body.repId).maybeSingle();
+    const { data: rep, error: repError } = await supabase.from("profiles").select("id, role").eq("id", body.repId).maybeSingle();
     if (repError) return errorResponse(req, 500, repError.message);
-    if (!rep) return errorResponse(req, 404, `No rep with id '${body.repId}'.`);
+    if (!rep || rep.role !== "sales") return errorResponse(req, 404, `No sales rep with id '${body.repId}'.`);
   }
 
   const column = body.channel === "booth" ? "booth_rep_id" : "session_rep_id";

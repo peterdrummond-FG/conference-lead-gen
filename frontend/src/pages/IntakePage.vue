@@ -10,7 +10,7 @@
         <div v-else-if="eventStore.loaded && !eventStore.activeEvent" key="unset" class="text-center">
           <q-icon name="event_busy" color="grey-5" size="56px" />
           <div class="intake-thanks-title q-mt-md">No event set up yet</div>
-          <div class="intake-subtitle q-mb-0">Unlock the kiosk (gear, bottom-right) and pick today's event in Setup.</div>
+          <div class="intake-subtitle q-mb-0">Sign in and pick today's event in Setup.</div>
         </div>
 
         <div v-else key="form">

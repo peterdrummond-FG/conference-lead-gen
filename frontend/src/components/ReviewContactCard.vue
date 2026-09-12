@@ -80,6 +80,11 @@
             <q-tooltip>Rep credited with this lead</q-tooltip>
           </q-chip>
 
+          <q-chip v-if="contact.syncedAt" dense size="sm" class="tag-chip tone-grey">
+            Synced
+            <q-tooltip>Already included in a CSV export to Zoho</q-tooltip>
+          </q-chip>
+
           <q-chip v-if="contact.extractionConfidence" dense size="sm" :class="['tag-chip', `tone-${confidenceTone(contact.extractionConfidence)}`]">
             Import confidence: {{ capitalize(contact.extractionConfidence) }}
             <q-tooltip>

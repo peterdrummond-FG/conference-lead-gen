@@ -2,7 +2,7 @@
 // Staff-gated (/setup). Atomicity ("deactivate current + insert new") lives
 // in the events_activate Postgres function, not here.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
 
@@ -10,7 +10,9 @@ Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "POST") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
+  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const body = await req.json().catch(() => null);
   if (

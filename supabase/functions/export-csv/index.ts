@@ -5,7 +5,7 @@
 // browser navigation can't carry the staff-PIN header or the anon-key
 // bearer token this function needs — see ExportPage.vue.
 import { corsHeaders, handlePreflight } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 // OWASP CSV/formula-injection mitigation: a value starting with one of
@@ -42,7 +42,8 @@ Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: corsHeaders(req) });
-  if (!(await requireStaffPin(req))) {
+  const user = await requireUser(req);
+  if (!user || !hasRole(user, ["admin", "solutionsSuccess"])) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders(req), "Content-Type": "application/json" },
@@ -50,19 +51,33 @@ Deno.serve(async (req) => {
   }
 
   const supabase = serviceClient();
-  // Approved isn't enough on its own — the CSV's Account Id column needs a
-  // real Zoho id to write, so that's the actual inclusion gate.
-  const { data: contacts, error } = await supabase
-    .from("contacts")
-    .select("*, event:events(name)")
-    .eq("review_status", "approved")
-    .not("matched_zoho_account_id", "is", null)
-    .order("created_at");
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+  // Atomically selects the exportable set (approved + matched to a real
+  // Zoho account + not already synced) and stamps synced_at on exactly
+  // those rows, so this download can never be repeated for the same
+  // contacts — see export_and_mark_synced().
+  const { data: syncedIds, error: syncError } = await supabase.rpc("export_and_mark_synced");
+  if (syncError) {
+    return new Response(JSON.stringify({ error: syncError.message }), {
       status: 500,
       headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  let contacts: any[] = [];
+  if (syncedIds && syncedIds.length > 0) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("*, event:events(name)")
+      .in("id", syncedIds)
+      .order("created_at");
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders(req), "Content-Type": "application/json" },
+      });
+    }
+    contacts = data;
   }
 
   const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Lead Source,Capture Channel,Description"];

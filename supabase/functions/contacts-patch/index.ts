@@ -3,7 +3,7 @@
 // "key omitted" from "key present as null" apart — the same semantic gap
 // backend/Common/Optional.cs closed in C#.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 const NO_CLEAR_FIELDS = ["firstName", "lastName", "matchStatus", "reviewStatus"];
@@ -17,7 +17,8 @@ Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "PATCH" && req.method !== "PUT") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -36,11 +37,14 @@ Deno.serve(async (req) => {
 
   const { data: contact, error: fetchError } = await supabase
     .from("contacts")
-    .select("match_status, school_district_id, school_id")
+    .select("match_status, school_district_id, school_id, rep_id")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) return errorResponse(req, 500, fetchError.message);
   if (!contact) return errorResponse(req, 404, `No contact with id '${id}'.`);
+  // 404, not 403 — a sales rep shouldn't be able to confirm another rep's
+  // contact id even exists.
+  if (user.role === "sales" && contact.rep_id !== user.id) return errorResponse(req, 404, `No contact with id '${id}'.`);
 
   if (has(body, "schoolDistrictId") && body.schoolDistrictId) {
     const { data: d } = await supabase.from("school_districts").select("id").eq("id", body.schoolDistrictId).maybeSingle();

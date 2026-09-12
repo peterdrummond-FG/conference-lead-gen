@@ -4,7 +4,7 @@
 //        inboundMessageId? (Stage 13) }
 // -> { id, alreadyProcessed, createdAt }. Called only by process-cards
 // (watcher) and, later, the local agent's SMS-photo poll loop — never a
-// browser. Authenticated via the service-role key, not the staff PIN.
+// browser. Authenticated via the service-role key, not a logged-in user.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { isServiceRoleCall } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -55,10 +55,10 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { id: existingByHash.id, alreadyProcessed: true, createdAt: existingByHash.created_at });
   }
 
-  // Whichever rep's phone this card was texted in from, if that number is
-  // in the reps roster — same attribution contacts-create does via the
-  // active event's channel assignment, just resolved from the sender's
-  // phone number instead since there's no QR channel involved here.
+  // Whichever rep's phone this card was texted in from, if that number
+  // matches a sales rep's profile — same attribution contacts-create does
+  // via the active event's channel assignment, just resolved from the
+  // sender's phone number instead since there's no QR channel involved here.
   let repId: string | null = null;
   if (body.inboundMessageId) {
     const { data: message } = await supabase
@@ -68,9 +68,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (message?.from_phone) {
       const { data: rep } = await supabase
-        .from("reps")
+        .from("profiles")
         .select("id")
         .eq("phone_number", message.from_phone)
+        .eq("role", "sales")
         .maybeSingle();
       repId = rep?.id ?? null;
     }

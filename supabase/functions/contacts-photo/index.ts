@@ -4,14 +4,15 @@
 // the 'contact-photos' bucket (uniform for both the local watcher and
 // SMS-sourced photos, per Stage 12).
 import { corsHeaders, errorResponse, handlePreflight } from "../_shared/http.ts";
-import { requireStaffPin } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "GET") return errorResponse(req, 405, "Method not allowed");
-  if (!(await requireStaffPin(req))) return errorResponse(req, 401, "Unauthorized");
+  const user = await requireUser(req);
+  if (!user) return errorResponse(req, 401, "Unauthorized");
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -21,11 +22,12 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: contact, error } = await supabase
     .from("contacts")
-    .select("source_image_path, cropped_image_path")
+    .select("source_image_path, cropped_image_path, rep_id")
     .eq("id", id)
     .maybeSingle();
   if (error) return errorResponse(req, 500, error.message);
   if (!contact || !contact.source_image_path) return errorResponse(req, 404, "Not found");
+  if (user.role === "sales" && contact.rep_id !== user.id) return errorResponse(req, 404, "Not found");
 
   const path = !full && contact.cropped_image_path ? contact.cropped_image_path : contact.source_image_path;
 

@@ -1,19 +1,19 @@
 import { onUnmounted, ref, watchEffect } from 'vue';
 import { api } from '@/boot/axios';
 
-// Stage 15: contacts-photo (the Edge Function) is staff-PIN-gated, and
-// requires the Supabase anon key as a bearer token for the gateway's own
-// check — neither of which a plain <img src="..."> can attach, since img
-// tags can't carry custom headers. The old .NET version could just be a
-// same-origin <img src> because there was no auth on it at all.
+// Stage 15: contacts-photo (the Edge Function) requires the caller's own
+// Supabase Auth access token as a bearer — a plain <img src="..."> can't
+// attach that, since img tags can't carry custom headers. The old .NET
+// version could just be a same-origin <img src> because there was no auth
+// on it at all.
 //
-// Rather than put the PIN in a query string (readable in browser history/
-// server logs, which the general "never put sensitive data in a URL"
-// stance rules out even for a low-stakes shared PIN), this fetches the
-// image via the normal authenticated axios instance and exposes it as a
-// short-lived blob: URL — the standard SPA pattern for an authenticated
-// image. Revokes the previous object URL on every refetch and on unmount
-// so this doesn't leak memory across a long /review session.
+// Rather than put the access token in a query string (readable in browser
+// history/server logs, which the general "never put sensitive data in a
+// URL" stance rules out), this fetches the image via the normal
+// authenticated axios instance and exposes it as a short-lived blob: URL —
+// the standard SPA pattern for an authenticated image. Revokes the
+// previous object URL on every refetch and on unmount so this doesn't leak
+// memory across a long /review session.
 // Returns { url, error } rather than a bare url ref: a failed fetch used to
 // just clear url to null, indistinguishable from "this contact has no
 // photo" — <q-img>'s own #error slot never fires for that case since a

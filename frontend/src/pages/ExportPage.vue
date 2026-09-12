@@ -4,7 +4,8 @@
       <q-card-section>
         <div class="text-h5">Export to Zoho</div>
         <div class="text-caption text-grey">
-          Generates the Zoho-ready CSV from every approved, fully-linked contact.
+          Generates the Zoho-ready CSV from every approved, fully-linked contact. Each contact is
+          marked synced the moment it's included — re-exporting only ever picks up new ones.
         </div>
       </q-card-section>
 
@@ -48,10 +49,10 @@ async function load() {
   summary.value = data;
 }
 
-// A plain navigation (window.location.href) can't carry the staff-PIN
-// header or the anon-key bearer token export-csv needs, so this fetches
-// via the normal authenticated axios instance and triggers the download
-// from the resulting blob instead — same reasoning as useContactPhoto.ts.
+// A plain navigation (window.location.href) can't carry the bearer token
+// export-csv needs, so this fetches via the normal authenticated axios
+// instance and triggers the download from the resulting blob instead —
+// same reasoning as useContactPhoto.ts.
 async function download() {
   const { data } = await api.get<Blob>('/export-csv', { responseType: 'blob' });
   const url = URL.createObjectURL(data);
