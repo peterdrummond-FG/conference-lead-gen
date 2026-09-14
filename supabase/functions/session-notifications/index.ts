@@ -18,6 +18,17 @@
 //    waiting on it), text back how many contacts were actually created
 //    from that batch.
 //
+// Both sweeps skip any binding idle past PAUSE_IDLE_MS (120 min) —
+// otherwise a send that keeps failing (bad number, Twilio outage) would
+// retry every single cron tick forever, since neither watermark
+// (expiry_notified_at / contacts_confirmed_through) advances on failure.
+// Nothing legitimate is lost by this: a stuck-pending confirmation batch
+// already force-flushes after PENDING_TIMEOUT_MS (10 min), so anything
+// truly owed would have gone out well before 120 minutes of pure
+// inactivity. The pause needs no separate state or wake-up logic —
+// twilio-webhook already refreshes last_activity_at on every inbound
+// request, so the very next cron tick after new activity picks it back up.
+//
 // Deployed with verify_jwt: false since pg_cron/pg_net carries no Supabase
 // JWT; verify_cron_secret (defined in the same migration) checks a
 // database-generated secret instead, read back through the normal
@@ -30,6 +41,9 @@ const CONFIRMATION_IDLE_MS = 2 * 60 * 1000;
 // A stuck OCR/transcription job shouldn't hold a confirmation hostage
 // forever — flush the batch anyway once a pending item is this old.
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
+// Stop touching a binding at all once it's been this idle — caps retries
+// of a permanently-failing send and cuts needless work on dormant phones.
+const PAUSE_IDLE_MS = 120 * 60 * 1000;
 const PENDING_STATUSES = new Set(["pending_ocr", "pending_transcription", "processing"]);
 
 async function sendSms(accountSid: string, authToken: string, to: string, from: string, body: string) {
@@ -82,6 +96,7 @@ Deno.serve(async (req) => {
     .from("phone_event_bindings")
     .select("phone_number, events(folder_code)")
     .lt("last_activity_at", new Date(now - EXPIRY_IDLE_MS).toISOString())
+    .gte("last_activity_at", new Date(now - PAUSE_IDLE_MS).toISOString())
     .is("expiry_notified_at", null);
 
   if (idleError) console.error("expiry lookup failed", idleError);
@@ -114,7 +129,8 @@ Deno.serve(async (req) => {
   // 2. Contact-received confirmations.
   const { data: bindings, error: bindingsError } = await supabase
     .from("phone_event_bindings")
-    .select("phone_number, contacts_confirmed_through");
+    .select("phone_number, contacts_confirmed_through")
+    .gte("last_activity_at", new Date(now - PAUSE_IDLE_MS).toISOString());
 
   if (bindingsError) console.error("bindings lookup failed", bindingsError);
 
