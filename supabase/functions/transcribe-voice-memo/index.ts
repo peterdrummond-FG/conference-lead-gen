@@ -1,3 +1,27 @@
+// ┌──────────────────────────────────────────────────────────────────────┐
+// │ SUPERSEDED — NOT THE LIVE VOICE-MEMO FEATURE. DO NOT DELETE AS DEAD. │
+// └──────────────────────────────────────────────────────────────────────┘
+//
+// Voice-memo transcription is very much alive; it just doesn't run here
+// anymore. It runs in `transcriptionLoop` in local-agent/agent.mjs, calling
+// a LOCAL Whisper CLI via local-agent/whisper-runner.mjs — no OpenAI key, no
+// metered API, same reasoning as every other `claude -p` step in that file.
+//
+// This file is the ORIGINAL Stage 14 implementation: an OpenAI Whisper API
+// call fired by a Postgres trigger. That trigger was dropped on 2026-09-03
+// (20260903000000_drop_audio_transcription_trigger.sql), so nothing has
+// invoked this since — confirmed against 24h of function_edge_logs on
+// 2026-09-14: zero invocations, and zero references anywhere in the repo
+// outside agent.mjs's "ported from" comment.
+//
+// It is kept ONLY as reference for the correlation/merge logic that
+// agent.mjs ported verbatim (same phone, kind='photo', 15-minute window,
+// append-not-overwrite). Read it for that; don't wire it back up, and don't
+// mistake its name for the working feature.
+//
+// Everything below this banner describes the retired design.
+// ----------------------------------------------------------------------
+//
 // Stage 14 — transcribes one voice memo (OpenAI Whisper) and merges the
 // transcript into interaction_notes on whichever contact(s) it's about.
 // Invoked by a Postgres trigger (inbound_messages_audio_insert, in the

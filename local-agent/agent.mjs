@@ -369,6 +369,11 @@ async function photoLoop() {
 // ---------------------------------------------------------------------
 // Voice-memo transcription poll loop (Stage 14, revised to run locally)
 // ---------------------------------------------------------------------
+// THIS LOOP IS THE LIVE VOICE-MEMO FEATURE. The Edge Function that shares
+// its name (supabase/functions/transcribe-voice-memo/) has been retired
+// since 2026-09-03 and is kept only as reference — see the banner at the
+// top of that file before assuming either one is dead.
+//
 // Ported from supabase/functions/transcribe-voice-memo/index.ts — same
 // claim-then-mark-processing idempotency guard (still worth keeping even
 // with no OpenAI cost-griefing concern anymore: it's also what makes a
