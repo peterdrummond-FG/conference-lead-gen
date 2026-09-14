@@ -1,12 +1,10 @@
-// POST { code: string } -> { ok: true }. admin/solutionsSuccess only --
-// changes the single shared kiosk-unlock code (app_settings.kiosk_code).
-// Kept short and numeric-ish on purpose: it has to be quick to hand to a
-// rep verbally or type on a shared device, unlike a real account password.
+// POST { code: string } -> { ok: true }. Any logged-in staff role -- always
+// sets the caller's OWN kiosk PIN (profiles.kiosk_pin), never a
+// body-supplied target. Kept short and numeric-ish on purpose: it has to be
+// quick to type on a shared device, unlike a real account password.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireUser, hasRole } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-
-const APP_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -15,7 +13,6 @@ Deno.serve(async (req) => {
 
   const user = await requireUser(req);
   if (!user) return errorResponse(req, 401, "Unauthorized");
-  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body.code !== "string" || body.code.length < 4) {
@@ -24,9 +21,9 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
   const { error } = await supabase
-    .from("app_settings")
-    .update({ kiosk_code: body.code })
-    .eq("id", APP_SETTINGS_ID);
+    .from("profiles")
+    .update({ kiosk_pin: body.code })
+    .eq("id", user.id);
   if (error) return errorResponse(req, 500, error.message);
 
   return jsonResponse(req, { ok: true });

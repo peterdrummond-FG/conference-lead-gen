@@ -61,7 +61,7 @@
       <q-card style="width: 320px">
         <q-card-section>
           <div class="text-h6">Unlock kiosk</div>
-          <div class="text-caption text-grey">Enter the kiosk code to unlock.</div>
+          <div class="text-caption text-grey">Enter your kiosk PIN to unlock.</div>
         </q-card-section>
         <q-card-section class="q-pt-none">
           <q-input
@@ -70,7 +70,7 @@
             inputmode="numeric"
             autocomplete="off"
             autofocus
-            label="Kiosk code"
+            label="Your kiosk PIN"
             :error="!!unlockError"
             :error-message="unlockError"
             @keyup.enter="onUnlockKiosk"
@@ -112,10 +112,9 @@ function onLockKiosk() {
 }
 
 // Kiosk-locking never signs anyone out — the same account is still the one
-// logged in underneath. Unlocking checks a separate shared kiosk code (set
-// by admin/solutionsSuccess in Setup), never the account's own login
-// password — a device left unlocked shouldn't leak a real password to
-// whoever's standing at the booth.
+// logged in underneath. Unlocking checks that account's own kiosk PIN (set
+// by each user in Setup), never their real login password — a device left
+// unlocked shouldn't leak a real password to whoever's standing at the booth.
 async function onUnlockKiosk() {
   if (!unlockCode.value) return;
   unlocking.value = true;

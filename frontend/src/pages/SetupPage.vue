@@ -260,16 +260,16 @@
         </q-card-section>
       </q-card>
 
-      <q-card v-if="canManageEvents">
+      <q-card>
         <q-card-section>
-          <div class="text-h6">Kiosk code</div>
+          <div class="text-h6">My kiosk PIN</div>
           <div class="text-caption text-grey">
-            The code anyone unlocks a locked kiosk device with — separate from everyone's own login password.
+            What you personally unlock a locked kiosk device with — separate from your login password. Each user sets their own.
           </div>
         </q-card-section>
         <q-card-section>
           <div class="row q-col-gutter-sm items-start">
-            <q-input class="col" v-model="newKioskCode" label="New kiosk code" dense hint="At least 4 characters" />
+            <q-input class="col" v-model="newKioskCode" label="New kiosk PIN" dense hint="At least 4 characters" />
             <q-btn
               class="col-auto"
               color="primary"
@@ -458,7 +458,7 @@ async function updateKioskCode() {
   try {
     await api.post('/kiosk-set-code', { code: newKioskCode.value });
     newKioskCode.value = '';
-    Notify.create({ type: 'positive', message: 'Kiosk code updated.' });
+    Notify.create({ type: 'positive', message: 'Kiosk PIN updated.' });
   } finally {
     updatingKioskCode.value = false;
   }
