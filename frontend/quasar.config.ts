@@ -50,7 +50,13 @@ export default defineConfig((/* ctx */) => {
       // https://v2.quasar.dev/quasar-cli-vite/page-routing-with-vue-router#filename-based-routing
       // filenameBasedRouting: true,
 
-      vueRouterMode: 'hash', // available values: 'hash', 'history'
+      // 'history', not the scaffold's default 'hash' -- the app is served by
+      // Vercel, which can serve index.html for any deep link (see
+      // frontend/vercel.json's rewrite), so there's no reason to carry '#/'
+      // around in every URL. It matters most for the Twilio A2P 10DLC
+      // campaign's Privacy Policy / Terms URLs, which are submitted to a
+      // human reviewer and should be plain https://<host>/privacy.
+      vueRouterMode: 'history', // available values: 'hash', 'history'
       // vueRouterBase,
 
       // publicPath: '/',

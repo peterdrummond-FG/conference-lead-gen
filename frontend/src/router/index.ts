@@ -20,7 +20,23 @@ import type { Role } from '@/types/review';
  * with the Router instance.
  */
 
+// Every URL this app ever handed out used to carry a '#/' (hash routing was
+// the Quasar scaffold's default until the switch to history mode) -- most
+// importantly the booth/session QR slides reps have already printed and
+// handed to conference attendees. Rewriting '/#/booth' to '/booth' before
+// the router reads the location keeps every one of those working; new URLs
+// are clean. This lives here rather than as an inline <script> in
+// index.html because the CSP there is script-src 'self' -- inline script
+// would be blocked.
+function upgradeLegacyHashUrl() {
+  if (typeof window === 'undefined') return;
+  if (!window.location.hash.startsWith('#/')) return;
+  window.history.replaceState(null, '', window.location.hash.slice(1));
+}
+
 export default defineRouter((/* { store, ssrContext } */) => {
+  upgradeLegacyHashUrl();
+
   const createHistory = import.meta.env.QUASAR_SERVER
     ? createMemoryHistory
     : (import.meta.env.QUASAR_VUE_ROUTER_MODE === 'history' ? createWebHistory : createWebHashHistory);

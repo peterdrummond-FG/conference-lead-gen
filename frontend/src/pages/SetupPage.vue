@@ -366,7 +366,7 @@ function isLinkedToCurrentEvent(p: Profile) {
 // — the QR itself is always scanned, but the slide also spells the URL out
 // for anyone who can't scan, so it needs to be typeable on a phone keyboard.
 function intakeUrlFor(channel: ConnectSlideChannel) {
-  return `${window.location.origin}/#/${channel}`;
+  return `${window.location.origin}/${channel}`;
 }
 
 function filterFn(val: string, update: (cb: () => void) => void) {
