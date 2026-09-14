@@ -12,6 +12,11 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: '/intake' },
       { path: 'login', component: () => import('@/pages/LoginPage.vue') },
+      // Public, unauthenticated legal pages for the Twilio A2P 10DLC campaign
+      // (Privacy Policy / Terms & Conditions URLs) — must stay reachable with
+      // no login wall, per Twilio's review requirements.
+      { path: 'privacy', component: () => import('@/pages/PrivacyPolicyPage.vue') },
+      { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
       // Short, easy-to-hand-type aliases for the two QR codes SetupPage.vue

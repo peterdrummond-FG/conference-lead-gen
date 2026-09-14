@@ -35,6 +35,12 @@
           />
         </q-form>
       </q-card-section>
+
+      <q-card-section class="text-center text-caption text-grey q-pt-none">
+        <router-link to="/privacy">Privacy Policy</router-link>
+        &nbsp;&middot;&nbsp;
+        <router-link to="/terms">Terms &amp; Conditions</router-link>
+      </q-card-section>
     </q-card>
   </q-page>
 </template>
