@@ -10,7 +10,12 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', redirect: '/intake' },
+      // The bare site URL is the staff login screen, not the attendee
+      // Intake form — attendees only ever land on Intake via a QR code
+      // (/#/booth, /#/session), never by typing the plain root URL.
+      // index.ts's guard already sends an already-logged-in visitor here
+      // straight on to /review.
+      { path: '', redirect: '/login' },
       { path: 'login', component: () => import('@/pages/LoginPage.vue') },
       // Public, unauthenticated legal pages for the Twilio A2P 10DLC campaign
       // (Privacy Policy / Terms & Conditions URLs) — must stay reachable with
