@@ -19,6 +19,10 @@
             v-model="password"
             type="password"
             label="Password"
+            autocomplete="current-password"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
             :rules="[(v: string) => !!v || 'Required']"
           />
 
