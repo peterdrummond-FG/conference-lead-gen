@@ -57,18 +57,20 @@
       @click="showUnlockDialog = true"
     />
 
-    <q-dialog v-model="showUnlockDialog" @hide="unlockPassword = ''; unlockError = ''">
+    <q-dialog v-model="showUnlockDialog" @hide="unlockCode = ''; unlockError = ''">
       <q-card style="width: 320px">
         <q-card-section>
           <div class="text-h6">Unlock kiosk</div>
-          <div class="text-caption text-grey">Enter your account password to unlock.</div>
+          <div class="text-caption text-grey">Enter the kiosk code to unlock.</div>
         </q-card-section>
         <q-card-section class="q-pt-none">
           <q-input
-            v-model="unlockPassword"
-            type="password"
+            v-model="unlockCode"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
             autofocus
-            label="Password"
+            label="Kiosk code"
             :error="!!unlockError"
             :error-message="unlockError"
             @keyup.enter="onUnlockKiosk"
@@ -88,7 +90,6 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
-import { supabase } from '@/lib/supabase';
 import { api } from '@/boot/axios';
 import type { Profile, Role } from '@/types/review';
 
@@ -101,7 +102,7 @@ const canSeeSetup = computed(() => (
 ));
 
 const showUnlockDialog = ref(false);
-const unlockPassword = ref('');
+const unlockCode = ref('');
 const unlockError = ref('');
 const unlocking = ref(false);
 
@@ -111,23 +112,24 @@ function onLockKiosk() {
 }
 
 // Kiosk-locking never signs anyone out — the same account is still the one
-// logged in underneath, so unlocking just re-confirms *that* account's own
-// password via a normal sign-in call, rather than a separate PIN/endpoint.
+// logged in underneath. Unlocking checks a separate shared kiosk code (set
+// by admin/solutionsSuccess in Setup), never the account's own login
+// password — a device left unlocked shouldn't leak a real password to
+// whoever's standing at the booth.
 async function onUnlockKiosk() {
-  if (!unlockPassword.value || !sessionStore.user?.email) return;
+  if (!unlockCode.value) return;
   unlocking.value = true;
   unlockError.value = '';
   try {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: sessionStore.user.email,
-      password: unlockPassword.value,
-    });
-    if (error) {
-      unlockError.value = 'Incorrect password';
+    const { data } = await api.post<{ valid: boolean }>('/kiosk-verify-code', { code: unlockCode.value });
+    if (!data.valid) {
+      unlockError.value = 'Incorrect code';
       return;
     }
     kioskModeStore.unlock();
     showUnlockDialog.value = false;
+  } catch {
+    unlockError.value = 'Incorrect code';
   } finally {
     unlocking.value = false;
   }

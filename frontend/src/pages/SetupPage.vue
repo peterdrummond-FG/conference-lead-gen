@@ -259,6 +259,28 @@
           </div>
         </q-card-section>
       </q-card>
+
+      <q-card v-if="canManageEvents">
+        <q-card-section>
+          <div class="text-h6">Kiosk code</div>
+          <div class="text-caption text-grey">
+            The code anyone unlocks a locked kiosk device with — separate from everyone's own login password.
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <div class="row q-col-gutter-sm items-start">
+            <q-input class="col" v-model="newKioskCode" label="New kiosk code" dense hint="At least 4 characters" />
+            <q-btn
+              class="col-auto"
+              color="primary"
+              label="Update"
+              :loading="updatingKioskCode"
+              :disable="newKioskCode.length < 4"
+              @click="updateKioskCode"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
     </div>
   </q-page>
 </template>
@@ -321,6 +343,9 @@ const newPassword = ref('');
 const newPhone = ref('');
 const newRole = ref<Role>('sales');
 const creatingProfile = ref(false);
+
+const newKioskCode = ref('');
+const updatingKioskCode = ref(false);
 
 function roleLabel(role: Role) {
   if (role === 'admin') return 'Admin';
@@ -426,6 +451,17 @@ async function toggleCurrentEvent(p: Profile) {
   await api.post('/profiles-assign-current-event', { repId: p.id, eventId });
   await loadProfiles();
   Notify.create({ type: 'positive', message: eventId ? `${p.name} linked to this event.` : `${p.name} unlinked.` });
+}
+
+async function updateKioskCode() {
+  updatingKioskCode.value = true;
+  try {
+    await api.post('/kiosk-set-code', { code: newKioskCode.value });
+    newKioskCode.value = '';
+    Notify.create({ type: 'positive', message: 'Kiosk code updated.' });
+  } finally {
+    updatingKioskCode.value = false;
+  }
 }
 
 async function toggleMyCurrentEvent() {
