@@ -28,7 +28,7 @@ const { validateRequest } = twilioPkg;
 // A session older than this is abandoned rather than resumed — a rep who
 // goes quiet mid-setup and later texts an unrelated folder code shouldn't
 // have that text misread as a stale reply.
-const SESSION_STALE_MS = 15 * 60 * 1000;
+const SESSION_STALE_MS = 60 * 60 * 1000;
 
 // Deliberately a small fixed set rather than a looser regex — a false
 // trigger would hijack what the rep meant as a folder-code bind attempt.
@@ -94,6 +94,15 @@ Deno.serve(async (req) => {
   const numMedia = Number(params.NumMedia ?? "0");
 
   const supabase = serviceClient();
+
+  // Any inbound request from an already-bound phone counts as activity —
+  // refreshes the 60-minute idle clock session-notifications watches and
+  // cancels a pending reminder so the next idle stretch can trigger a
+  // fresh one. No-ops (0 rows) for a phone that isn't bound to anything.
+  await supabase
+    .from("phone_event_bindings")
+    .update({ last_activity_at: new Date().toISOString(), expiry_notified_at: null })
+    .eq("phone_number", from);
 
   // No media: either a step in an in-progress "setup a new conference"
   // conversation, a folder-code bind attempt, or the phrase that starts a
@@ -169,6 +178,12 @@ Deno.serve(async (req) => {
         phone_number: from,
         event_id: picked.id,
         updated_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        expiry_notified_at: null,
+        // Switching events resets the confirmation watermark so a stale
+        // value from a prior event can't skip confirming this event's
+        // first batch of contacts.
+        contacts_confirmed_through: new Date().toISOString(),
       });
       await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
       await supabase.from("inbound_messages").insert({
@@ -266,6 +281,12 @@ Deno.serve(async (req) => {
       phone_number: from,
       event_id: event.id,
       updated_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+      expiry_notified_at: null,
+      // Switching events resets the confirmation watermark so a stale
+      // value from a prior event can't skip confirming this event's
+      // first batch of contacts.
+      contacts_confirmed_through: new Date().toISOString(),
     });
     await supabase.from("inbound_messages").insert({
       twilio_message_sid: sid,
