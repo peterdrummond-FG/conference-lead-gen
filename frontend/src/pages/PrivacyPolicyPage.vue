@@ -3,33 +3,46 @@
     <q-card style="width: 720px; max-width: 92vw" class="q-pa-md">
       <q-card-section>
         <div class="text-h5">Privacy Policy</div>
-        <div class="text-caption text-grey">Flippen Group Conference Lead Capture — SMS Program</div>
+        <div class="text-caption text-grey">Flippen Group Conference Lead Gen</div>
         <div class="text-caption text-grey">Last updated September 2026</div>
       </q-card-section>
 
       <q-card-section class="text-body2 q-gutter-md">
         <p>
-          This Privacy Policy covers the "Flippen Group Conference Lead Capture" program: the SMS-based
-          service that lets Flippen Group field sales representatives activate a conference and submit
-          attendee contact information by text message, and the web application that supports it.
+          Flippen Group understands that your privacy is important to you, and we are committed to
+          protecting the personally-identifiable information collected through this application
+          ("the Site") — including the public conference intake form, the business-card and voice-memo
+          submissions made by our field sales representatives, and the "Flippen Group Conference Lead
+          Capture" SMS program described below.
         </p>
 
         <div>
           <div class="text-subtitle2 text-weight-bold">Information We Collect</div>
           <p>
-            When a representative uses this program, we collect: their mobile phone number; the
-            conference/event they select; and the contact information they submit for conference
-            attendees, including names, titles, phone numbers, email addresses, school/district
-            affiliations, photographs of business cards, and voice-memo audio and its transcript.
+            Conference attendees who submit the intake form provide us their name, email address, phone
+            number, title, and school/school-district affiliation. Our field sales representatives
+            additionally submit photographs of business cards and voice-memo audio (and its transcript)
+            they collect at conferences, and their own mobile phone number when using the SMS program.
+            The Site also collects standard technical data such as IP address and browsing activity.
           </p>
         </div>
 
         <div>
           <div class="text-subtitle2 text-weight-bold">How We Use Information</div>
           <p>
-            We use this information to operate the program — associating submitted contacts with the
-            correct conference — and to follow up with conference attendees through Flippen Group's
-            customer relationship management system regarding the events they engaged with.
+            We use this information to operate the Site — associating submitted contacts with the
+            correct conference, matching them against our customer relationship management system, and
+            operating the SMS program — and to follow up with conference attendees regarding the events
+            they engaged with.
+          </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">Cookies</div>
+          <p>
+            Cookies are small packets of information stored by your web browser. The Site may use them
+            to keep you signed in and to remember your preferences. You can inspect, delete, or block
+            cookies through your browser's settings.
           </p>
         </div>
 
@@ -45,19 +58,29 @@
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Data Security</div>
+          <div class="text-subtitle2 text-weight-bold">Third-Party Disclosure</div>
           <p>
-            We maintain reasonable administrative, technical, and physical safeguards designed to
-            protect the information collected through this program. No method of transmission or
-            storage is completely secure, and we cannot guarantee absolute security.
+            We do not sell or rent your information to third parties. We may share information with
+            vendors who agree to maintain its confidentiality and use it only to help us operate the
+            Site, or when required to do so by a court order or other legal process.
+          </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">Data Access and Security</div>
+          <p>
+            You can request access to, correction of, or deletion of your information by contacting us
+            below. We maintain reasonable administrative, technical, and physical safeguards designed to
+            protect the information we collect, though no method of transmission or storage is
+            completely secure and we cannot guarantee absolute security.
           </p>
         </div>
 
         <div>
           <div class="text-subtitle2 text-weight-bold">Children's Privacy</div>
           <p>
-            This program is not designed for or directed at children 13 years of age or younger, and we
-            do not knowingly collect personal information from children through it.
+            The Site is not designed for or directed at children 13 years of age or younger, and we do
+            not knowingly collect personal information from children through it.
           </p>
         </div>
 
@@ -72,7 +95,7 @@
         </div>
 
         <p class="text-caption text-grey">
-          See also our <router-link to="/terms">Terms &amp; Conditions</router-link> for this program.
+          See also our <router-link to="/terms">Terms &amp; Conditions</router-link>.
         </p>
       </q-card-section>
     </q-card>

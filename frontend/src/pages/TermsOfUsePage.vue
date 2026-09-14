@@ -3,13 +3,46 @@
     <q-card style="width: 720px; max-width: 92vw" class="q-pa-md">
       <q-card-section>
         <div class="text-h5">Terms &amp; Conditions</div>
-        <div class="text-caption text-grey">Flippen Group Conference Lead Capture — SMS Program</div>
+        <div class="text-caption text-grey">Flippen Group Conference Lead Gen</div>
         <div class="text-caption text-grey">Last updated September 2026</div>
       </q-card-section>
 
       <q-card-section class="text-body2 q-gutter-md">
+        <p>
+          This application ("the Site") is provided by Flippen Group. By using the Site, including its
+          conference intake form and its "Flippen Group Conference Lead Capture" SMS program, you agree
+          to these Terms &amp; Conditions. Please also review our
+          <router-link to="/privacy">Privacy Policy</router-link>.
+        </p>
+
         <div>
-          <div class="text-subtitle2 text-weight-bold">Program Description</div>
+          <div class="text-subtitle2 text-weight-bold">Copyrights</div>
+          <p>
+            All content and functionality on the Site, including text, graphics, logos, icons, and
+            images, belongs to Flippen Group or its licensors and is protected under U.S. and
+            international copyright law.
+          </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">Trademarks</div>
+          <p>
+            You may not reference or attribute information to Flippen Group for advertising or
+            promotional purposes, or imply our endorsement, without our prior written permission.
+          </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">Use of Site Content</div>
+          <p>
+            We grant you a limited license to access and use the Site solely for its intended business
+            purpose. Reproduction, distribution, or transmission of Site content for any other purpose
+            requires our prior written approval.
+          </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: Description</div>
           <p>
             "Flippen Group Conference Lead Capture" is an SMS-based tool that lets Flippen Group field
             sales representatives activate a conference and submit attendee contact information —
@@ -21,17 +54,17 @@
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Message Frequency</div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: Message Frequency</div>
           <p>Message frequency varies based on how a representative uses the program.</p>
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Cost</div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: Cost</div>
           <p>Msg &amp; data rates may apply.</p>
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">How to Opt Out</div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: How to Opt Out</div>
           <p>
             <strong>Reply STOP at any time to cancel.</strong> You will receive one final confirmation
             message and no further messages. To resume, text SETUP again.
@@ -39,7 +72,7 @@
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Help</div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: Help</div>
           <p>
             <strong>Reply HELP at any time for help</strong>, or contact the Flippen Group Legal
             Department at 979-693-7660.
@@ -47,23 +80,28 @@
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Carrier Disclaimer</div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: Carrier Disclaimer</div>
           <p>Carriers are not liable for delayed or undelivered messages.</p>
         </div>
 
         <div>
-          <div class="text-subtitle2 text-weight-bold">Privacy</div>
+          <div class="text-subtitle2 text-weight-bold">Disclaimers</div>
           <p>
-            See our <router-link to="/privacy">Privacy Policy</router-link> for how information
-            collected through this program is used.
+            The Site is provided "as is" without warranties of any kind. Flippen Group disclaims
+            liability for any third-party content and any linked websites.
           </p>
+        </div>
+
+        <div>
+          <div class="text-subtitle2 text-weight-bold">Third-Party Websites</div>
+          <p>Flippen Group assumes no responsibility for the content of external websites linked from the Site.</p>
         </div>
 
         <div>
           <div class="text-subtitle2 text-weight-bold">Changes to These Terms</div>
           <p>
-            Flippen Group may update these terms from time to time. Continued use of the program after
-            an update constitutes acceptance of the revised terms.
+            Flippen Group may update these terms from time to time. Continued use of the Site after an
+            update constitutes acceptance of the revised terms.
           </p>
         </div>
 
