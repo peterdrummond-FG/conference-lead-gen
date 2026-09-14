@@ -31,6 +31,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'booth', redirect: { path: '/intake', query: { channel: 'booth' } } },
       { path: 'session', redirect: { path: '/intake', query: { channel: 'session' } } },
       { path: 'review', component: () => import('@/pages/ReviewPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
+      // Reached from Review's "+ Contacts from note" button rather than the
+      // header nav — it's a capture action a rep takes from where they're
+      // already working, not a fifth top-level section.
+      { path: 'notes', component: () => import('@/pages/NotesPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'export', component: () => import('@/pages/ExportPage.vue'), meta: { roles: ['admin', 'solutionsSuccess'] as Role[] } },
     ],
   },

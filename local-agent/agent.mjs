@@ -762,6 +762,185 @@ async function intentLoop() {
 }
 
 // ---------------------------------------------------------------------
+// Pasted-note extraction poll loop (Stage 17)
+// ---------------------------------------------------------------------
+// A rep pastes a whole typed note — usually covering several people — into
+// NotesPage.vue; notes-submit records it and this loop turns it into one
+// contact per person via extract-note-contacts, then posts each to
+// contacts-from-note. From there it's the ordinary pipeline: matchingLoop
+// researches and matches each new row, and intentLoop classifies whichever
+// of them arrived with interaction notes.
+//
+// Same claim-then-mark-processing mechanics as photoLoop, against
+// note_submissions rather than inbound_messages (a web paste has no
+// MessageSid, no phone numbers, and no media — see
+// 20260914140000_pasted_note_intake.sql for why it isn't folded into
+// inbound_messages).
+//
+// Note that the skill here only *returns* JSON — unlike process-cards, it
+// never posts anything itself and is never handed the service-role key.
+// That's what makes runSkill's plain retry safe (an extraction has no side
+// effects to redo), and it keeps a note containing instruction-like text
+// from having a credential within reach even in the worst case.
+const NOTE_POLL_INTERVAL_MS = Number(process.env.NOTE_POLL_INTERVAL_MS ?? 10_000);
+// Well above runSkill's 180s default: a long note covering a dozen people is
+// a single big extraction, and timing it out halfway costs the whole note.
+const NOTE_SKILL_TIMEOUT_MS = Number(process.env.NOTE_SKILL_TIMEOUT_MS ?? 300_000);
+const VALID_EXTRACTION_CONFIDENCES = new Set(['high', 'medium', 'low']);
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+async function findNextPendingNoteSubmission() {
+  const { data, error } = await supabase
+    .from('note_submissions')
+    .select('*')
+    .eq('status', 'pending_extraction')
+    .order('created_at')
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
+
+async function claimNoteSubmission(submission) {
+  const { data, error } = await supabase
+    .from('note_submissions')
+    .update({
+      status: 'processing',
+      claimed_at: new Date().toISOString(),
+      attempts: (submission.attempts ?? 0) + 1,
+    })
+    .eq('id', submission.id)
+    .eq('status', 'pending_extraction')
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Posted one at a time rather than in a batch so a single unusable entry
+// (a name the skill mangled past what the endpoint will accept) costs only
+// itself — same reasoning as process-cards' "don't stop the loop on one
+// card's failure".
+async function postExtractedContact(submissionId, contact) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/contacts-from-note`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      noteSubmissionId: submissionId,
+      firstName: contact.firstName ?? '',
+      lastName: contact.lastName ?? '',
+      email: contact.email ?? '',
+      phone: contact.phone ?? '',
+      title: contact.title ?? '',
+      districtName: contact.districtName ?? '',
+      schoolName: contact.schoolName ?? '',
+      interactionNotes: contact.interactionNotes ?? '',
+      extractionConfidence: contact.extractionConfidence,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let detail = text;
+    try {
+      detail = JSON.parse(text).error ?? text;
+    } catch { /* non-JSON error body — use it as-is */ }
+    throw new Error(`HTTP ${res.status}: ${detail}`.trim());
+  }
+  return res.json();
+}
+
+async function processNoteSubmission(submission) {
+  try {
+    const result = await runSkill(
+      'extract-note-contacts',
+      { noteText: submission.body },
+      REPO_ROOT,
+      { timeoutMs: NOTE_SKILL_TIMEOUT_MS },
+    );
+
+    if (!Array.isArray(result.contacts)) {
+      throw new Error('extract-note-contacts returned no `contacts` array');
+    }
+    const skipped = Array.isArray(result.skipped) ? result.skipped.filter((s) => typeof s === 'string') : [];
+
+    const failures = [];
+    let created = 0;
+    for (const [i, contact] of result.contacts.entries()) {
+      const label = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || `entry ${i + 1}`;
+      // extraction_confidence is CHECK-constrained in the database — catch a
+      // bad value here, where it can be reported against the person it came
+      // from, rather than as an opaque 500 out of the insert.
+      if (!VALID_EXTRACTION_CONFIDENCES.has(contact?.extractionConfidence)) {
+        failures.push(`${label}: invalid extractionConfidence ${JSON.stringify(contact?.extractionConfidence)}`);
+        continue;
+      }
+      try {
+        await postExtractedContact(submission.id, contact);
+        created++;
+      } catch (err) {
+        failures.push(`${label}: ${err.message ?? err}`);
+      }
+    }
+
+    // Partial success stays 'completed', with the failures recorded: the
+    // contacts that did land are already real and visible in Review, and
+    // calling the whole submission failed would misdescribe that. Only a
+    // note where nothing at all could be created is a failure — and a note
+    // that legitimately contained nobody (contacts: []) is a valid result,
+    // not an error, so it isn't one either.
+    const allFailed = failures.length > 0 && created === 0;
+    await supabase
+      .from('note_submissions')
+      .update({
+        status: allFailed ? 'failed' : 'completed',
+        skipped,
+        error: failures.length > 0 ? failures.join('; ') : null,
+        processed_at: new Date().toISOString(),
+      })
+      .eq('id', submission.id);
+
+    log(`note ${allFailed ? 'FAIL' : 'OK'}: ${submission.id} — ${created} contact(s) created` +
+      `${skipped.length ? `, ${skipped.length} skipped` : ''}${failures.length ? `, ${failures.length} failed` : ''}`);
+  } catch (err) {
+    const reason = err.message ?? String(err);
+    await supabase
+      .from('note_submissions')
+      .update({ status: 'failed', error: reason, processed_at: new Date().toISOString() })
+      .eq('id', submission.id);
+    log(`note FAIL: ${submission.id} — ${reason}`);
+  }
+}
+
+async function noteTick() {
+  let submission;
+  try {
+    const candidate = await findNextPendingNoteSubmission();
+    if (!candidate) return;
+    submission = await claimNoteSubmission(candidate);
+  } catch (err) {
+    log(`ERROR finding/claiming pending note submission: ${err.message ?? err}`);
+    return;
+  }
+  if (!submission) return; // someone/something else claimed it first
+
+  log(`processing note submission ${submission.id}`);
+  await processNoteSubmission(submission);
+}
+
+async function noteLoop() {
+  log(`note loop starting (poll every ${NOTE_POLL_INTERVAL_MS}ms)`);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    await noteTick();
+    await sleep(NOTE_POLL_INTERVAL_MS);
+  }
+}
+
+// ---------------------------------------------------------------------
 
 // Resets any inbound_messages row a previous run left stuck at
 // status='processing' (crashed/killed mid-photo-or-transcription) back to
@@ -788,12 +967,28 @@ async function reconcileStaleInboundMessages() {
   }
 }
 
+// Same reasoning as reconcileStaleInboundMessages above, for the
+// note_submissions rows noteLoop claims the same optimistic way.
+async function reconcileStaleNoteSubmissions() {
+  const { data, error } = await supabase.rpc('reconcile_stale_note_submissions', {
+    stale_minutes: STALE_PROCESSING_MINUTES,
+  });
+  if (error) {
+    log(`ERROR reconciling stale note_submissions: ${error.message ?? error}`);
+    return;
+  }
+  if (data && data.length > 0) {
+    log(`reconciled ${data.length} stale note_submissions row(s) back to pending`);
+  }
+}
+
 log('=== local-agent starting ===');
 
 await reconcileStaleInboundMessages();
+await reconcileStaleNoteSubmissions();
 
-// Four independent, concurrently-running loops in one process — a slow
-// process-cards run (up to 15 min) must not delay the 20s matching poll,
-// and transcription/intent classification each run independently of the
-// others.
-await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop()]);
+// Five independent, concurrently-running loops in one process — a slow
+// process-cards run (up to 15 min) or note extraction (up to 5) must not
+// delay the 20s matching poll, and transcription/intent classification each
+// run independently of the others.
+await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop(), noteLoop()]);

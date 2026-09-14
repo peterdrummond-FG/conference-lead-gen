@@ -39,6 +39,17 @@
       </template>
 
       <q-btn
+        color="primary"
+        outline
+        no-caps
+        icon="add"
+        label="Contacts from note"
+        to="/notes"
+      >
+        <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
+      </q-btn>
+
+      <q-btn
         v-if="tab === 'rejected'"
         color="negative"
         label="Bulk delete selected"

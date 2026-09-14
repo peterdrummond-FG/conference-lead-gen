@@ -503,7 +503,16 @@ function linkNewAccount() {
   newAccountName.value = '';
 }
 
-const sourceTone = computed(() => (props.contact.source === 'card_photo' ? 'purple' : 'slate'));
+const sourceTone = computed(() => {
+  switch (props.contact.source) {
+    case 'card_photo':
+      return 'purple';
+    case 'note':
+      return 'blue';
+    default:
+      return 'slate';
+  }
+});
 
 function sourceLabel(source: string) {
   switch (source) {
@@ -511,6 +520,8 @@ function sourceLabel(source: string) {
       return 'Form';
     case 'card_photo':
       return 'Card';
+    case 'note':
+      return 'Note';
     case 'qr_code':
       return 'QR Code';
     default:
