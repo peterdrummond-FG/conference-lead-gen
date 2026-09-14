@@ -1,5 +1,6 @@
 <template>
   <q-page class="q-pa-lg flex flex-center">
+    <router-link to="/login" class="app-logo-link">Conference Lead Intake</router-link>
     <q-card style="width: 720px; max-width: 92vw" class="q-pa-md">
       <q-card-section>
         <div class="text-h5">Terms &amp; Conditions</div>
@@ -133,3 +134,14 @@
     </q-card>
   </q-page>
 </template>
+
+<style scoped>
+.app-logo-link {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  font-weight: 700;
+  color: var(--q-primary);
+  text-decoration: none;
+}
+</style>
