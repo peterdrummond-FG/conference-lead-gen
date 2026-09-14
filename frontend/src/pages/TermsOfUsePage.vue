@@ -54,6 +54,17 @@
         </div>
 
         <div>
+          <div class="text-subtitle2 text-weight-bold">SMS Program: How to Sign Up</div>
+          <p>
+            Text <span class="text-weight-bold">SETUP</span> to
+            <span class="text-weight-bold">+1 (936) 218-1311</span> to activate the program. By texting
+            SETUP, you agree to receive recurring automated text messages from Flippen Group related to
+            conference lead capture. (Once a conference is active, you may also text that day's event
+            code directly to the same number instead of SETUP — the same consent applies.)
+          </p>
+        </div>
+
+        <div>
           <div class="text-subtitle2 text-weight-bold">SMS Program: Message Frequency</div>
           <p>Message frequency varies based on how a representative uses the program.</p>
         </div>

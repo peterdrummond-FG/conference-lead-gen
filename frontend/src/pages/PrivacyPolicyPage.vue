@@ -49,6 +49,15 @@
         <div>
           <div class="text-subtitle2 text-weight-bold">SMS / Text Messaging Data</div>
           <p>
+            Representatives opt in to the Flippen Group Conference Lead Capture SMS program by texting
+            <span class="text-weight-bold">SETUP</span> to
+            <span class="text-weight-bold">+1 (936) 218-1311</span>
+            (or, once a conference is active, by texting that day's event code directly to the same
+            number). By texting SETUP or the event code, the representative agrees to receive recurring
+            automated text messages from Flippen Group related to conference lead capture. Msg&amp;data
+            rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
+          </p>
+          <p>
             Text messaging originator opt-in data and consent for the Flippen Group Conference Lead
             Capture SMS program is not shared with any third parties for any purpose. Mobile phone
             numbers collected through this program are used solely to operate the program and are not
