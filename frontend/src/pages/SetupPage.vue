@@ -221,8 +221,8 @@
                   @click="toggleCurrentEvent(p)"
                 />
               </q-item-section>
-              <q-item-section side>
-                <q-btn flat round dense icon="delete" color="grey-7" @click="deleteProfile(p.id)" />
+              <q-item-section v-if="p.id !== sessionStore.user?.id" side>
+                <q-btn flat round dense icon="delete" color="grey-7" @click="confirmDeleteProfile(p)" />
               </q-item-section>
             </q-item>
           </q-list>
@@ -287,7 +287,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Notify } from 'quasar';
+import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
@@ -436,9 +436,24 @@ async function createProfile() {
   }
 }
 
-async function deleteProfile(id: string) {
-  await api.post('/profiles-delete', { id });
+// Deleting a profile deletes the underlying auth.users login outright --
+// there's no undo and no soft-delete to restore from, so it always goes
+// through a confirm step. Your own row renders no delete button at all
+// (profiles-delete refuses self-deletion anyway).
+function confirmDeleteProfile(p: Profile) {
+  Dialog.create({
+    title: 'Delete this account?',
+    message: `${p.name} will no longer be able to sign in. Any contacts or event assignments they own stay, but are no longer attributed to them. This can't be undone.`,
+    cancel: true,
+    persistent: true,
+    ok: { label: 'Delete', color: 'negative' },
+  }).onOk(() => deleteProfile(p));
+}
+
+async function deleteProfile(p: Profile) {
+  await api.post('/profiles-delete', { id: p.id });
   await loadProfiles();
+  Notify.create({ type: 'positive', message: `${p.name}'s account was deleted.` });
 }
 
 async function assignChannelRep(channel: 'booth' | 'session', repId: string | null) {
