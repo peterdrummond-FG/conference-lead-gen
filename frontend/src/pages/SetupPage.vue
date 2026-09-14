@@ -246,7 +246,12 @@
               label="Role"
               dense
             />
-            <q-input v-if="newRole === 'sales'" v-model="newPhone" label="Phone" dense />
+            <q-input
+              v-model="newPhone"
+              label="Phone"
+              hint="Optional. For a sales rep this is also how cards they text in get attributed to them."
+              dense
+            />
             <div class="text-right">
               <q-btn
                 color="primary"
@@ -424,7 +429,10 @@ async function createProfile() {
       email: newEmail.value,
       password: newPassword.value,
       role: isAdmin.value ? newRole.value : 'sales',
-      ...(newRole.value === 'sales' && newPhone.value ? { phoneNumber: newPhone.value } : {}),
+      // Any role may have a phone (the list has always displayed one for
+      // admins too) -- it's only *load-bearing* for sales, where
+      // contacts-from-ocr matches a texted-in card's sender against it.
+      ...(newPhone.value ? { phoneNumber: newPhone.value } : {}),
     });
     newName.value = '';
     newEmail.value = '';
