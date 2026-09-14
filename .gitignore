@@ -42,3 +42,11 @@ local-agent/logs/*
 # (the durable copy is always Supabase Storage), cleaned up after each run.
 local-agent/.processing-sms/
 local-agent/.processing-audio/
+
+# Local scratch — denoising comparisons for the Stage 14 voice-memo work.
+# Real recordings of real people, kept only to A/B whisper input quality.
+audio check/
+
+# Local security/quality audit write-up. Notes about this repo rather than
+# part of it, and they name specific weaknesses — kept out of the remotes.
+audit/
