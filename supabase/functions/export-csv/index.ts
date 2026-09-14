@@ -38,6 +38,21 @@ function buildDescription(c: any): string {
   return parts.join(" — ");
 }
 
+// A row can be approved with no Zoho Account match at all (a genuinely new
+// school/district — see match-contact's "new_account" status). There's
+// nothing to put in the Account Id column yet, so the best available name
+// falls back through our own local match, then whatever raw text the rep
+// typed at intake.
+// deno-lint-ignore no-explicit-any
+function accountName(c: any): string {
+  return c.matched_zoho_account_name ?? c.school?.name ?? c.school_name_raw ?? c.school_district?.name ?? c.school_district_name_raw ?? "";
+}
+
+// deno-lint-ignore no-explicit-any
+function accountStatus(c: any): string {
+  return c.matched_zoho_account_id ? "Existing" : "New — create in Zoho";
+}
+
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
@@ -51,10 +66,11 @@ Deno.serve(async (req) => {
   }
 
   const supabase = serviceClient();
-  // Atomically selects the exportable set (approved + matched to a real
-  // Zoho account + not already synced) and stamps synced_at on exactly
-  // those rows, so this download can never be repeated for the same
-  // contacts — see export_and_mark_synced().
+  // Atomically selects the exportable set (approved + not already synced —
+  // an approved row with no matched Zoho account is a new lead, still
+  // exported, just flagged via Account Status below) and stamps synced_at
+  // on exactly those rows, so this download can never be repeated for the
+  // same contacts — see export_and_mark_synced().
   const { data: syncedIds, error: syncError } = await supabase.rpc("export_and_mark_synced");
   if (syncError) {
     return new Response(JSON.stringify({ error: syncError.message }), {
@@ -68,7 +84,7 @@ Deno.serve(async (req) => {
   if (syncedIds && syncedIds.length > 0) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("*, event:events(name)")
+      .select("*, event:events(name), school_district:school_districts(name), school:schools(name)")
       .in("id", syncedIds)
       .order("created_at");
     if (error) {
@@ -80,7 +96,7 @@ Deno.serve(async (req) => {
     contacts = data;
   }
 
-  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Lead Source,Capture Channel,Description"];
+  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Account Status,Lead Source,Capture Channel,Description"];
   for (const c of contacts) {
     lines.push([
       csvField(""),
@@ -89,8 +105,9 @@ Deno.serve(async (req) => {
       csvField(c.email ?? ""),
       csvField(c.phone ?? ""),
       csvField(c.title ?? ""),
-      csvField(c.matched_zoho_account_name ?? ""),
+      csvField(accountName(c)),
       csvField(c.matched_zoho_account_id ?? ""),
+      csvField(accountStatus(c)),
       csvField(c.event?.name ?? ""),
       csvField(channelLabel(c)),
       csvField(buildDescription(c)),

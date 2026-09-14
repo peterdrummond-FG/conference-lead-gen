@@ -285,8 +285,7 @@
             label="Approve"
             size="sm"
             :disable="contact.matchStatus === 'pending' ||
-              ((contact.matchStatus === 'ambiguous' || contact.matchStatus === 'new_account') &&
-                !contact.matchedZohoAccountId && !contact.matchedZohoContactId)"
+              (contact.matchStatus === 'ambiguous' && !contact.matchedZohoAccountId && !contact.matchedZohoContactId)"
             @click="$emit('approve', contact.id)"
           />
           <q-btn

@@ -1,6 +1,11 @@
-// GET -> { readyToExport, needsReview, blockedOnNewAccount }. Staff-gated.
+// GET -> { readyToExport, newAccountsToExport, needsReview }. Staff-gated.
 // Port of ExportEndpoints.cs's GET /api/export/summary — another Stage 10
 // gap caught during Stage 15's frontend wiring.
+//
+// readyToExport and newAccountsToExport are both exported by the next
+// export-csv click (see export_and_mark_synced) — the split just tells the
+// admin how many rows will go out already matched to a real Zoho Account
+// vs. flagged as a brand-new one to create.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -15,7 +20,7 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  const [ready, needsReview, blocked] = await Promise.all([
+  const [ready, needsReview, newAccounts] = await Promise.all([
     // Must match export_and_mark_synced's own selection criteria exactly —
     // otherwise this count would keep including contacts that a previous
     // export already sent and marked synced_at, even though the next
@@ -25,16 +30,16 @@ Deno.serve(async (req) => {
     supabase.from("contacts").select("*", { count: "exact", head: true })
       .eq("review_status", "needs_review"),
     supabase.from("contacts").select("*", { count: "exact", head: true })
-      .eq("review_status", "approved").is("matched_zoho_account_id", null),
+      .eq("review_status", "approved").is("matched_zoho_account_id", null).is("synced_at", null),
   ]);
 
   if (ready.error) return errorResponse(req, 500, ready.error.message);
   if (needsReview.error) return errorResponse(req, 500, needsReview.error.message);
-  if (blocked.error) return errorResponse(req, 500, blocked.error.message);
+  if (newAccounts.error) return errorResponse(req, 500, newAccounts.error.message);
 
   return jsonResponse(req, {
     readyToExport: ready.count ?? 0,
     needsReview: needsReview.count ?? 0,
-    blockedOnNewAccount: blocked.count ?? 0,
+    newAccountsToExport: newAccounts.count ?? 0,
   });
 });

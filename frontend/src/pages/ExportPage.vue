@@ -4,19 +4,25 @@
       <q-card-section>
         <div class="text-h5">Export to Zoho</div>
         <div class="text-caption text-grey">
-          Generates the Zoho-ready CSV from every approved, fully-linked contact. Each contact is
-          marked synced the moment it's included — re-exporting only ever picks up new ones.
+          Generates the Zoho-ready CSV from every approved contact. A contact with no matched Zoho
+          Account yet still goes out — flagged as a new Account to create — rather than being held
+          back. Each contact is marked synced the moment it's included — re-exporting only ever
+          picks up new ones.
         </div>
       </q-card-section>
 
       <q-card-section v-if="summary" class="q-gutter-sm">
         <div class="row justify-between">
-          <span>Ready to export</span>
+          <span>Ready to export (existing Zoho Account)</span>
           <q-badge color="positive">{{ summary.readyToExport }}</q-badge>
         </div>
         <div class="row justify-between">
+          <span>Ready to export (new Account — flagged)</span>
+          <q-badge color="info">{{ summary.newAccountsToExport }}</q-badge>
+        </div>
+        <div class="row justify-between">
           <span>Still needs review</span>
-          <q-badge color="warning">{{ summary.needsReview + summary.blockedOnNewAccount }}</q-badge>
+          <q-badge color="warning">{{ summary.needsReview }}</q-badge>
         </div>
       </q-card-section>
 
@@ -24,7 +30,7 @@
         <q-btn
           color="primary"
           label="Export to Zoho"
-          :disable="!summary || summary.readyToExport === 0"
+          :disable="!summary || summary.readyToExport + summary.newAccountsToExport === 0"
           @click="download"
         />
       </q-card-actions>
@@ -39,7 +45,7 @@ import { api } from '@/boot/axios';
 interface ExportSummary {
   readyToExport: number;
   needsReview: number;
-  blockedOnNewAccount: number;
+  newAccountsToExport: number;
 }
 
 const summary = ref<ExportSummary | null>(null);
