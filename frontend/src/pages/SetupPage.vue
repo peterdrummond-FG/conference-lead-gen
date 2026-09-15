@@ -20,6 +20,34 @@
             </div>
           </q-banner>
 
+          <!-- Several conferences can be active at once (different reps,
+               different cities, same day) — this switches which one this
+               admin/Solutions Success login is administering (rep
+               assignment, QR slides), without creating a new one. -->
+          <div v-if="canManageEvents && activeEvents.length > 1" class="q-mt-sm">
+            <q-select
+              :model-value="eventStore.activeEvent.id"
+              :options="activeEvents"
+              option-label="name"
+              option-value="id"
+              emit-value
+              map-options
+              dense
+              label="Switch to a different active conference"
+              :loading="switchingEvent"
+              @update:model-value="switchEvent"
+            >
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section>
+                    <q-item-label>{{ scope.opt.name }}</q-item-label>
+                    <q-item-label caption>{{ scope.opt.state }} · activated {{ formatRelativeTime(scope.opt.activatedAt) }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+          </div>
+
           <div v-if="eventStore.activeEvent.folderCode" class="q-mt-sm">
             <div class="text-caption">Card-photo folder for today:</div>
             <div class="text-subtitle2 text-weight-bold">{{ eventStore.activeEvent.folderCode }}</div>
@@ -84,8 +112,8 @@
             </div>
           </div>
 
-          <!-- Sales reps have no say in which conference the whole app is
-               running for — only whether they're personally linked to it. -->
+          <!-- Sales reps have no say in which conferences exist — only
+               whether they're personally linked to one. -->
           <div v-if="canManageEvents" class="q-mt-md">
             <q-btn flat color="primary" label="Pick a different event" @click="pickingNew = true" />
           </div>
@@ -305,6 +333,13 @@ interface CampaignOption {
   name: string;
 }
 
+interface ActiveEventOption {
+  id: string;
+  name: string;
+  state: string;
+  activatedAt: string;
+}
+
 // The number Twilio's SMS/MMS webhook is configured against — not stored
 // anywhere server-side (the app never needs to know its own number; Twilio
 // just POSTs inbound messages to twilio-webhook), so this is the one place
@@ -330,6 +365,12 @@ const isSales = computed(() => sessionStore.user?.role === 'sales');
 // the event, never to reconfigure it.
 const canManageEvents = computed(() => isAdmin.value || sessionStore.user?.role === 'solutionsSuccess');
 const linkingMyself = ref(false);
+
+// Every currently-active conference (not just this login's own) — lets
+// admin/solutionsSuccess switch which one they're administering instead of
+// only ever seeing whichever they personally activated.
+const activeEvents = ref<ActiveEventOption[]>([]);
+const switchingEvent = ref(false);
 
 const profiles = ref<Profile[]>([]);
 const salesProfiles = computed(() => profiles.value.filter((p) => p.role === 'sales'));
@@ -362,11 +403,15 @@ function isLinkedToCurrentEvent(p: Profile) {
   return !!eventStore.activeEvent && p.currentEventId === eventStore.activeEvent.id;
 }
 
-// Short, memorable URLs (routes.ts redirects these into /intake?channel=...)
-// — the QR itself is always scanned, but the slide also spells the URL out
-// for anyone who can't scan, so it needs to be typeable on a phone keyboard.
+// Short, memorable, per-event URLs (routes.ts redirects these into
+// /intake?eventSlug=...&channel=...) — the QR itself is always scanned, but
+// the slide also spells the URL out for anyone who can't scan, so it needs
+// to be typeable on a phone keyboard. The slug is what makes leads from
+// concurrent conferences (multiple reps, same day) attribute correctly
+// instead of racing to whichever event happens to be "active" — see
+// 20260915120000_event_slug_and_concurrent_events.sql.
 function intakeUrlFor(channel: ConnectSlideChannel) {
-  return `${window.location.origin}/${channel}`;
+  return `${window.location.origin}/connect/${eventStore.activeEvent?.slug}-${channel}`;
 }
 
 function filterFn(val: string, update: (cb: () => void) => void) {
@@ -392,12 +437,41 @@ async function activate() {
       state: stateOption.value.name,
     });
     await eventStore.fetchActive();
+    await loadActiveEvents();
     pickingNew.value = false;
     selectedCampaign.value = null;
     stateOption.value = null;
   } finally {
     activating.value = false;
   }
+}
+
+async function loadActiveEvents() {
+  if (!canManageEvents.value) return;
+  const { data } = await api.get<ActiveEventOption[]>('/events-list-active');
+  activeEvents.value = data;
+}
+
+async function switchEvent(eventId: string) {
+  if (!eventId || eventId === eventStore.activeEvent?.id) return;
+  switchingEvent.value = true;
+  try {
+    await api.post('/profiles-set-current-event', { eventId });
+    await eventStore.fetchActive();
+  } finally {
+    switchingEvent.value = false;
+  }
+}
+
+// Rough enough to disambiguate same-named test/duplicate conferences in the
+// switcher — not a general-purpose formatter.
+function formatRelativeTime(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 async function downloadSlide(channel: ConnectSlideChannel) {
@@ -465,7 +539,8 @@ async function deleteProfile(p: Profile) {
 }
 
 async function assignChannelRep(channel: 'booth' | 'session', repId: string | null) {
-  await api.post('/events-assign-rep', { channel, repId });
+  if (!eventStore.activeEvent) return;
+  await api.post('/events-assign-rep', { eventId: eventStore.activeEvent.id, channel, repId });
   await eventStore.fetchActive();
 }
 
@@ -501,6 +576,9 @@ async function toggleMyCurrentEvent() {
 
 onMounted(() => {
   void eventStore.fetchActive();
-  if (canManageEvents.value) void loadProfiles();
+  if (canManageEvents.value) {
+    void loadProfiles();
+    void loadActiveEvents();
+  }
 });
 </script>

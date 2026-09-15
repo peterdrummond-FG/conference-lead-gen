@@ -1,5 +1,5 @@
 // POST { firstName, lastName, email?, phone?, title?, state?, schoolDistrictId?,
-//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw?, qrChannel? }
+//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw?, qrChannel?, eventSlug? }
 // -> { id, createdAt }, 201. Public (kiosk form, no PIN).
 //
 // State/district/school are all attendee-optional. A typed value that didn't
@@ -12,6 +12,14 @@
 // a bookmarked/typed URL, a stale value) is silently dropped to null rather
 // than rejected, since which QR drove the scan is a nice-to-have tag, not
 // something worth blocking a submission over.
+//
+// eventSlug is the specific event that QR's URL encoded
+// (/connect/<slug>-<channel> — see routes.ts). Multiple conferences can be
+// active at once (20260915120000_event_slug_and_concurrent_events.sql), so
+// this — not "the" active event — is what decides which event a submission
+// belongs to. Falls back to the most-recently-activated active event only
+// when no slug is present at all (a bare/legacy /intake link), which is
+// ambiguous by construction once more than one event is active.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
@@ -83,6 +91,8 @@ Deno.serve(async (req) => {
   }
 
   const qrChannel = body.qrChannel === "booth" || body.qrChannel === "session" ? body.qrChannel : null;
+  const eventSlug = optionalString(body.eventSlug, LIMITS.name);
+  if (eventSlug === undefined) return errorResponse(req, 400, "eventSlug is invalid.");
 
   const supabase = serviceClient();
 
@@ -99,23 +109,49 @@ Deno.serve(async (req) => {
     return errorResponse(req, 429, "Too many submissions from this network — please try again in a few minutes.");
   }
 
-  // EventId is resolved server-side, never trusted from the client.
-  const { data: activeEvent, error: eventError } = await supabase
-    .from("events")
-    .select("id, booth_rep_id, session_rep_id")
-    .eq("is_active", true)
-    .maybeSingle();
-  if (eventError) return errorResponse(req, 500, eventError.message);
-  if (!activeEvent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
+  // The event is resolved server-side by the slug the QR's URL carried,
+  // never trusted as an id from the client. A slug that doesn't match any
+  // event is a 404, not a silent fall-through — better than mis-attributing
+  // a lead to the wrong conference.
+  let activeEvent;
+  if (eventSlug) {
+    const { data: bySlug, error: eventError } = await supabase
+      .from("events")
+      .select("id, booth_rep_id, session_rep_id")
+      .eq("slug", eventSlug)
+      .maybeSingle();
+    if (eventError) return errorResponse(req, 500, eventError.message);
+    if (!bySlug) return errorResponse(req, 404, `No event found for '${eventSlug}'.`);
+    activeEvent = bySlug;
+  } else {
+    const { data: mostRecent, error: eventError } = await supabase
+      .from("events")
+      .select("id, booth_rep_id, session_rep_id")
+      .eq("is_active", true)
+      .order("activated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (eventError) return errorResponse(req, 500, eventError.message);
+    if (!mostRecent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
+    activeEvent = mostRecent;
+  }
 
-  // Whichever rep is currently credited for this channel on the active
-  // event (set via events-assign-rep) — null if that channel has no rep
-  // assigned, or the scan carried no channel at all.
+  // Whichever rep is currently credited for this channel on the event (set
+  // via events-assign-rep) — null if that channel has no rep assigned, or
+  // the scan carried no channel at all.
   const repId = qrChannel === "booth"
     ? activeEvent.booth_rep_id
     : qrChannel === "session"
     ? activeEvent.session_rep_id
     : null;
+
+  // A breakout-session QR is only ever scanned by someone sitting in the
+  // talk right now — that's a stronger self-selected engagement signal than
+  // a booth walk-up, so it starts hot instead of unclassified.
+  // contact_intent_is_manual defaults to false, so local-agent's intentLoop
+  // still takes over (and can downgrade this) the moment real interaction
+  // notes show up — this is a starting value, not a lock.
+  const contactIntent = qrChannel === "session" ? "hot" : null;
 
   if (body.schoolDistrictId) {
     const { data: district, error: districtError } = await supabase
@@ -152,6 +188,7 @@ Deno.serve(async (req) => {
         source: "form",
         qr_channel: qrChannel,
         rep_id: repId,
+        contact_intent: contactIntent,
         first_name: firstName,
         last_name: lastName,
         email,

@@ -24,10 +24,27 @@ const routes: RouteRecordRaw[] = [
       { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
-      // Short, easy-to-hand-type aliases for the two QR codes SetupPage.vue
-      // generates (booth vs. breakout session) — the QR itself is always
-      // scanned, but the slide also spells the URL out for anyone who can't
-      // scan, so it needs to be short enough to type on a phone keyboard.
+      // The QR codes SetupPage.vue generates — one per event per channel,
+      // e.g. /connect/hignell-booth. "connect" echoes the slide's own
+      // "Connect With Us" headline rather than a cryptic prefix, and the
+      // slug is what lets multiple reps run concurrent conferences without
+      // their leads mixing (see 20260915120000_event_slug_and_concurrent_events.sql)
+      // — the QR itself is always scanned, but the slide also spells the URL
+      // out for anyone who can't scan, so it needs to stay short enough to
+      // type on a phone keyboard.
+      {
+        path: 'connect/:slugChannel',
+        redirect: (to) => {
+          const raw = String(to.params.slugChannel ?? '');
+          const match = /^(.+)-(booth|session)$/.exec(raw);
+          if (!match) return { path: '/intake' };
+          return { path: '/intake', query: { eventSlug: match[1], channel: match[2] } };
+        },
+      },
+      // Pre-slug aliases, kept so any slide already printed/downloaded
+      // before this change still works — falls back to whichever event was
+      // activated most recently (ambiguous once more than one is active,
+      // same as a bare /intake visit).
       { path: 'booth', redirect: { path: '/intake', query: { channel: 'booth' } } },
       { path: 'session', redirect: { path: '/intake', query: { channel: 'session' } } },
       { path: 'review', component: () => import('@/pages/ReviewPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },

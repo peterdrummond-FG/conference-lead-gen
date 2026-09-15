@@ -180,23 +180,25 @@ export async function renderConnectSlide(
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = CKH_GOLD;
   ctx.font = `700 30px ${FONT_STACK}`;
-  ctx.fillText(CHANNEL_EYEBROW[details.channel], COL_X, 480);
+  ctx.fillText(CHANNEL_EYEBROW[details.channel], COL_X, 460);
 
   // Headline + gold accent rule, standing in for the print flyer's nested
-  // gold border.
+  // gold border. Baseline sits 120px below the eyebrow's — at this 96px
+  // bold size the ascender reaches ~70px above its own baseline, so
+  // anything tighter climbed into the eyebrow line (the bug this fixes).
   ctx.fillStyle = '#FFFFFF';
   fitFontSize(ctx, 'CONNECT WITH US', COL_WIDTH, 96, 60);
-  ctx.fillText('CONNECT WITH US', COL_X, 540);
+  ctx.fillText('CONNECT WITH US', COL_X, 580);
 
   ctx.fillStyle = CKH_GOLD;
-  ctx.fillRect(COL_X, 578, 200, 5);
+  ctx.fillRect(COL_X, 618, 200, 5);
 
   // Event name, then its state
   ctx.fillStyle = '#FFFFFF';
   ctx.font = `600 40px ${FONT_STACK}`;
   const eventLines = wrapText(ctx, details.eventName, COL_WIDTH, 2);
   eventLines.forEach((line, i) => {
-    ctx.fillText(line, COL_X, 660 + i * 50);
+    ctx.fillText(line, COL_X, 700 + i * 50);
   });
 
   ctx.fillStyle = MUTED_BLUE;
@@ -204,7 +206,7 @@ export async function renderConnectSlide(
   ctx.fillText(
     details.state,
     COL_X,
-    660 + (eventLines.length - 1) * 50 + 48,
+    700 + (eventLines.length - 1) * 50 + 48,
   );
 
   // Scan hint + spelled-out URL, bottom-anchored to the QR card's lower edge
