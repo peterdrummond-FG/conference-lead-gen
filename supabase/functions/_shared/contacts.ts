@@ -113,8 +113,8 @@ export interface DistrictResolution {
 // inserted as a new row — that insert-on-miss behavior (including the old
 // "(none provided on card)" placeholder) is what created the free-text junk
 // this schema replaced.
-// deno-lint-ignore no-explicit-any
 export async function resolveDistrict(
+  // deno-lint-ignore no-explicit-any
   supabase: any,
   conferenceState: string | null,
   districtNameRaw: string | null | undefined,
@@ -172,8 +172,8 @@ export interface SchoolResolution {
   raw: string | null;
 }
 
-// deno-lint-ignore no-explicit-any
 export async function resolveSchool(
+  // deno-lint-ignore no-explicit-any
   supabase: any,
   districtId: string,
   schoolNameRaw: string | null | undefined,

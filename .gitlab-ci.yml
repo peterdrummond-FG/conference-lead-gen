@@ -12,6 +12,16 @@ lint-and-typecheck:
     - bash -n scripts/check-deployed-functions.sh
     - cd frontend && npm ci && npm run typecheck
 
+# Split into its own job (rather than added to lint-and-typecheck's node:22
+# image) because this was missing here entirely until GitHub's equivalent
+# `deno lint` step caught pre-existing lint violations that GitLab's mirror
+# never ran -- see .github/workflows/ci.yml.
+lint-edge-functions:
+  stage: test
+  image: denoland/deno:latest
+  script:
+    - deno lint supabase/functions
+
 unit-tests:
   stage: test
   image: node:22

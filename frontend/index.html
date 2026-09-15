@@ -22,6 +22,20 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self' https://*.supabase.co<% if (ctx.dev) { %> ws://localhost:*<% } %>;<% if (ctx.dev) { %> worker-src 'self' blob:;<% } %>"
     />
+    <!--
+      Audit S9. This meta CSP stays the source of truth for script-src (no
+      unsafe-inline) -- frontend/vercel.json's headers add frame-ancestors,
+      HSTS, X-Content-Type-Options, Referrer-Policy and Permissions-Policy,
+      none of which a <meta> tag can deliver (frame-ancestors is silently
+      ignored there, and the rest are header-only by definition; a meta CSP
+      also only covers the HTML document, not every response Vercel serves).
+      vercel.json's CSP header is deliberately ONLY frame-ancestors, since the
+      two policies combine as an intersection -- duplicating this policy
+      there would mean keeping two copies in sync and breaking the app
+      whenever they drift. (This used to live in a vercel.json `$comment`
+      key; Vercel's schema validator rejects unknown properties there and
+      silently failed every deploy for it -- see git blame.)
+    -->
 
     <link rel="icon" type="image/png" sizes="128x128" href="icons/favicon-128x128.png">
     <link rel="icon" type="image/png" sizes="96x96" href="icons/favicon-96x96.png">
