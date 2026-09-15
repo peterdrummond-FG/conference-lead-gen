@@ -45,6 +45,10 @@ const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 // of a permanently-failing send and cuts needless work on dormant phones.
 const PAUSE_IDLE_MS = 120 * 60 * 1000;
 const PENDING_STATUSES = new Set(["pending_ocr", "pending_transcription", "processing"]);
+// Hard ceilings on a code path that spends money and is subject to carrier
+// compliance rules (audit N3). MAX_SENDS_PER_TICK bounds a runaway sweep;
+// OUTBOUND_SMS_ENABLED is a kill switch that needs no redeploy or cron edit.
+const MAX_SENDS_PER_TICK = Number(Deno.env.get("MAX_SMS_PER_TICK") ?? 25);
 
 async function sendSms(accountSid: string, authToken: string, to: string, from: string, body: string) {
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
@@ -89,7 +93,13 @@ Deno.serve(async (req) => {
     return new Response("Twilio not configured", { status: 500 });
   }
 
+  if ((Deno.env.get("OUTBOUND_SMS_ENABLED") ?? "true") !== "true") {
+    return new Response("outbound sms disabled", { status: 200 });
+  }
+
   const now = Date.now();
+  let sent = 0;
+  let failures = 0;
 
   // 1. Expiry reminders.
   const { data: idleBindings, error: idleError } = await supabase
@@ -108,6 +118,23 @@ Deno.serve(async (req) => {
 
     const fromNumber = await lookupSendingNumber(supabase, binding.phone_number);
     if (!fromNumber) continue;
+    if (sent >= MAX_SENDS_PER_TICK) break;
+
+    // CLAIM BEFORE SENDING (audit N3). pg_cron fires every 60s without
+    // waiting for the previous run, and both sweeps do slow per-binding HTTP
+    // work, so overlapping ticks are expected. Reading a set and writing the
+    // watermark afterwards meant the next tick re-read the same rows and
+    // re-sent -- a rep got the same text two or three times, which on an A2P
+    // 10DLC campaign is a carrier-filtering risk, not just an annoyance.
+    // This is the same optimistic claim photoLoop/transcriptionLoop use.
+    const { data: claimed } = await supabase
+      .from("phone_event_bindings")
+      .update({ expiry_notified_at: new Date().toISOString() })
+      .eq("phone_number", binding.phone_number)
+      .is("expiry_notified_at", null)
+      .select("phone_number")
+      .maybeSingle();
+    if (!claimed) continue; // another tick got there first
 
     try {
       await sendSms(
@@ -117,11 +144,16 @@ Deno.serve(async (req) => {
         fromNumber,
         `Your session expired. Respond ${folderCode} to reactivate your session.`,
       );
+      sent++;
+    } catch (err) {
+      // Release the claim so a transient failure retries, rather than being
+      // swallowed by our own watermark. PAUSE_IDLE_MS still caps how long
+      // that retry loop can run.
       await supabase
         .from("phone_event_bindings")
-        .update({ expiry_notified_at: new Date().toISOString() })
+        .update({ expiry_notified_at: null })
         .eq("phone_number", binding.phone_number);
-    } catch (err) {
+      failures++;
       console.error(`expiry reminder failed for ${binding.phone_number}`, err);
     }
   }
@@ -173,16 +205,46 @@ Deno.serve(async (req) => {
     const n = count ?? 0;
     const label = n === 1 ? "1 contact" : `${n} contacts`;
 
+    if (sent >= MAX_SENDS_PER_TICK) break;
+
+    // Same claim-before-send as the expiry sweep: advance the high-water mark
+    // conditional on it still holding the value this tick read, so an
+    // overlapping tick finds nothing to do instead of re-sending.
+    const { data: claimedConfirm } = await supabase
+      .from("phone_event_bindings")
+      .update({ contacts_confirmed_through: newest.received_at })
+      .eq("phone_number", binding.phone_number)
+      .eq("contacts_confirmed_through", binding.contacts_confirmed_through)
+      .select("phone_number")
+      .maybeSingle();
+    if (!claimedConfirm) continue;
+
     try {
       await sendSms(accountSid, authToken, binding.phone_number, fromNumber, `${label} received.`);
+      sent++;
+    } catch (err) {
       await supabase
         .from("phone_event_bindings")
-        .update({ contacts_confirmed_through: newest.received_at })
+        .update({ contacts_confirmed_through: binding.contacts_confirmed_through })
         .eq("phone_number", binding.phone_number);
-    } catch (err) {
+      failures++;
       console.error(`contact confirmation failed for ${binding.phone_number}`, err);
     }
   }
 
-  return new Response("ok", { status: 200 });
+  // Return non-200 on any failure so Supabase's own function-error metrics
+  // (and any uptime check on the cron) actually fire -- previously every
+  // failure was a console.error nobody was watching (audit Q8).
+  if (failures > 0) {
+    console.error(JSON.stringify({ event: "session_notifications.partial_failure", sent, failures }));
+    return new Response(JSON.stringify({ ok: false, sent, failures }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ ok: true, sent }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 });

@@ -1,11 +1,6 @@
 # Env
 .env
 
-# .NET
-bin/
-obj/
-*.user
-
 # Node
 node_modules/
 dist/
@@ -17,9 +12,6 @@ __pycache__/
 
 # OS
 .DS_Store
-
-# Seed loader run artifacts (regenerated each run, not source data)
-backend/Data/Seed/*.excluded.json
 
 # Card-photo watcher — real photos and run state, never version-controlled.
 # The script itself and this .gitignore's own placeholders stay tracked.

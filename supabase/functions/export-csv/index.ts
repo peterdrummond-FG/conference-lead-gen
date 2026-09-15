@@ -66,18 +66,28 @@ Deno.serve(async (req) => {
   }
 
   const supabase = serviceClient();
-  // Atomically selects the exportable set (approved + not already synced —
-  // an approved row with no matched Zoho account is a new lead, still
-  // exported, just flagged via Account Status below) and stamps synced_at
-  // on exactly those rows, so this download can never be repeated for the
-  // same contacts — see export_and_mark_synced().
-  const { data: syncedIds, error: syncError } = await supabase.rpc("export_and_mark_synced");
-  if (syncError) {
-    return new Response(JSON.stringify({ error: syncError.message }), {
+
+  // Two-phase (audit Q2): RESERVE the exportable set here, and stamp
+  // synced_at only once the client confirms it actually received the blob
+  // (export-confirm). Marking first meant a timeout or a dropped download
+  // silently removed those leads from every future export, with no record of
+  // which ones -- and since the predicate widened to all approved contacts,
+  // that was the whole approved set.
+  //
+  // Release anything a previous failed export abandoned first, so those leads
+  // are exportable again before this batch is reserved.
+  await supabase.rpc("export_release_stale", { p_stale_minutes: 30 });
+
+  const { data: batch, error: reserveError } = await supabase.rpc("export_reserve", {
+    p_user_id: user.id,
+  });
+  if (reserveError) {
+    return new Response(JSON.stringify({ error: reserveError.message }), {
       status: 500,
       headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
+  const syncedIds: string[] = batch?.contact_ids ?? [];
 
   // deno-lint-ignore no-explicit-any
   let contacts: any[] = [];
@@ -120,6 +130,9 @@ Deno.serve(async (req) => {
       ...corsHeaders(req),
       "Content-Type": "text/csv",
       "Content-Disposition": 'attachment; filename="conference-leads.csv"',
+      // The client POSTs this to export-confirm once the blob is in hand.
+      // Until it does, these contacts stay unsynced and re-exportable.
+      "X-Export-Batch-Id": batch.id,
     },
   });
 });

@@ -30,11 +30,36 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { supabase } from './supabase-client.mjs';
-import { runSkill, runClaudeRaw } from './skill-runner.mjs';
+import { runSkill, runClaudeRaw, extractJson } from './skill-runner.mjs';
 import { transcribeAudio } from './whisper-runner.mjs';
+import {
+  AttributionOutput,
+  CardExtractionOutput,
+  IntentOutput,
+  MatchOutput,
+  NoteExtractionOutput,
+  ResearchOutput,
+} from './schemas.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+// Working directory for every `claude -p` call. Deliberately NOT the repo
+// root (audit A2): that directory holds .env with the Zoho client secret and
+// refresh token, and a permission-skipped session reading OCR'd card text has
+// no business being able to open it. This directory contains nothing but a
+// .claude/skills symlink, which is all the CLI needs to resolve skills.
+//
+// One-time setup (also in start-agent.command):
+//   mkdir -p ~/.conference-lead-gen-agent/.claude
+//   ln -sfn <repo>/.claude/skills ~/.conference-lead-gen-agent/.claude/skills
+const AGENT_WORKDIR = process.env.AGENT_WORKDIR
+  ?? path.join(process.env.HOME ?? REPO_ROOT, '.conference-lead-gen-agent');
+
+// Held by THIS process only. Never forwarded to a skill subprocess -- see
+// skill-runner.mjs's skillEnv().
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function log(message) {
   console.log(`${new Date().toISOString()} ${message}`);
@@ -96,30 +121,20 @@ async function processContact(contact) {
     extractionConfidence: contact.extraction_confidence ?? null,
   };
 
-  const researchOutput = await runSkill('research-contact', researchInput, REPO_ROOT);
-  const matchOutput = await runSkill('match-contact', researchOutput, REPO_ROOT);
-
-  // match-contact's own contract guarantees matchStatus is never "pending"
-  // — if it ever violates that, treat it like a pipeline failure rather
-  // than trusting it blindly.
-  if (matchOutput.matchStatus === 'pending') {
-    throw new Error('match-contact violated its contract and returned matchStatus=pending');
-  }
-
-  // Real Zoho record ids in this org are long numeric strings (e.g.
-  // "3001271000007193584") — caught a run once where the model's own prose
-  // reasoning concluded no account existed, but the structured fields it
-  // emitted alongside that reasoning claimed a "high confidence" match
-  // against a fabricated id ("ase") and name ("asdf") anyway. Treat that
-  // self-contradiction the same as the pending check above: a pipeline
-  // failure to retry, never a result to trust blindly.
-  const ZOHO_ID_PATTERN = /^\d{15,}$/;
-  const isValidZohoId = (id) => id == null || ZOHO_ID_PATTERN.test(id);
-  if (!isValidZohoId(matchOutput.matchedZohoAccountId) || !isValidZohoId(matchOutput.matchedZohoContactId)) {
-    throw new Error(
-      `match-contact returned a malformed Zoho id (account=${JSON.stringify(matchOutput.matchedZohoAccountId)}, contact=${JSON.stringify(matchOutput.matchedZohoContactId)}) — refusing to persist a fabricated match.`,
-    );
-  }
+  // Both skills' full output contracts -- enum values, Zoho id formats, the
+  // null-together rules, and the "high confidence requires a matched account"
+  // invariant -- are enforced in schemas.mjs before either result is seen
+  // here. A violation throws inside runSkill, which retries and then leaves
+  // the row pending for a human; it is never persisted. This replaces the two
+  // hand-rolled checks that used to live here (matchStatus!=='pending' and a
+  // Zoho-id regex), generalised from the two fields that broke once to the
+  // whole contract. See audit A6.
+  const researchOutput = await runSkill('research-contact', researchInput, AGENT_WORKDIR, {
+    schema: ResearchOutput,
+  });
+  const matchOutput = await runSkill('match-contact', researchOutput, AGENT_WORKDIR, {
+    schema: MatchOutput,
+  });
 
   // Auto-approve rule from MatchingBackgroundService.cs, now evaluated
   // atomically inside finalize_contact_match against the row's *current*
@@ -250,6 +265,71 @@ async function convertHeicToJpeg(srcPath) {
   return destPath;
 }
 
+// The authenticated write for OCR'd cards. This used to be the model's job:
+// process-cards was handed $SUPABASE_SERVICE_ROLE_KEY as a shell env var and
+// told to curl with it, which put an RLS-bypassing credential inside a
+// permission-skipped session whose context is an attacker-supplied photo
+// (audit A2). The skill now returns JSON and this does the writing.
+//
+// Posted one card at a time rather than as a batch so a single unusable entry
+// costs only itself -- same reasoning as the skill's old "don't stop the loop
+// on one card's failure" rule.
+async function postExtractedCards({ cards, folderCode, hash, sourceImagePath, storagePrefix, inboundMessageId }) {
+  const failures = [];
+  let created = 0;
+
+  for (const card of cards) {
+    const label = [card.firstName, card.lastName].filter(Boolean).join(' ') || `card ${card.index}`;
+    // SourceImageHash is uniquely constrained and every card from one photo
+    // shares a sourceImagePath, so each card needs its own suffix. Derived
+    // from the same deterministic reading-order index the crop filename uses,
+    // which is what makes retrying a partially-failed photo safe: already-
+    // succeeded cards re-derive the same hash and land on the existing-hash
+    // no-op path instead of duplicating.
+    const sourceImageHash = cards.length > 1
+      ? `${hash}-${String(card.index).padStart(2, '0')}`
+      : hash;
+
+    const body = {
+      eventFolderCode: folderCode,
+      firstName: card.firstName,
+      lastName: card.lastName,
+      email: card.email,
+      phone: card.phone,
+      title: card.title,
+      districtName: card.districtName,
+      schoolName: card.schoolName,
+      extractionConfidence: card.extractionConfidence,
+      sourceImageHash,
+      sourceImagePath,
+      ...(card.cropFileName ? { croppedImagePath: `${storagePrefix}/${card.cropFileName}` } : {}),
+      ...(inboundMessageId ? { inboundMessageId } : {}),
+    };
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/contacts-from-ocr`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        let detail = text;
+        try { detail = JSON.parse(text).error ?? text; } catch { /* non-JSON body */ }
+        throw new Error(`HTTP ${res.status}: ${detail}`.trim());
+      }
+      created++;
+    } catch (err) {
+      failures.push(`${label}: ${err.message ?? err}`);
+    }
+  }
+
+  return { created, failures };
+}
+
 async function processPhotoMessage(message) {
   // The whole body lives inside this one try/catch — an early failure (the
   // events select, Storage download, mkdir/writeFile, HEIC conversion) used
@@ -295,27 +375,40 @@ async function processPhotoMessage(message) {
     // success, at a key sharing that same directory prefix (see SKILL.md).
     const storagePrefix = path.dirname(message.storage_path);
 
+    // The skill is told the paths it needs and nothing else. It no longer
+    // POSTs anything and is never given a credential (audit A2) -- it reads
+    // the photo, writes crops, and prints JSON. The authenticated write is
+    // done below, by this process, which OCR'd card text can never reach.
     const prompt = [
       `Use the process-cards skill on the photo at ${localPath}.`,
-      `Event folder code: ${event.folder_code}.`,
       `Content hash: ${hash}.`,
-      `Local archive path — write any cropped card images (Step 2) into this same directory, which already exists — is: ${localPath}.`,
-      `Supabase Storage object key — include this exact string as sourceImagePath in your POST body — is: ${message.storage_path}.`,
-      `Inbound message id — include this exact string as inboundMessageId in your POST body — is: ${message.id}.`,
-      `Print only PROCESS_CARDS_OK ${hash} or PROCESS_CARDS_FAIL ${hash} <reason> as your entire final message.`,
+      `Write any cropped card images (Step 2) into this same directory, which already exists: ${workDir}.`,
+      `Print only the final JSON.`,
     ].join(' ');
 
-    const { stdout, exitCode, timedOut } = await runClaudeRaw(prompt, REPO_ROOT, PHOTO_CLAUDE_TIMEOUT_MS);
-    const lastLine = stdout.trim().split('\n').pop() ?? '';
+    const { stdout, exitCode, timedOut } = await runClaudeRaw(
+      prompt, AGENT_WORKDIR, PHOTO_CLAUDE_TIMEOUT_MS, 'process-cards',
+    );
 
     if (timedOut) throw new Error(`process-cards timed out after ${PHOTO_CLAUDE_TIMEOUT_MS}ms`);
-    if (exitCode !== 0 || !lastLine.startsWith('PROCESS_CARDS_OK')) {
-      throw new Error(exitCode !== 0 ? `claude exited ${exitCode}: ${lastLine}` : lastLine || 'process-cards reported failure with no reason');
+    if (exitCode !== 0) throw new Error(`claude exited ${exitCode}: ${stdout.trim().slice(-400)}`);
+
+    const parsed = CardExtractionOutput.safeParse(extractJson(stdout));
+    if (!parsed.success) {
+      throw new Error(
+        `process-cards output failed schema validation: ` +
+        parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+      );
+    }
+    const extraction = parsed.data;
+
+    if (extraction.status === 'no_card_detected') {
+      throw new Error('no legible business card detected in photo');
     }
 
-    // Upload any crops process-cards wrote into workDir, at a Storage key
-    // sharing the original's directory prefix — same basename it already
-    // reported as croppedImagePath in its own POST(s).
+    // Upload any crops the skill wrote, at a Storage key sharing the
+    // original's directory prefix. Done BEFORE creating the contacts so a
+    // row's croppedImagePath never points at an object that isn't there yet.
     const files = await readdir(workDir);
     const cropFiles = files.filter((f) => f.startsWith(`${hash}-crop-`));
     for (const cropFile of cropFiles) {
@@ -326,11 +419,27 @@ async function processPhotoMessage(message) {
       if (uploadError) throw uploadError;
     }
 
+    const { created, failures } = await postExtractedCards({
+      cards: extraction.cards,
+      folderCode: event.folder_code,
+      hash,
+      sourceImagePath: message.storage_path,
+      storagePrefix,
+      inboundMessageId: message.id,
+    });
+    if (failures.length > 0 && created === 0) {
+      throw new Error(`every card failed: ${failures.join('; ')}`);
+    }
+
     await supabase.from('inbound_messages').update({
       status: 'completed',
       processed_at: new Date().toISOString(),
+      error: failures.length > 0 ? failures.join('; ') : null,
     }).eq('id', message.id);
-    log(`photo OK: ${message.id} (${cropFiles.length} crop(s) uploaded)`);
+    log(
+      `photo OK: ${message.id} (${created} contact(s), ${cropFiles.length} crop(s) uploaded` +
+      `${failures.length ? `, ${failures.length} failed` : ''})`,
+    );
   } catch (err) {
     const reason = err.message ?? String(err);
     await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
@@ -493,7 +602,9 @@ async function linkTranscriptToContacts(message, transcript) {
       title: c.title,
     })),
   };
-  const { results } = await runSkill('attribute-voice-memo', skillInput, REPO_ROOT);
+  const { results } = await runSkill('attribute-voice-memo', skillInput, AGENT_WORKDIR, {
+    schema: AttributionOutput,
+  });
   const attributed = (results ?? []).filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0);
 
   if (attributed.length === 0) {
@@ -696,7 +807,6 @@ async function transcriptionLoop() {
 // the review card always wins and is never revisited here; see
 // 20260910140000_add_contact_intent.sql.
 const INTENT_POLL_INTERVAL_MS = Number(process.env.INTENT_POLL_INTERVAL_MS ?? 20_000);
-const VALID_CONTACT_INTENTS = new Set(['hot', 'warm', 'cold', null]);
 
 async function findContactsNeedingIntentClassification() {
   const { data, error } = await supabase
@@ -714,15 +824,15 @@ async function findContactsNeedingIntentClassification() {
 }
 
 async function classifyContactIntent(contact) {
+  // The hot/warm/cold enum (and null) is enforced by IntentOutput in
+  // schemas.mjs; an invalid value throws inside runSkill rather than here.
   const result = await runSkill(
     'classify-contact-intent',
     { contactId: contact.id, interactionNotes: contact.interaction_notes },
-    REPO_ROOT,
+    AGENT_WORKDIR,
+    { schema: IntentOutput },
   );
   const intent = result.contactIntent ?? null;
-  if (!VALID_CONTACT_INTENTS.has(intent)) {
-    throw new Error(`classify-contact-intent returned an invalid contactIntent: ${JSON.stringify(result.contactIntent)}`);
-  }
 
   // Optimistic write: the WHERE clause re-asserts both contact_intent_is_manual=false
   // and the exact interaction_notes text this result was classified from — a
@@ -791,10 +901,7 @@ const NOTE_POLL_INTERVAL_MS = Number(process.env.NOTE_POLL_INTERVAL_MS ?? 10_000
 // Well above runSkill's 180s default: a long note covering a dozen people is
 // a single big extraction, and timing it out halfway costs the whole note.
 const NOTE_SKILL_TIMEOUT_MS = Number(process.env.NOTE_SKILL_TIMEOUT_MS ?? 300_000);
-const VALID_EXTRACTION_CONFIDENCES = new Set(['high', 'medium', 'low']);
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function findNextPendingNoteSubmission() {
   const { data, error } = await supabase
@@ -860,29 +967,25 @@ async function postExtractedContact(submissionId, contact) {
 
 async function processNoteSubmission(submission) {
   try {
+    // Shape, field lengths, the confidence enum, and the per-note contact cap
+    // are all enforced by NoteExtractionOutput in schemas.mjs before anything
+    // is posted. A violation -- including a note the model split into more
+    // than MAX_CONTACTS_PER_NOTE people -- throws inside runSkill, marks the
+    // submission failed with that message, and creates nothing; notes-status
+    // surfaces it to the rep on the paste page. See audit A6/N4.
     const result = await runSkill(
       'extract-note-contacts',
       { noteText: submission.body },
-      REPO_ROOT,
-      { timeoutMs: NOTE_SKILL_TIMEOUT_MS },
+      AGENT_WORKDIR,
+      { timeoutMs: NOTE_SKILL_TIMEOUT_MS, schema: NoteExtractionOutput },
     );
 
-    if (!Array.isArray(result.contacts)) {
-      throw new Error('extract-note-contacts returned no `contacts` array');
-    }
-    const skipped = Array.isArray(result.skipped) ? result.skipped.filter((s) => typeof s === 'string') : [];
+    const skipped = result.skipped;
 
     const failures = [];
     let created = 0;
     for (const [i, contact] of result.contacts.entries()) {
-      const label = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || `entry ${i + 1}`;
-      // extraction_confidence is CHECK-constrained in the database — catch a
-      // bad value here, where it can be reported against the person it came
-      // from, rather than as an opaque 500 out of the insert.
-      if (!VALID_EXTRACTION_CONFIDENCES.has(contact?.extractionConfidence)) {
-        failures.push(`${label}: invalid extractionConfidence ${JSON.stringify(contact?.extractionConfidence)}`);
-        continue;
-      }
+      const label = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || `entry ${i + 1}`;
       try {
         await postExtractedContact(submission.id, contact);
         created++;

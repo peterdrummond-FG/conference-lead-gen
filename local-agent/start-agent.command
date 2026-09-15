@@ -17,8 +17,18 @@
 set -uo pipefail
 
 AGENT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$AGENT_DIR/.." && pwd)"
 cd "$AGENT_DIR"
 mkdir -p logs
+
+# Isolated working directory for every `claude -p` call: it contains nothing
+# but a .claude/skills symlink, so a permission-skipped session reading an
+# attacker-supplied photo cannot open the repo root's .env (Zoho client
+# secret, refresh token). See audit A2 and local-agent/skill-runner.mjs.
+AGENT_WORKDIR="${AGENT_WORKDIR:-$HOME/.conference-lead-gen-agent}"
+mkdir -p "$AGENT_WORKDIR/.claude"
+ln -sfn "$REPO_ROOT/.claude/skills" "$AGENT_WORKDIR/.claude/skills"
+export AGENT_WORKDIR
 
 if [[ ! -d node_modules ]]; then
   echo "Installing dependencies (first run)..."

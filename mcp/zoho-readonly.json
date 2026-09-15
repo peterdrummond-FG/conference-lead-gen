@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "zoho_readonly": {
+      "type": "http",
+      "url": "https://crm-data-metadata-918645676.zohomcp.com/mcp/cb3eb55e686d5446bd16b530b9185b9a/message"
+    }
+  }
+}

@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import { Notify } from 'quasar';
 import { ref, onMounted } from 'vue';
 import { api } from '@/boot/axios';
 
@@ -60,13 +61,29 @@ async function load() {
 // instance and triggers the download from the resulting blob instead —
 // same reasoning as useContactPhoto.ts.
 async function download() {
-  const { data } = await api.get<Blob>('/export-csv', { responseType: 'blob' });
-  const url = URL.createObjectURL(data);
+  const res = await api.get<Blob>('/export-csv', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data);
   const link = document.createElement('a');
   link.href = url;
   link.download = 'conference-leads.csv';
   link.click();
   URL.revokeObjectURL(url);
+
+  // Two-phase export (audit Q2): export-csv reserves the batch but does NOT
+  // mark those contacts synced. Only once the blob is actually in hand do we
+  // confirm. If anything above failed, or this confirm never happens, the
+  // batch ages out server-side and the leads come back on the next export --
+  // which is the entire point: a dropped download used to lose them forever.
+  const batchId = res.headers['x-export-batch-id'];
+  if (!batchId) {
+    Notify.create({
+      type: 'warning',
+      message: 'Downloaded, but the export could not be confirmed — these leads will appear in the next export too.',
+    });
+    return;
+  }
+  await api.post('/export-confirm', { batchId });
+  await load();
 }
 
 onMounted(load);

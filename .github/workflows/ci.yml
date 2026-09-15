@@ -1,0 +1,88 @@
+# Audit Q1. This repo had zero tests, zero lint config and zero CI across four
+# runtimes; every fix in its history is a narrowly-scoped post-incident fix,
+# which is the signature of a codebase with no regression net.
+#
+# The two `guards` jobs are the highest-value part: they are what stop the
+# specific problems this audit found from recurring silently.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+      - name: Lint Edge Functions
+        run: deno lint supabase/functions
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Typecheck frontend
+        run: cd frontend && npm run typecheck
+
+      - name: Check local-agent parses
+        run: |
+          for f in local-agent/*.mjs; do node --check "$f"; done
+      - name: Check shell scripts parse
+        run: |
+          bash -n watcher/watch-cards.command
+          bash -n local-agent/start-agent.command
+          bash -n scripts/check-deployed-functions.sh
+
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: cd local-agent && npm ci
+      - run: cd local-agent && npm test
+
+  guards:
+    name: Repo guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # audit A1/A2: no skill may run unsandboxed, none may hold a credential.
+      - name: Skill sandboxing
+        run: node scripts/check-skill-profiles.mjs
+
+      # audit N1: a deployed function with no source in the repo, or a
+      # "retired" one that doesn't actually answer 410.
+      - name: Deployed-function drift
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: bash scripts/check-deployed-functions.sh
+
+      # audit Q9: retired concepts should not linger as live CODE. Prose that
+      # explains what replaced the staff PIN is fine and expected -- this
+      # looks for actual usage (a call, or the header being read/sent).
+      - name: No live staff-PIN code
+        run: |
+          if git grep -nE 'requireStaffPin\(|headers\[.x-staff-pin|get\(.x-staff-pin' \
+               -- ':!supabase/migrations' ':!audit' ':!docs' ':!*.md'; then
+            echo "Live staff-PIN code outside migrations/docs (audit Q9)" >&2
+            exit 1
+          fi
