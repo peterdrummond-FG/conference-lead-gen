@@ -9,12 +9,13 @@
 // deployed leaves functions running different versions of the security
 // helpers, which is exactly the drift audit N1 was about.
 //
-// Usage:
-//   SUPABASE_ACCESS_TOKEN=... node scripts/deploy-functions.mjs            # all
-//   SUPABASE_ACCESS_TOKEN=... node scripts/deploy-functions.mjs export-csv # some
-//   ... --dry-run                                                          # plan only
+// Usage (the token is a real sbp_... value, not a placeholder):
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//   node scripts/deploy-functions.mjs             # every function
+//   node scripts/deploy-functions.mjs export-csv  # just these
+//   node scripts/deploy-functions.mjs --dry-run   # plan only, no token needed
 //
-// Get a token at https://supabase.com/dashboard/account/tokens
+// Get one at https://supabase.com/dashboard/account/tokens
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,9 +29,28 @@ const ref = process.env.SUPABASE_PROJECT_REF ?? 'yrvppufkerbjpvrxniot';
 const dryRun = process.argv.includes('--dry-run');
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
-if (!token && !dryRun) {
-  console.error('SUPABASE_ACCESS_TOKEN is required (https://supabase.com/dashboard/account/tokens).');
-  process.exit(1);
+if (!dryRun) {
+  if (!token) {
+    console.error(
+      'SUPABASE_ACCESS_TOKEN is not set.\n' +
+      '  export SUPABASE_ACCESS_TOKEN=sbp_...   (https://supabase.com/dashboard/account/tokens)',
+    );
+    process.exit(1);
+  }
+  // Catch a placeholder pasted verbatim before firing 34 requests that each
+  // come back with an opaque "JWT could not be decoded". Management API
+  // tokens are sbp_ + 40 hex characters.
+  if (!/^sbp_[a-f0-9]{40}$/.test(token)) {
+    const looksLikePlaceholder = /^[.\s]*$|^<.*>$|^sbp_\.\.\.$/.test(token);
+    console.error(
+      looksLikePlaceholder
+        ? `SUPABASE_ACCESS_TOKEN is set to a placeholder (${JSON.stringify(token)}), not a real token.`
+        : `SUPABASE_ACCESS_TOKEN does not look like a Management API token (expected sbp_ + 40 hex chars, got ${token.length} chars starting "${token.slice(0, 4)}").`,
+    );
+    console.error('  Get one at https://supabase.com/dashboard/account/tokens');
+    console.error('  Note this is NOT the anon key, the service-role key, or the project ref.');
+    process.exit(1);
+  }
 }
 
 // verify_jwt must be preserved per function. twilio-webhook and
@@ -93,8 +113,18 @@ for (const name of targets) {
   );
 
   if (!res.ok) {
-    console.error(`FAIL ${name}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+    const detail = (await res.text()).slice(0, 300);
+    console.error(`FAIL ${name}: HTTP ${res.status} ${detail}`);
     failed++;
+    // An auth failure is not per-function -- it will fail identically for all
+    // of them, so stop rather than printing 34 identical errors.
+    if (res.status === 401 || res.status === 403) {
+      console.error(
+        `\nStopping: HTTP ${res.status} is an authentication failure, not a problem with this function. ` +
+        `Check SUPABASE_ACCESS_TOKEN and that it has access to project ${ref}.`,
+      );
+      process.exit(1);
+    }
   } else {
     console.log(`ok   ${name} (verify_jwt=${verifyJwt})`);
   }
