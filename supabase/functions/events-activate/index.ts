@@ -1,6 +1,8 @@
 // POST { zohoCampaignId, name, state } -> the newly activated Event.
-// Staff-gated (/setup). Atomicity ("deactivate current + insert new") lives
-// in the events_activate Postgres function, not here.
+// Staff-gated (/setup). Slug generation and folder-code de-duplication live
+// in the events_activate Postgres function, not here — see
+// 20260915120000_event_slug_and_concurrent_events.sql (activating an event
+// no longer deactivates any other; multiple conferences can run at once).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -38,10 +40,23 @@ Deno.serve(async (req) => {
   });
   if (error) return errorResponse(req, 500, error.message);
 
+  // Concurrent conferences mean activating no longer implies "the" active
+  // event (see 20260915120000_event_slug_and_concurrent_events.sql) -- the
+  // activating rep is, by definition, working this one right now, so link
+  // them the same way toggleMyCurrentEvent does, instead of leaving them to
+  // click "Link myself to this event" separately for something they just
+  // created themselves.
+  const { error: linkError } = await supabase
+    .from("profiles")
+    .update({ current_event_id: data.id })
+    .eq("id", user.id);
+  if (linkError) console.error("failed to link activating user to new event", linkError);
+
   return jsonResponse(req, {
     id: data.id,
     name: data.name,
     state: data.state,
+    slug: data.slug,
     folderCode: data.folder_code,
   }, 201);
 });

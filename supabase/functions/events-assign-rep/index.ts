@@ -1,11 +1,19 @@
-// POST { channel: 'booth' | 'session', repId: string | null } -> the
-// updated active Event. Staff-gated (used by /setup, customerSuccess only
+// POST { eventId: string, channel: 'booth' | 'session', repId: string | null }
+// -> the updated Event. Staff-gated (used by /setup, customerSuccess only
 // client-side). Assigns which rep is credited for that channel's leads on
-// the currently active event — contacts-create reads this back off when a
-// QR/form submission comes in tagged with the same channel.
+// the given event — contacts-create reads this back off when a QR/form
+// submission comes in tagged with the same channel.
+//
+// eventId is caller-supplied rather than resolved from "the active event" —
+// multiple events can be active at once now (see
+// 20260915120000_event_slug_and_concurrent_events.sql), so there is no
+// longer a single implicit target. SetupPage always has
+// eventStore.activeEvent.id in hand already (the event it's showing), so
+// this doesn't ask the rep for anything new.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { isUuid } from "../_shared/validate.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -16,7 +24,10 @@ Deno.serve(async (req) => {
   if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const body = await req.json().catch(() => null);
-  if (!body || (body.channel !== "booth" && body.channel !== "session")) {
+  if (!body || !isUuid(body.eventId)) {
+    return errorResponse(req, 400, "eventId must be a valid event id");
+  }
+  if (body.channel !== "booth" && body.channel !== "session") {
     return errorResponse(req, 400, "channel must be 'booth' or 'session'");
   }
   if (body.repId !== null && typeof body.repId !== "string") {
@@ -25,13 +36,13 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  const { data: activeEvent, error: eventError } = await supabase
+  const { data: event, error: eventError } = await supabase
     .from("events")
     .select("id")
-    .eq("is_active", true)
+    .eq("id", body.eventId)
     .maybeSingle();
   if (eventError) return errorResponse(req, 500, eventError.message);
-  if (!activeEvent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
+  if (!event) return errorResponse(req, 404, `No event with id '${body.eventId}'.`);
 
   if (body.repId) {
     const { data: rep, error: repError } = await supabase.from("profiles").select("id, role").eq("id", body.repId).maybeSingle();
@@ -43,7 +54,7 @@ Deno.serve(async (req) => {
   const { data, error } = await supabase
     .from("events")
     .update({ [column]: body.repId })
-    .eq("id", activeEvent.id)
+    .eq("id", event.id)
     .select()
     .single();
   if (error) return errorResponse(req, 500, error.message);

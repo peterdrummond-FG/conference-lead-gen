@@ -131,6 +131,12 @@ const qrChannel = route.query.channel === 'booth' || route.query.channel === 'se
   ? route.query.channel
   : null;
 
+// Which specific event's QR this was (routes.ts pulls it off
+// /connect/<slug>-<channel>) — multiple conferences can be active at once,
+// so this, not "the" active event, is what both events-active and
+// contacts-create resolve against. Missing for a bare/legacy /intake link.
+const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventSlug : undefined;
+
 const formRef = ref<QForm | null>(null);
 const submitting = ref(false);
 const submitted = ref(false);
@@ -234,6 +240,7 @@ async function onSubmit() {
       schoolId: form.school?.id ?? null,
       schoolNameRaw: form.school && !form.school.id ? form.school.name : null,
       qrChannel,
+      eventSlug,
     });
 
     submitted.value = true;
@@ -247,7 +254,7 @@ async function onSubmit() {
 }
 
 onMounted(async () => {
-  await eventStore.fetchActive();
+  await eventStore.fetchActive(eventSlug);
 });
 </script>
 

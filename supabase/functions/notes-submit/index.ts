@@ -44,16 +44,20 @@ Deno.serve(async (req) => {
   // The rep's own linked event wins over whichever event happens to be
   // active: a rep writing up notes on the way home is still filing them
   // against the conference they were just at, even if someone has since
-  // activated the next one. Falls back to the active event for staff who
-  // don't keep a current_event_id (admin/Solutions Success). Never taken
-  // from the client — the paste page shows the same resolution so the rep
-  // can see where it's going, but it isn't what decides it.
+  // activated the next one. Falls back to the most-recently-activated event
+  // for staff who don't keep a current_event_id (admin/Solutions Success) —
+  // ordered rather than .maybeSingle() since multiple events can be active
+  // at once (20260915120000_event_slug_and_concurrent_events.sql). Never
+  // taken from the client — the paste page shows the same resolution so the
+  // rep can see where it's going, but it isn't what decides it.
   let eventId = user.currentEventId;
   if (!eventId) {
     const { data: activeEvent, error: activeError } = await supabase
       .from("events")
       .select("id")
       .eq("is_active", true)
+      .order("activated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (activeError) return errorResponse(req, 500, activeError.message);
     if (!activeEvent) {

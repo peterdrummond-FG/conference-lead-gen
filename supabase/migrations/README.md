@@ -28,11 +28,21 @@ been replaced, the replacement is noted here instead of rewriting history.
   longer called by `export-csv`.
 
 - **`insert_contact_with_duplicate_check`** — recreated several times to thread
-  new columns through (`qr_channel`, `rep_id`, `source_note_id`). Every version
+  new columns through (`qr_channel`, `rep_id`, `source_note_id`, and now
+  `contact_intent` in `20260915120500`). Every version
   before `..._duplicate_check_exact_and_scoped` used
   `first_name ILIKE trim(...)` against raw attendee/OCR text, which treats `%`
   and `_` in the input as wildcards and matched globally across all events. If
   you recreate it again, start from the current definition, not an older one.
+
+- **`20260902203000_initial_schema.sql`** and **`20260902203500_events_activate_fn.sql`**
+  — describe/enforce exactly one active event system-wide
+  (`events_one_active_idx`, `events_activate()` deactivating every other row).
+  That stopped matching reality once multiple reps ran concurrent conferences;
+  superseded by `20260915120000_event_slug_and_concurrent_events.sql`, which
+  drops the exclusivity index and adds a per-event `slug` that the booth/
+  session QR URL now carries so submissions resolve to the *specific* event
+  scanned, not "the" active one.
 
 ## Watch out for
 
