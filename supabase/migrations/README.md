@@ -44,6 +44,14 @@ been replaced, the replacement is noted here instead of rewriting history.
   session QR URL now carries so submissions resolve to the *specific* event
   scanned, not "the" active one.
 
+- **`20260915120000_event_slug_and_concurrent_events.sql`** — its version of
+  `events_activate()` slugified the *entire* campaign name with no length
+  cap, producing QR fallback URLs too long to type for any real (non-test)
+  conference name. Superseded by `20260916100000_shorter_event_slugs.sql`,
+  which takes just the first non-stopword word (same idea as `folder_code`'s
+  short-word budget, simplified to a single word since that's all a slug
+  needs to be recognizable).
+
 ## Watch out for
 
 - **`create or replace` with a changed argument list silently drops settings.**
