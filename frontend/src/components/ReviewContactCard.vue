@@ -1,9 +1,10 @@
 <template>
   <!-- Folded up by default so a reviewer can see many contacts at once
-       (ReviewPage.vue lays these out in a CSS grid); expanding one sets
-       grid-column: 1 / -1 here so its edit form gets a full-width row
-       instead of being squeezed into a grid cell. -->
-  <q-card bordered class="q-mb-md" :style="isExpanded ? { gridColumn: '1 / -1' } : undefined">
+       (ReviewPage.vue lays these out in a CSS grid). Expanding one used to
+       span the full grid row (grid-column: 1 / -1), but that hid every
+       other card behind it — spanning 2 columns instead gives the edit
+       form room while leaving the rest of the row visible alongside it. -->
+  <q-card bordered class="q-mb-md" :style="isExpanded ? { gridColumn: 'span 2' } : undefined">
     <q-card-section v-if="!isExpanded" class="cursor-pointer" @click="isExpanded = true">
       <div class="row items-start no-wrap q-gutter-sm">
         <q-checkbox v-model="selected" dense class="q-mt-xs" @click.stop />
