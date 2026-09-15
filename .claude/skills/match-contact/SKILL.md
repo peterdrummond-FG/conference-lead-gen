@@ -132,7 +132,15 @@ job, not an optional courtesy. The two fields serve different readers:
 
 Apply to `districtName`, every entry in `alternateDistrictNames`, and
 `schoolName` before any comparison or Zoho query:
-1. Lowercase; strip periods and commas.
+1. Lowercase; strip periods and commas. **Also strip apostrophes, double
+   quotes, backslashes, semicolons, percent signs and parentheses entirely —
+   never escape them, never pass them into a query.** Keep the original
+   string for display and for `notes`; the stripped form is the only thing
+   that may appear inside a query literal. This is not hypothetical
+   hardening: district names routinely contain apostrophes (`O'Fallon`,
+   `St. Mary's`), and an unescaped one terminates the string literal and
+   fails the query twice, which lands a real contact at
+   `ambiguous`/`low` for no reason.
 2. Collapse hyphens and repeated spaces to a single space; strip apostrophes
    without inserting a space (`O'Connor` → `oconnor`).
 3. Strip a trailing parenthetical state qualifier before comparing, but keep
@@ -168,6 +176,15 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
    and Organization_Level = 'District / Parent entity'
    and (Account_Name like '%<distinctive token>%')
    ```
+   **Never build a query from a token that could change the query's
+   structure.** If, after normalisation, a would-be anchor still contains any
+   of `' " \ ; % ( )` or a newline, that anchor is unusable: do not query
+   with it, note it in `notes`, and fall back to your other anchors. If no
+   usable anchor remains, the result is `ambiguous` with `matchConfidence:
+   "low"` and an explanation — never a query you had to hand-quote to make
+   valid. Prefer the structured search/getRecords tools over a hand-built
+   COQL string wherever they can express the same lookup.
+
    Do not widen scope to other states if this returns nothing — absence
    in-state is itself a signal (pushes toward `new_account`), never a reason
    to search nationwide; a same-named district in another state must never

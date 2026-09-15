@@ -63,6 +63,20 @@ MIN_AGE_SECONDS=5   # skip a file still mid-copy/AirDrop
 
 mkdir -p "$INBOX" "$PROCESSING" "$PROCESSED" "$FAILED" "$WATCHER_DIR/logs"
 
+# Audit S12/Q8. These are unattended long-running processes appending to one
+# file forever -- an unbounded log on a laptop is a real disk-space failure
+# mode, and these logs contain contact data. Keep one previous generation.
+MAX_LOG_BYTES=$((20 * 1024 * 1024))
+rotate_log() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  local size
+  size=$(stat -f %z "$f" 2>/dev/null || echo 0)
+  if (( size > MAX_LOG_BYTES )); then
+    mv "$f" "$f.1"
+  fi
+}
+
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" | tee -a "$LOG"; }
 
 # No `timeout`/`gtimeout` on stock macOS (confirmed absent on this machine) —
@@ -434,6 +448,7 @@ resume_staged() {
   done
 }
 
+rotate_log "$LOG"
 log "=== watch-cards starting (poll every ${POLL_SECONDS}s) ==="
 
 while true; do

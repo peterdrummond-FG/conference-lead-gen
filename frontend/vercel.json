@@ -1,4 +1,24 @@
 {
+  "$comment": [
+    "Audit S9. The full Content-Security-Policy lives in index.html's meta tag",
+    "(script-src 'self', no unsafe-inline) and stays there -- it is already",
+    "correct and load-bearing; router/index.ts documents working around it",
+    "rather than loosening it.",
+    "",
+    "What a <meta> CSP CANNOT deliver, and what these headers add:",
+    "  - frame-ancestors: browsers ignore it in a meta tag, so the app was",
+    "    framable and a logged-in /review or /export was clickjackable. This",
+    "    is the one with a real attack behind it.",
+    "  - HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy:",
+    "    header-only by definition.",
+    "A meta CSP also only covers the HTML document; these apply to every",
+    "response Vercel serves.",
+    "",
+    "The CSP header here is deliberately ONLY frame-ancestors -- the two",
+    "policies combine as an intersection, so duplicating the meta policy here",
+    "would mean keeping two copies in sync and breaking the app whenever they",
+    "drift."
+  ],
   "buildCommand": "npm run build",
   "outputDirectory": "dist/spa",
   "installCommand": "npm install",
@@ -6,6 +26,37 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'none'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        }
+      ]
     }
   ]
 }

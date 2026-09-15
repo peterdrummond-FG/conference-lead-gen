@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
   if (req.method !== "POST") return errorResponse(req, 405, "Method not allowed");
-  if (!isServiceRoleCall(req)) return errorResponse(req, 401, "Unauthorized");
+  if (!(await isServiceRoleCall(req))) return errorResponse(req, 401, "Unauthorized");
 
   const body = await req.json().catch(() => null);
   if (

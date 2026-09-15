@@ -1,7 +1,7 @@
 import { defineBoot } from '#q-app';
 import axios, { type AxiosInstance } from 'axios';
 import { Notify } from 'quasar';
-import { currentAccessToken } from '@/lib/supabase';
+import { currentAccessToken, requireEnv } from '@/lib/supabase';
 
 declare module 'vue' {
   interface ComponentCustomProperties {
@@ -17,11 +17,13 @@ declare module 'vue' {
 // — the real privilege boundary is requireUser()/role checks inside each
 // function, not this key), and the functions URL is just a public HTTPS
 // endpoint.
-const FUNCTIONS_BASE_URL =
-  import.meta.env.VITE_FUNCTIONS_BASE_URL || 'https://yrvppufkerbjpvrxniot.supabase.co/functions/v1';
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydnBwdWZrZXJianB2cnhuaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzODA4NzYsImV4cCI6MjEwMzk1Njg3Nn0.PZADuNtJi-N9wq95t-nolGblWaYVKCLeB9q5-V8e394';
+// Audit S8. These used to fall back to the PRODUCTION project when the env
+// var was missing or misspelled, so a dev or staging build silently wrote into
+// the live pilot database instead of failing. The anon key itself is safe to
+// publish -- the real boundary is requireUser()/role checks server-side -- but
+// a silent production default is not.
+const FUNCTIONS_BASE_URL = requireEnv('VITE_FUNCTIONS_BASE_URL');
+const SUPABASE_ANON_KEY = requireEnv('VITE_SUPABASE_ANON_KEY');
 
 const api = axios.create({ baseURL: FUNCTIONS_BASE_URL });
 
