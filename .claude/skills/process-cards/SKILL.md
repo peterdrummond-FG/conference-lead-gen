@@ -32,34 +32,17 @@ backlog.
 You'll be told, directly in the prompt text:
 - the absolute path to the photo to **read** (already a JPEG — HEIC is
   always converted before you're invoked, so you never need to handle it).
-  This is its *current*, temporary location — read from here.
-- the event's folder code (a short string, not a database id),
 - the photo's content hash (already computed — never recompute or alter it),
-- a **local archive path** — write any cropped card images (Step 2) into
-  this same directory (derive it via `dirname` of the given path). **This
-  directory already exists** (the watcher creates it before invoking you).
-  You are not responsible for moving or archiving the original photo file
-  yourself — the watcher script does that once you report success.
-- a **Supabase Storage object key** for the original photo (e.g.
-  `<folder code>/<hash>.<ext>` for a locally-dropped photo, or
-  `sms/<message id>.<ext>` for one that arrived via text — the prefix
-  varies by which pipeline invoked you) — echo this back **verbatim** as
-  `sourceImagePath` for every card in Step 4. This is *not* a local
-  filesystem path — the file already exists there (or, for a locally-
-  dropped photo, will be uploaded there once you report success) either
-  way, you never read from or write to Storage directly. For a cropped
-  card's `croppedImagePath` (Step 4), derive the matching Storage key
-  yourself by taking the **same directory prefix as the given
-  sourceImagePath key**, plus the basename of the crop file you wrote in
-  Step 2 — e.g. if the given Storage object key is
-  `lansing-20260920/abc123.jpg` and you wrote a crop to
-  `<local archive dir>/abc123-crop-01.jpg`, its Storage key is
-  `lansing-20260920/abc123-crop-01.jpg`; if instead the given key were
-  `sms/abc123.jpg`, the crop's key would be `sms/abc123-crop-01.jpg`.
-- optionally, an **inbound message id** (Stage 13's SMS pipeline only —
-  omitted when invoked from the local folder watcher). If given, include it
-  verbatim as `inboundMessageId` in every card's POST body (Step 4); if not
-  given, omit that key entirely.
+- a **directory to write cropped card images into** (Step 2). It already
+  exists.
+
+That is everything. You are **not** given, and must never ask for or look
+for, any API URL, key, token or credential — you do not talk to the backend
+at all. You read the photo, write crops, and print JSON; the program that
+invoked you does the writing. (This changed on 2026-09-14: this skill used
+to be handed `$SUPABASE_SERVICE_ROLE_KEY` and told to `curl` with it, which
+put a credential that bypasses every access rule inside a session whose
+whole job is reading a photo someone else supplied.)
 
 ## Step 1 — detect how many cards are in the photo
 
@@ -167,107 +150,48 @@ Do not correct, expand, or "resolve" anything:
 - `low` — the card is mostly illegible, or a required field
   (first/last name) was itself substantially a guess.
 
-## Step 4 — POST this card's result
+## Step 4 — report every card
 
-POST to the `contacts-from-ocr` Supabase Edge Function (Stage 12 — this
-replaced the old local .NET API at `127.0.0.1:5240`), authenticated with the
-service-role key. Both `$SUPABASE_URL` and `$SUPABASE_SERVICE_ROLE_KEY` are
-real shell environment variables at invocation time (set in `watcher/.env`
-and exported by the watcher script before it runs `claude -p`) — reference
-them directly in the curl command, don't hardcode either value:
-
-Write the JSON body to a fresh temp file first (`mktemp`, never a fixed
-path — a stale leftover payload from an earlier run is exactly the kind of
-stale state worth avoiding), then:
-
-    curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
-      "$SUPABASE_URL/functions/v1/contacts-from-ocr" \
-      -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-      -H "Content-Type: application/json" \
-      -d @<your temp payload file>
-
-Remove the temp file afterward regardless of outcome. The body has this
-shape (shown indented here for readability only — write it as compact,
-valid JSON, no markdown fence):
+Do **not** call any API, and do not run `curl`. Print exactly one JSON object
+as your entire final message, covering every card in the photo in reading
+order:
 
     {
-      "eventFolderCode": "<given folder code, verbatim>",
-      "firstName": "...",
-      "lastName": "...",
-      "email": "...",
-      "phone": "...",
-      "title": "...",
-      "districtName": "...",
-      "schoolName": "...",
-      "extractionConfidence": "high | medium | low",
-      "sourceImageHash": "<see below>",
-      "sourceImagePath": "<given Storage object key, verbatim, same for every card from this photo>",
-      "croppedImagePath": "<this card's cropped file's Storage key, derived per Input above — omit entirely for a single-card photo>",
-      "inboundMessageId": "<given inbound message id, verbatim, same for every card from this photo — omit entirely if you weren't given one>"
+      "status": "ok",
+      "sourceImageHash": "<the given hash, verbatim>",
+      "cards": [
+        {
+          "index": 1,
+          "firstName": "...",
+          "lastName": "...",
+          "email": "",
+          "phone": "",
+          "title": "",
+          "districtName": "",
+          "schoolName": "",
+          "extractionConfidence": "high",
+          "cropFileName": "<basename of the crop you wrote, or null>"
+        }
+      ]
     }
 
-`sourceImageHash`:
-- **Single-card photo:** the given hash, verbatim, unmodified — exactly as
-  before.
-- **Multi-card photo:** the given hash **plus `-<NN>`**, the same two-digit
-  reading-order index used in the crop filename (`<given hash>-01`,
-  `<given hash>-02`, …). This is deliberate and load-bearing, not
-  incidental: `SourceImageHash` is uniquely constrained in the database, and
-  every card from one photo shares the same `sourceImagePath` — without a
-  distinguishing suffix per card, only the first card's POST would ever
-  succeed. Deriving the suffix from the same deterministic reading-order
-  index as the crop filename is what makes a retry of a partially-failed
-  photo safe: re-running this skill on the same file re-derives the exact
-  same hash for each already-succeeded card, so those POSTs land on the
-  existing-hash no-op path (see Step 5) instead of erroring or duplicating,
-  and only a genuinely-unprocessed card gets created fresh.
+- `index` is this card's 1-based position in reading order — the same number
+  you used in the crop filename. This is load-bearing, not cosmetic: the
+  caller derives each card's unique `sourceImageHash` from it, which is what
+  makes retrying a partially-failed photo safe (already-created cards
+  re-derive the same hash and no-op instead of duplicating).
+- `cropFileName` is a **bare filename**, e.g. `"abc123-crop-01.jpg"` — never
+  a path, never with `/` or `..` in it. Use `null` for a single-card photo
+  (there is nothing to crop when the photo already is the card).
+- Use `""` for any field the card doesn't carry. Every key must be present
+  on every card.
+- **No legible business card in the photo at all** (wrong subject, a blank
+  surface, a hand or an empty table): don't fabricate one. Print
+  `{"status": "no_card_detected", "sourceImageHash": "<given hash>", "cards": []}`.
+  The caller routes the photo to the failed/ folder for a human to look at.
 
-Use empty strings for `email`/`phone`/`title`/`districtName`/`schoolName`
-when there's nothing to report for this card — the endpoint treats blank the
-same as absent, and every key should still be present.
-
-## Step 5 — interpret this card's response
-
-- `HTTP_STATUS:201` — a new contact row was created. Success for this card.
-- `HTTP_STATUS:200` — this card's hash already matched an existing contact;
-  this is a safe no-op per the pipeline's own "a repeat is a no-op, not a
-  duplicate contact" rule, not a failure. (For a multi-card photo, this is
-  the expected outcome for every already-succeeded card on a retry.)
-- Any other status, a non-2xx response, or a curl error (non-zero exit,
-  connection refused) — a real failure for this card.
-
-**Don't stop the loop on one card's failure** — attempt every remaining card
-in the photo regardless, so one bad card doesn't hold up the others. Keep
-track of which cards (by index) succeeded vs. failed as you go; you'll need
-that list for Step 6.
-
-## Step 6 — final message
-
-**Your entire final message must be exactly one line, nothing before or
-after it, no markdown, no fence**, covering the *whole photo* (all cards, if
-more than one) — this is unchanged in shape from the single-card case, and
-still keyed on the **original** given hash, never a per-card suffixed one:
-
-- Every card succeeded (201 or 200, per Step 5): `PROCESS_CARDS_OK <original
-  hash>`
-- One or more cards failed: `PROCESS_CARDS_FAIL <original hash> <short
-  one-line reason, no newlines>` — name which card(s) failed and why, e.g.
-  `card 2/3: HTTP 400 firstName required`. A partial failure fails the whole
-  photo (the watcher archives or fails the *original file* as one unit —
-  see below) — a rep can just re-drop the same photo to retry; already-
-  succeeded cards no-op via Step 5's hash-dedup, only the failed one(s)
-  actually redo work.
-
-The watcher script that invoked you greps for exactly this line to decide
-whether to archive the *original* photo as processed or move it to the
-failed folder — nothing else you say in your final message is read by
-anything, so don't add commentary before or after it.
-
-**Known accepted limitation:** on a partial failure, any cards that *did*
-succeed already have real contact rows in the database, with their cropped
-thumbnail already written and working — but their `sourceImagePath` (the
-whole original photo) won't actually exist at that path until the *whole*
-photo eventually succeeds and the watcher archives it. Until then, that
-handful of contacts' "view full sheet" fallback will 404, though their
-normal cropped thumbnail displays fine immediately. This self-heals the
-moment the photo is successfully retried. Not a v1 concern to solve further.
+**Your entire final message must be that JSON object and nothing else** — no
+markdown fence, no preamble, no commentary after it. First character `{`,
+last character `}`. The caller parses your stdout directly and validates
+every field against a schema; anything outside the object, or a field that
+doesn't match, fails the whole photo.

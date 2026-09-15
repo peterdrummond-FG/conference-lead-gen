@@ -23,6 +23,9 @@ export function corsHeaders(req: Request): Record<string, string> {
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
+    // Without this the browser hides X-Export-Batch-Id from the fetch
+    // response, and the client can never confirm an export (audit Q2).
+    "Access-Control-Expose-Headers": "Content-Disposition, X-Export-Batch-Id",
     Vary: "Origin",
   };
 }

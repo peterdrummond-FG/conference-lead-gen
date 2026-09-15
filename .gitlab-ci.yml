@@ -1,0 +1,26 @@
+# Mirror of .github/workflows/ci.yml -- this repo pushes to both remotes, so
+# both need the guards. Keep the two in sync.
+stages: [test]
+
+lint-and-typecheck:
+  stage: test
+  image: node:22
+  script:
+    - for f in local-agent/*.mjs; do node --check "$f"; done
+    - bash -n watcher/watch-cards.command
+    - bash -n local-agent/start-agent.command
+    - bash -n scripts/check-deployed-functions.sh
+    - cd frontend && npm ci && npm run typecheck
+
+unit-tests:
+  stage: test
+  image: node:22
+  script:
+    - cd local-agent && npm ci && npm test
+
+repo-guards:
+  stage: test
+  image: node:22
+  script:
+    - node scripts/check-skill-profiles.mjs
+    - bash scripts/check-deployed-functions.sh
