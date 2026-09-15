@@ -36,12 +36,21 @@ rotate_log() {
 }
 
 # Isolated working directory for every `claude -p` call: it contains nothing
-# but a .claude/skills symlink, so a permission-skipped session reading an
-# attacker-supplied photo cannot open the repo root's .env (Zoho client
-# secret, refresh token). See audit A2 and local-agent/skill-runner.mjs.
+# but a .claude/skills symlink and an mcp symlink, so a permission-skipped
+# session reading an attacker-supplied photo cannot open the repo root's
+# .env (Zoho client secret, refresh token). See audit A2 and
+# local-agent/skill-runner.mjs.
+#
+# The mcp symlink was missing after efe0a93 added --strict-mcp-config +
+# skill-profiles.mjs's mcpConfig: 'mcp/zoho-readonly.json' for match-contact
+# — that path resolves relative to AGENT_WORKDIR, so without this symlink
+# every match-contact run fails "MCP config file not found" and the contact
+# stays stuck pre-match forever, with nothing surfacing it beyond the agent
+# log.
 AGENT_WORKDIR="${AGENT_WORKDIR:-$HOME/.conference-lead-gen-agent}"
 mkdir -p "$AGENT_WORKDIR/.claude"
 ln -sfn "$REPO_ROOT/.claude/skills" "$AGENT_WORKDIR/.claude/skills"
+ln -sfn "$REPO_ROOT/mcp" "$AGENT_WORKDIR/mcp"
 export AGENT_WORKDIR
 
 if [[ ! -d node_modules ]]; then

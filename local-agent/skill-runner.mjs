@@ -15,7 +15,8 @@
 //     of that in reach.
 //  2. An explicit `env` allowlist instead of inheriting process.env, which
 //     carries SUPABASE_SERVICE_ROLE_KEY.
-//  3. cwd is AGENT_WORKDIR (a directory holding only a .claude/skills symlink)
+//  3. cwd is AGENT_WORKDIR (a directory holding only a .claude/skills symlink,
+//     plus an mcp symlink set up by start-agent.command for match-contact)
 //     rather than the repo root, which holds .env with the Zoho client secret
 //     and refresh token.
 //
