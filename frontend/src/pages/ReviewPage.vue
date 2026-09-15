@@ -10,6 +10,23 @@
       <div v-if="contacts.length" class="text-caption text-grey">{{ contacts.length }} contact{{ contacts.length === 1 ? '' : 's' }}</div>
       <q-space />
 
+      <!-- Options are built from whichever conferences are actually present
+           in the loaded list, not every event ever created — filtering to a
+           conference with nothing pending here would just show an empty
+           list with no way to tell why. -->
+      <q-select
+        v-if="eventFilterOptions.length > 2"
+        v-model="eventFilter"
+        :options="eventFilterOptions"
+        option-label="label"
+        dense
+        outlined
+        emit-value
+        map-options
+        style="min-width: 200px"
+        label="Conference"
+      />
+
       <!-- A signed-in rep (or an admin previewing one) only ever sees their
            own leads — nothing to pick. Admin/Solutions Success see
            everyone and can slice by rep + sync status. -->
@@ -105,23 +122,25 @@
       <q-spinner size="40px" />
     </div>
 
-    <div v-else-if="contacts.length === 0" class="text-center text-grey q-pa-lg">
+    <div v-else-if="filteredContacts.length === 0" class="text-center text-grey q-pa-lg">
       Nothing here.
     </div>
 
     <div v-else>
-      <ReviewContactCard
-        v-for="contact in pagedContacts"
-        :key="contact.id"
-        :contact="contact"
-        :selected="selectedMap[contact.id] ?? false"
-        @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
-        @approve="approve"
-        @reject="reject"
-        @update="update"
-        @retry-match="retryMatch"
-        @duplicates-resolved="load"
-      />
+      <div class="contacts-grid">
+        <ReviewContactCard
+          v-for="contact in pagedContacts"
+          :key="contact.id"
+          :contact="contact"
+          :selected="selectedMap[contact.id] ?? false"
+          @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
+          @approve="approve"
+          @reject="reject"
+          @update="update"
+          @retry-match="retryMatch"
+          @duplicates-resolved="load"
+        />
+      </div>
 
       <div v-if="pageCount > 1" class="row justify-center q-mt-md">
         <q-pagination v-model="page" :max="pageCount" :max-pages="7" boundary-numbers />
@@ -163,6 +182,7 @@ const syncedFilterOptions = [
 ];
 const syncedFilter = ref<string | null>(null);
 const salesScope = ref<'current' | 'past'>('current');
+const eventFilter = ref<string | null>(null);
 
 // Whichever role Review is actually scoped to — the real logged-in user's,
 // or (admin only) whoever they're previewing via the user switcher.
@@ -178,8 +198,26 @@ const repFilterOptions = computed(() => [
 ]);
 
 const selectedIds = computed(() => Object.keys(selectedMap).filter((id) => selectedMap[id]));
-const pageCount = computed(() => Math.max(1, Math.ceil(contacts.value.length / PER_PAGE)));
-const pagedContacts = computed(() => contacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
+
+// Built from whichever conferences are actually present in the currently
+// loaded contacts, not the full events table — see the template comment.
+const eventFilterOptions = computed(() => {
+  const seen = new Map<string, string>();
+  for (const c of contacts.value) {
+    if (!seen.has(c.eventId)) seen.set(c.eventId, c.eventName);
+  }
+  return [
+    { label: 'All conferences', value: null as string | null },
+    ...Array.from(seen.entries()).map(([value, label]) => ({ label, value })),
+  ];
+});
+
+const filteredContacts = computed(() => (
+  eventFilter.value ? contacts.value.filter((c) => c.eventId === eventFilter.value) : contacts.value
+));
+
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / PER_PAGE)));
+const pagedContacts = computed(() => filteredContacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
 async function load() {
   loading.value = true;
@@ -279,6 +317,12 @@ watch([repFilter, syncedFilter, salesScope], () => {
   page.value = 1;
   void load();
 });
+// Conference filter slices the already-loaded list client-side (its options
+// come from that same list), so it only needs to reset pagination, not
+// trigger a server round-trip.
+watch(eventFilter, () => {
+  page.value = 1;
+});
 
 onMounted(async () => {
   const loads: Promise<unknown>[] = [load()];
@@ -290,6 +334,18 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Folded-up cards are short and roughly uniform height; an expanded one
+   (ReviewContactCard sets grid-column: 1 / -1 on itself) claims a full-width
+   row of its own so its edit form has room without squeezing neighbors.
+   align-items: start keeps a short card from being stretched to match a
+   taller one sharing its row track. */
+.contacts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
 .scope-tabs {
   background: #EEF3F8;
   border-radius: 12px;
