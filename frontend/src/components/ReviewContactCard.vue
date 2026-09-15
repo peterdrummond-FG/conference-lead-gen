@@ -227,6 +227,8 @@
             :disable="!draft.state"
             @filter="districtTypeahead.filterFn"
             @new-value="onNewDistrict"
+            @input-value="(val) => (districtInputText = val)"
+            @blur="onDistrictBlur"
           />
           <q-select
             v-model="draft.school"
@@ -242,6 +244,8 @@
             :disable="!draft.district"
             @filter="schoolTypeahead.filterFn"
             @new-value="onNewSchool"
+            @input-value="(val) => (schoolInputText = val)"
+            @blur="onSchoolBlur"
           />
 
           <q-input
@@ -306,7 +310,7 @@
 <script setup lang="ts">
 import { reactive, computed, ref, watch } from 'vue';
 import { api } from '@/boot/axios';
-import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
+import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import { useContactPhoto } from '@/composables/useContactPhoto';
@@ -394,6 +398,22 @@ function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-u
 
 function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
   done({ id: null, name: val }, 'add-unique');
+}
+
+// Backstop for onNewDistrict/onNewSchool: those only fire on Enter/Tab
+// (Quasar's own new-value gate), so a reviewer who types a name and clicks
+// straight to Save without pressing Enter would otherwise have it silently
+// dropped — see resolveTypedOption's own comment for the QSelect source
+// this was verified against.
+const districtInputText = ref('');
+const schoolInputText = ref('');
+
+function onDistrictBlur() {
+  draft.district = resolveTypedOption(districtInputText.value, draft.district, districtTypeahead.options.value);
+}
+
+function onSchoolBlur() {
+  draft.school = resolveTypedOption(schoolInputText.value, draft.school, schoolTypeahead.options.value);
 }
 
 const isDirty = computed(() => {
