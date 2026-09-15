@@ -7,7 +7,7 @@
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
           <q-route-tab to="/intake" label="Intake" />
           <q-route-tab to="/review" label="Review" />
-          <q-route-tab v-if="canSeeSetup" to="/export" label="Export" />
+          <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
         </q-tabs>
         <q-separator vertical spaced />
 
@@ -99,6 +99,13 @@ const kioskModeStore = useKioskModeStore();
 
 const canSeeSetup = computed(() => (
   sessionStore.user?.role === 'admin' || sessionStore.user?.role === 'solutionsSuccess' || sessionStore.user?.role === 'sales'
+));
+
+// Matches the /export route's own meta.roles guard (router/index.ts) — sales
+// could otherwise still click into the tab even though the router would
+// bounce them straight back out.
+const canSeeExport = computed(() => (
+  sessionStore.user?.role === 'admin' || sessionStore.user?.role === 'solutionsSuccess'
 ));
 
 const showUnlockDialog = ref(false);
