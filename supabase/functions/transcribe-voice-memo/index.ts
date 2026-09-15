@@ -1,160 +1,44 @@
 // ┌──────────────────────────────────────────────────────────────────────┐
-// │ SUPERSEDED — NOT THE LIVE VOICE-MEMO FEATURE. DO NOT DELETE AS DEAD. │
+// │ RETIRED 2026-09-14 (audit S1/N1). This is the deployed 410 stub.     │
 // └──────────────────────────────────────────────────────────────────────┘
 //
 // Voice-memo transcription is very much alive; it just doesn't run here
-// anymore. It runs in `transcriptionLoop` in local-agent/agent.mjs, calling
-// a LOCAL Whisper CLI via local-agent/whisper-runner.mjs — no OpenAI key, no
+// anymore. It runs in `transcriptionLoop` in local-agent/agent.mjs, calling a
+// LOCAL Whisper CLI via local-agent/whisper-runner.mjs — no OpenAI key, no
 // metered API, same reasoning as every other `claude -p` step in that file.
 //
-// This file is the ORIGINAL Stage 14 implementation: an OpenAI Whisper API
-// call fired by a Postgres trigger. That trigger was dropped on 2026-09-03
-// (20260903000000_drop_audio_transcription_trigger.sql), so nothing has
-// invoked this since — confirmed against 24h of function_edge_logs on
-// 2026-09-14: zero invocations, and zero references anywhere in the repo
-// outside agent.mjs's "ported from" comment.
+// History: this was the original Stage 14 implementation, an OpenAI Whisper
+// API call fired by a Postgres trigger. That trigger was dropped on 2026-09-03
+// (20260903000000_drop_audio_transcription_trigger.sql), but the function was
+// never undeployed — so for three months it stayed live and callable by anyone
+// holding the published anon key, able to spend OPENAI_API_KEY, write into
+// contacts.interaction_notes, and race local-agent's own claim on the same
+// inbound_messages row (regressing attribution to the pre-Stage-14 logic).
 //
-// It is kept ONLY as reference for the correlation/merge logic that
-// agent.mjs ported verbatim (same phone, kind='photo', 15-minute window,
-// append-not-overwrite). Read it for that; don't wire it back up, and don't
-// mistake its name for the working feature.
-//
-// Everything below this banner describes the retired design.
-// ----------------------------------------------------------------------
-//
-// Stage 14 — transcribes one voice memo (OpenAI Whisper) and merges the
-// transcript into interaction_notes on whichever contact(s) it's about.
-// Invoked by a Postgres trigger (inbound_messages_audio_insert, in the
-// twilio_intake_trigger migration) immediately on INSERT of an
-// kind='audio' row — no reason to wait on the local agent's poll cycle
-// since this step has no claude -p dependency.
-//
-// verify_jwt stays true (the default): the trigger calls this with the
-// project's anon key as a bearer token, same trust level as the other
-// public-but-anon-gated functions. The claim-then-mark-processing update
-// below is the real guard against a repeat/replayed invocation re-running
-// (and re-billing) a transcription.
-import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { serviceClient } from "../_shared/supabase-client.ts";
+// The original source is recoverable from git history at ebd5bba. It is NOT
+// kept here: a file in supabase/functions/ is something scripts/deploy-
+// functions.mjs will deploy, and "reference implementation" is not a good
+// enough reason to keep a live endpoint one accidental deploy away.
+// git history is the reference.
+const ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";
 
-const CORRELATION_WINDOW_MINUTES = 15;
+Deno.serve((req) => {
+  const origin = req.headers.get("origin") ?? "";
+  const allowed = (Deno.env.get("ALLOWED_ORIGINS") ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Headers": ALLOW_HEADERS,
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
+    Vary: "Origin",
+    "Content-Type": "application/json",
+  };
+  if (origin && allowed.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
 
-function extFromContentType(ct: string | null): string {
-  if (!ct) return "m4a";
-  if (ct.includes("mp4") || ct.includes("m4a") || ct.includes("aac")) return "m4a";
-  if (ct.includes("mpeg") || ct.includes("mp3")) return "mp3";
-  if (ct.includes("wav")) return "wav";
-  if (ct.includes("ogg")) return "ogg";
-  return "m4a";
-}
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
-Deno.serve(async (req) => {
-  const preflight = handlePreflight(req);
-  if (preflight) return preflight;
-  if (req.method !== "POST") return errorResponse(req, 405, "Method not allowed");
-
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.inboundMessageId !== "string") {
-    return errorResponse(req, 400, "inboundMessageId is required");
-  }
-
-  const supabase = serviceClient();
-
-  // Idempotency / cost-griefing guard: only ever proceeds from
-  // pending_transcription, flipping to processing atomically as part of
-  // the same update — a retry or a replayed id is a clean no-op.
-  const { data: claimed, error: claimError } = await supabase
-    .from("inbound_messages")
-    .update({ status: "processing" })
-    .eq("id", body.inboundMessageId)
-    .eq("kind", "audio")
-    .eq("status", "pending_transcription")
-    .select("*")
-    .maybeSingle();
-  if (claimError) return errorResponse(req, 500, claimError.message);
-  if (!claimed) return jsonResponse(req, { skipped: true, reason: "not pending_transcription" });
-
-  if (!claimed.storage_path) {
-    await supabase.from("inbound_messages").update({
-      status: "failed",
-      error: "no storage_path yet — media upload may still be in flight or failed",
-    }).eq("id", claimed.id);
-    return errorResponse(req, 409, "Audio not yet uploaded to Storage");
-  }
-
-  try {
-    const { data: audioBlob, error: downloadError } = await supabase.storage
-      .from("voice-memos")
-      .download(claimed.storage_path);
-    if (downloadError || !audioBlob) throw downloadError ?? new Error("Storage download returned no data");
-
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
-
-    const form = new FormData();
-    form.append("file", audioBlob, `memo.${extFromContentType(claimed.media_content_type)}`);
-    form.append("model", "whisper-1");
-
-    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openaiKey}` },
-      body: form,
-    });
-    if (!whisperRes.ok) {
-      throw new Error(`Whisper API HTTP ${whisperRes.status}: ${await whisperRes.text()}`);
-    }
-    const { text: transcript } = await whisperRes.json();
-
-    // Correlate: contacts whose source_message_id points at a photo message
-    // from the same phone, received in the window preceding this memo.
-    const windowStart = new Date(
-      new Date(claimed.received_at).getTime() - CORRELATION_WINDOW_MINUTES * 60_000,
-    ).toISOString();
-
-    const { data: candidateMessages, error: candidatesError } = await supabase
-      .from("inbound_messages")
-      .select("id")
-      .eq("from_phone", claimed.from_phone)
-      .eq("kind", "photo")
-      .gte("received_at", windowStart)
-      .lte("received_at", claimed.received_at);
-    if (candidatesError) throw candidatesError;
-
-    const matchedContactIds: string[] = [];
-    if (candidateMessages && candidateMessages.length > 0) {
-      const messageIds = candidateMessages.map((m) => m.id);
-      const { data: matchedContacts, error: matchError } = await supabase
-        .from("contacts")
-        .select("id, interaction_notes")
-        .in("source_message_id", messageIds);
-      if (matchError) throw matchError;
-
-      for (const contact of matchedContacts ?? []) {
-        // Append, not overwrite — a rep could leave more than one memo
-        // about the same contact across an event; each keeps a running log.
-        const merged = contact.interaction_notes ? `${contact.interaction_notes}\n\n${transcript}` : transcript;
-        const { error: updateError } = await supabase
-          .from("contacts")
-          .update({ interaction_notes: merged })
-          .eq("id", contact.id);
-        if (updateError) throw updateError;
-        matchedContactIds.push(contact.id);
-      }
-    }
-
-    // An empty matchedContactIds array is a valid, non-error outcome — a
-    // memo with nothing to attach to still transcribed successfully.
-    await supabase.from("inbound_messages").update({
-      transcript,
-      status: "completed",
-      processed_at: new Date().toISOString(),
-      matched_contact_ids: matchedContactIds,
-    }).eq("id", claimed.id);
-
-    return jsonResponse(req, { transcript, matchedContactIds });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await supabase.from("inbound_messages").update({ status: "failed", error: message }).eq("id", claimed.id);
-    return errorResponse(req, 500, message);
-  }
+  return new Response(
+    JSON.stringify({
+      error: "This endpoint has been retired. Voice-memo transcription runs locally in local-agent's transcriptionLoop.",
+    }),
+    { status: 410, headers },
+  );
 });

@@ -177,7 +177,9 @@ async function matchingTick() {
   }
 
   for (const contact of claimed) {
-    log(`processing ${contact.id} (${contact.first_name} ${contact.last_name})`);
+    // Row id, not the person (audit S12). agent.log is an unrotated plaintext
+    // file on a laptop; it does not need to be a roster of every attendee.
+    log(`processing ${contact.id}`);
     try {
       await processContact(contact);
       log(`done: ${contact.id}`);
@@ -361,12 +363,27 @@ async function processPhotoMessage(message) {
     workDir = path.join(SMS_PHOTO_WORKDIR, event.folder_code);
     await mkdir(workDir, { recursive: true });
 
-    let ext = (path.extname(message.storage_path).replace('.', '') || 'jpg').toLowerCase();
+    // Defence in depth (audit A9). storage_path comes from a row the webhook
+    // wrote, which now allowlists the extension -- but this value is about to
+    // be interpolated into a `claude -p` prompt, so re-validate rather than
+    // trust a second system's output.
+    const SAFE_EXT = new Set(['jpg', 'jpeg', 'png', 'heic', 'heif', 'gif', 'webp']);
+    const rawExt = path.extname(message.storage_path).replace('.', '').toLowerCase();
+    const ext = SAFE_EXT.has(rawExt) ? rawExt : 'jpg';
     let localPath = path.join(workDir, `${hash}.${ext}`);
     await writeFile(localPath, bytes);
 
     if (ext === 'heic' || ext === 'heif') {
       localPath = await convertHeicToJpeg(localPath);
+    }
+
+    // Never interpolate a path into a prompt without proving it is the shape
+    // we think it is: a path carrying a quote or a newline is a prompt-framing
+    // primitive, not a filename.
+    for (const [label, value] of [['photo path', localPath], ['work dir', workDir], ['folder code', event.folder_code]]) {
+      if (!/^[A-Za-z0-9/_.\- ]+$/.test(String(value))) {
+        throw new Error(`refusing to build a prompt around an unexpected ${label}: ${JSON.stringify(value)}`);
+      }
     }
 
     // The original is already durably in Storage at message.storage_path
@@ -479,9 +496,8 @@ async function photoLoop() {
 // Voice-memo transcription poll loop (Stage 14, revised to run locally)
 // ---------------------------------------------------------------------
 // THIS LOOP IS THE LIVE VOICE-MEMO FEATURE. The Edge Function that shares
-// its name (supabase/functions/transcribe-voice-memo/) has been retired
-// since 2026-09-03 and is kept only as reference — see the banner at the
-// top of that file before assuming either one is dead.
+// its name was retired on 2026-09-03 and is now a 410 stub; its original
+// implementation (which this was ported from) is in git history at ebd5bba.
 //
 // Ported from supabase/functions/transcribe-voice-memo/index.ts — same
 // claim-then-mark-processing idempotency guard (still worth keeping even
@@ -571,10 +587,12 @@ async function findCandidateContacts(eventId, fromPhone) {
 // Used both by the first attempt (right after transcribing) and every retry
 // pass below (retryOrphanedTranscripts) — re-running this against a
 // possibly-grown candidate list is exactly the right retry behavior.
-async function linkTranscriptToContacts(message, transcript) {
+async function linkTranscriptToContacts(message, transcript, prefetched) {
   if (!message.event_id) return []; // no event bound — nothing to scope to (should be unreachable in practice)
 
-  const candidates = await findCandidateContacts(message.event_id, message.from_phone);
+  // processAudioMessage already fetched this exact set to build the Whisper
+  // name prompt; the retry sweep has nothing prefetched and passes none.
+  const candidates = prefetched ?? await findCandidateContacts(message.event_id, message.from_phone);
   if (candidates.length === 0) return []; // nothing to attach to yet; retry sweep will catch it later
 
   if (candidates.length === 1) {
@@ -694,11 +712,33 @@ async function claimAudioMessage(id) {
 // whisper-runner.mjs's header comment — this is what turned "our church
 // melody"/"Judge Miller" into "Chad Schmeller" in testing). No candidates
 // yet (e.g. the memo arrived before any card photo) just means no prompt.
-async function buildNamePrompt(message) {
-  if (!message.event_id) return undefined;
-  const candidates = await findCandidateContacts(message.event_id, message.from_phone);
-  if (candidates.length === 0) return undefined;
-  const names = candidates.map((c) => [c.first_name, c.last_name].filter(Boolean).join(' ')).filter(Boolean);
+// Audit A8. The roster comes from OCR of attacker-supplied card photos, and
+// Whisper's --initial_prompt biases the TEXT IT EMITS -- so a "name" that is
+// really a sentence gets biased straight into the transcript, which then feeds
+// attribute-voice-memo and classify-contact-intent and lands in
+// interaction_notes. Two hops from a hostile card to a poisoned CRM note.
+//
+// Accept only things shaped like names, and cap the roster: Whisper silently
+// truncates its conditioning window, so an unbounded list degrades the very
+// biasing this exists to provide.
+const NAME_TOKEN = /^[\p{L}][\p{L}'\-.]{0,30}$/u;
+const MAX_PROMPT_NAMES = 30;
+
+function safeNameForPrompt(first, last) {
+  const parts = [first, last].filter(Boolean).map((p) => String(p).trim()).filter(Boolean);
+  if (parts.length === 0 || parts.length > 2) return null; // a "name" of many words is not a name
+  if (!parts.every((p) => NAME_TOKEN.test(p))) return null;
+  return parts.join(' ');
+}
+
+// Takes the candidate list rather than re-querying: processAudioMessage has
+// already fetched exactly this set, and linkTranscriptToContacts fetches it
+// again afterwards. One round-trip instead of three.
+function buildNamePrompt(candidates) {
+  const names = candidates
+    .map((c) => safeNameForPrompt(c.first_name, c.last_name))
+    .filter(Boolean)
+    .slice(0, MAX_PROMPT_NAMES);
   if (names.length === 0) return undefined;
   return `Contacts at this event: ${names.join(', ')}.`;
 }
@@ -737,8 +777,12 @@ async function processAudioMessage(message) {
   }
 
   let transcript;
+  let candidates = [];
   try {
-    const prompt = await buildNamePrompt(message);
+    if (message.event_id) {
+      candidates = await findCandidateContacts(message.event_id, message.from_phone);
+    }
+    const prompt = buildNamePrompt(candidates);
     transcript = await transcribeAudio(localPath, { prompt });
   } catch (err) {
     const reason = err.message ?? String(err);
@@ -755,7 +799,7 @@ async function processAudioMessage(message) {
   }).eq('id', message.id);
 
   try {
-    const matchedContactIds = await linkTranscriptToContacts(message, transcript);
+    const matchedContactIds = await linkTranscriptToContacts(message, transcript, candidates);
     await supabase.from('inbound_messages').update({ matched_contact_ids: matchedContactIds }).eq('id', message.id);
     log(`transcription OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
   } catch (err) {
@@ -808,19 +852,44 @@ async function transcriptionLoop() {
 // 20260910140000_add_contact_intent.sql.
 const INTENT_POLL_INTERVAL_MS = Number(process.env.INTENT_POLL_INTERVAL_MS ?? 20_000);
 
+// Audit Q4. Two problems with the old version: it fetched 200 rows with NO
+// ORDER BY (so PostgREST could return the same arbitrary subset every tick
+// while other rows starved indefinitely), then processed every match
+// sequentially with no cap -- and each match is a `claude -p` call at up to
+// 180s x 2 attempts, so one tick could in principle run for hours with no way
+// to rebalance. Every other loop here is bounded by construction;
+// this one was the outlier.
+const INTENT_BATCH_SIZE = Number(process.env.INTENT_BATCH_SIZE ?? 5);
+const INTENT_CONCURRENCY = Number(process.env.INTENT_CONCURRENCY ?? 2);
+
 async function findContactsNeedingIntentClassification() {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('id, interaction_notes, contact_intent_classified_notes')
-    .eq('contact_intent_is_manual', false)
-    .not('interaction_notes', 'is', null)
-    .neq('interaction_notes', '')
-    .limit(200);
+  // Ordered and server-side filtered: claim_contacts_needing_intent expresses
+  // the column-to-column comparison PostgREST cannot, so there is no
+  // over-fetch and the backlog drains oldest-first instead of arbitrarily.
+  const { data, error } = await supabase.rpc('claim_contacts_needing_intent', {
+    p_limit: INTENT_BATCH_SIZE,
+  });
   if (error) throw error;
-  // contact_intent_classified_notes != interaction_notes isn't a filter
-  // PostgREST can express against another column on the same row — compare
-  // client-side instead. Pilot-scale row counts make this cheap.
-  return (data ?? []).filter((c) => c.interaction_notes !== c.contact_intent_classified_notes);
+  return data ?? [];
+}
+
+// Small fixed-size worker pool -- enough to keep up with a busy event,
+// bounded so this loop can never monopolise the machine or the token budget.
+// Safe to run concurrently because classifyContactIntent's write re-asserts
+// both contact_intent_is_manual and the exact notes text it classified.
+async function runPool(items, limit, fn) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      try {
+        await fn(item);
+      } catch (err) {
+        log(`intent classification FAIL: ${item.id} — ${err.message ?? err}`);
+      }
+    }
+  });
+  await Promise.all(workers);
 }
 
 async function classifyContactIntent(contact) {
@@ -857,14 +926,10 @@ async function intentTick() {
     return;
   }
 
-  for (const contact of candidates) {
-    try {
-      await classifyContactIntent(contact);
-      log(`intent classified: ${contact.id}`);
-    } catch (err) {
-      log(`intent classification FAIL: ${contact.id} — ${err.message ?? err}`);
-    }
-  }
+  await runPool(candidates, INTENT_CONCURRENCY, async (contact) => {
+    await classifyContactIntent(contact);
+    log(`intent classified: ${contact.id}`);
+  });
 }
 
 async function intentLoop() {

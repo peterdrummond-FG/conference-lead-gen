@@ -53,8 +53,30 @@ export function hasRole(user: AuthedUser, roles: AuthedUser["role"][]): boolean 
 // logged-in user. It authenticates with the service-role key directly, a
 // strictly stronger credential than anything requireUser checks, so it
 // isn't double-gated by it.
-export function isServiceRoleCall(req: Request): boolean {
+export async function isServiceRoleCall(req: Request): Promise<boolean> {
   const auth = req.headers.get("authorization") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  return serviceKey.length > 0 && auth === `Bearer ${serviceKey}`;
+  if (!serviceKey) return false;
+  return await timingSafeEqual(auth, `Bearer ${serviceKey}`);
+}
+
+// Audit S4. `===` on strings short-circuits at the first differing byte.
+// Against a network endpoint that is a weak oracle -- jitter dominates -- but
+// this is the ONLY gate on contacts-from-ocr/contacts-from-note, and the
+// secret it compares is the service-role key. Three lines is cheaper than
+// arguing about exploitability.
+//
+// Compares digests so the work is over fixed-length input regardless of what
+// the caller sent (a raw byte loop would leak the length).
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const va = new Uint8Array(ha);
+  const vb = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
 }

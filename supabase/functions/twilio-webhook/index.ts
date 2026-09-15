@@ -56,10 +56,38 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function extFromContentType(ct: string): string {
-  const sub = ct.split("/")[1]?.split(";")[0] ?? "";
-  if (sub) return sub;
-  return "bin";
+// Audit A9/S7. This used to return an arbitrary substring of the handset-
+// supplied content type, which then became part of a Storage object key
+// (`sms/<id>.<ext>`, with upsert:true) and, downstream, was read back out of
+// that key and interpolated into a `claude -p` prompt by local-agent. A
+// subtype containing `/` or `..` wrote outside the sms/ prefix; one containing
+// whitespace or a newline became a prompt-framing primitive.
+//
+// Twilio's signature proves the request came from Twilio, not that this string
+// is well-formed -- the sending handset chooses it. Allowlist rather than
+// sanitise.
+const EXT_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/heic": "heic",
+  "image/heif": "heif",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/aac": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/ogg": "ogg",
+  "audio/amr": "amr",
+  "audio/3gpp": "3gp",
+};
+
+function extFromContentType(ct: string): string | null {
+  return EXT_BY_CONTENT_TYPE[ct.split(";")[0].trim().toLowerCase()] ?? null;
 }
 
 function normalizeBody(text: string): string {
@@ -365,7 +393,30 @@ Deno.serve(async (req) => {
 
     const messageId = inserted.id;
     const bucket = kind === "photo" ? "contact-photos" : "voice-memos";
-    const key = `sms/${messageId}.${extFromContentType(contentType)}`;
+
+    const ext = extFromContentType(contentType);
+    if (!ext) {
+      // An unmapped type is not something the pipeline can process; storing it
+      // as ".bin" just defers the failure to a place with less context.
+      await supabase
+        .from("inbound_messages")
+        .update({ status: "failed", error: `unsupported media content-type: ${contentType}` })
+        .eq("id", messageId);
+      noteworthy.push("That attachment type isn't supported — send a photo or a voice memo.");
+      continue;
+    }
+
+    const key = `sms/${messageId}.${ext}`;
+    // Assert the composed key rather than trusting the derivation: upsert is
+    // on, so a key that escapes the prefix would clobber another message's
+    // object.
+    if (!/^sms\/[0-9a-f-]{36}\.[a-z0-9]{1,5}$/.test(key)) {
+      await supabase
+        .from("inbound_messages")
+        .update({ status: "failed", error: `refusing to upload to an unexpected storage key: ${key}` })
+        .eq("id", messageId);
+      continue;
+    }
 
     if (kind === "photo") {
       // Photos only: download inline (not in the background) so the hash

@@ -6,10 +6,21 @@
 // live access token to attach to every request.
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yrvppufkerbjpvrxniot.supabase.co';
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydnBwdWZrZXJianB2cnhuaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzODA4NzYsImV4cCI6MjEwMzk1Njg3Nn0.PZADuNtJi-N9wq95t-nolGblWaYVKCLeB9q5-V8e394';
+// Audit S8. No production fallback: a missing or misspelled env var must fail
+// the build, not silently point a dev or staging bundle at the live project.
+export function requireEnv(name: string): string {
+  const value = import.meta.env[name] as string | undefined;
+  if (!value) {
+    throw new Error(
+      `${name} is not set. Copy frontend/.env.example to frontend/.env for local ` +
+      `development, or set it in the Vercel project settings for a deployed build.`,
+    );
+  }
+  return value;
+}
+
+const SUPABASE_URL = requireEnv('VITE_SUPABASE_URL');
+const SUPABASE_ANON_KEY = requireEnv('VITE_SUPABASE_ANON_KEY');
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },

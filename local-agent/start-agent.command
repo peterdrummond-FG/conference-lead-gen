@@ -21,6 +21,20 @@ REPO_ROOT="$(cd "$AGENT_DIR/.." && pwd)"
 cd "$AGENT_DIR"
 mkdir -p logs
 
+# Audit S12/Q8. These are unattended long-running processes appending to one
+# file forever -- an unbounded log on a laptop is a real disk-space failure
+# mode, and these logs contain contact data. Keep one previous generation.
+MAX_LOG_BYTES=$((20 * 1024 * 1024))
+rotate_log() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  local size
+  size=$(stat -f %z "$f" 2>/dev/null || echo 0)
+  if (( size > MAX_LOG_BYTES )); then
+    mv "$f" "$f.1"
+  fi
+}
+
 # Isolated working directory for every `claude -p` call: it contains nothing
 # but a .claude/skills symlink, so a permission-skipped session reading an
 # attacker-supplied photo cannot open the repo root's .env (Zoho client
@@ -39,6 +53,7 @@ fi
 # wrapper outright — agent.mjs's own supabase-client.mjs prints a clear
 # error and exits instead, which the restart loop below then surfaces.
 while true; do
+  rotate_log logs/agent.log
   node --env-file-if-exists=.env agent.mjs >> logs/agent.log 2>&1
   code=$?
   printf '%s local-agent exited (code %s) — restarting in 5s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$code" | tee -a logs/agent.log

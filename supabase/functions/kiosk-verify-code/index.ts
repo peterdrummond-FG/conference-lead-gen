@@ -5,7 +5,7 @@
 // (profiles.kiosk_pin), a per-user code unrelated to their login password
 // -- see kiosk-set-code for how each user changes their own.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireUser } from "../_shared/auth.ts";
+import { requireUser, timingSafeEqual } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -20,5 +20,9 @@ Deno.serve(async (req) => {
     return errorResponse(req, 400, "code must be a string");
   }
 
-  return jsonResponse(req, { valid: body.code === user.kioskPin });
+  // Constant-time (audit S4) -- the same defect as isServiceRoleCall, repeated
+  // here. Note this does NOT make the kiosk lock a security boundary: it is
+  // still enforced client-side and still brute-forceable without a lockout.
+  // See audit N2, deferred.
+  return jsonResponse(req, { valid: await timingSafeEqual(body.code, user.kioskPin) });
 });
