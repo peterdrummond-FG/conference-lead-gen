@@ -1,10 +1,10 @@
 <template>
   <q-page class="q-pa-lg flex flex-center">
-    <router-link to="/login" class="app-logo-link">Conference Lead Intake</router-link>
+    <router-link to="/login" class="app-logo-link">CKH Connect</router-link>
     <q-card style="width: 720px; max-width: 92vw" class="q-pa-md">
       <q-card-section>
         <div class="text-h5">Privacy Policy</div>
-        <div class="text-caption text-grey">Flippen Group Conference Lead Gen</div>
+        <div class="text-caption text-grey">Flippen Group CKH Connect</div>
         <div class="text-caption text-grey">Last updated September 2026</div>
       </q-card-section>
 

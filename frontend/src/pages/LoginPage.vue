@@ -2,7 +2,7 @@
   <q-page class="q-pa-lg flex flex-center">
     <q-card style="width: 360px; max-width: 92vw">
       <q-card-section>
-        <div class="text-h5">Conference Lead Gen</div>
+        <div class="text-h5">CKH Connect</div>
         <div class="text-caption text-grey">Sign in to continue.</div>
       </q-card-section>
 

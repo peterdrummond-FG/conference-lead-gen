@@ -55,7 +55,7 @@
               Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
             </div>
             <div class="text-caption text-grey q-mt-xs">
-              Already know this code? After you've activated Conference Lead Capture, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event instead of texting SETUP. By texting this code, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
+              Already know this code? After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event instead of texting SETUP. By texting this code, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
             </div>
           </div>
 

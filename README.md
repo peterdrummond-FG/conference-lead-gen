@@ -1,4 +1,4 @@
-# Conference Lead Gen
+# CKH Connect
 
 Conference lead capture for The Flippen Group. Reps collect contacts at a
 booth; the system researches each one, matches them against Zoho CRM, shows

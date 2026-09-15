@@ -1,4 +1,4 @@
-# Conference Lead Gen — frontend
+# CKH Connect — frontend
 
 Vue 3 + Quasar SPA, deployed on Vercel. Talks only to Supabase Edge Functions;
 there is no same-origin API.

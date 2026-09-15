@@ -1,4 +1,4 @@
-# Conference Lead Gen — working notes for Claude Code
+# CKH Connect — working notes for Claude Code
 
 Conference lead capture for The Flippen Group. Four intake paths feed one
 Supabase database; contacts are researched and matched against Zoho CRM by
