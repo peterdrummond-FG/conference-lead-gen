@@ -62,6 +62,16 @@ export default defineConfig((/* ctx */) => {
       // publicPath: '/',
       // define: {},
       // defineEnv: {}
+
+      // Quasar's own client env-injection defaults to a QCLI_ prefix and
+      // fully replaces import.meta.env, which silently shadows Vite's
+      // native VITE_ auto-exposure -- every VITE_SUPABASE_URL/
+      // VITE_SUPABASE_ANON_KEY/VITE_FUNCTIONS_BASE_URL read in
+      // src/lib/supabase.ts and src/boot/axios.ts came back undefined
+      // without this, even with a correct frontend/.env.
+      env: {
+        clientPrefix: 'VITE_',
+      },
       // ignorePublicFolder: true,
       // minify: false,
       // distDir
