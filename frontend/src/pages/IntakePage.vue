@@ -73,6 +73,8 @@
               :disable="!form.state"
               @filter="districtTypeahead.filterFn"
               @new-value="onNewDistrict"
+              @input-value="(val) => (districtInputText = val)"
+              @blur="onDistrictBlur"
             />
 
             <q-select
@@ -89,6 +91,8 @@
               :disable="!form.district"
               @filter="schoolTypeahead.filterFn"
               @new-value="onNewSchool"
+              @input-value="(val) => (schoolInputText = val)"
+              @blur="onSchoolBlur"
             />
 
             <div class="intake-submit-row">
@@ -116,7 +120,7 @@ import { reactive, ref, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
-import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
+import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import type { QForm } from 'quasar';
 
@@ -205,6 +209,22 @@ function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-uni
   done({ id: null, name: val }, 'add-unique');
 }
 
+// Backstop for onNewDistrict/onNewSchool: those only fire on Enter/Tab
+// (Quasar's own new-value gate), so a rep who types a name and taps Submit
+// without pressing Enter first would otherwise have it silently dropped —
+// see resolveTypedOption's own comment for the QSelect source this was
+// verified against.
+const districtInputText = ref('');
+const schoolInputText = ref('');
+
+function onDistrictBlur() {
+  form.district = resolveTypedOption(districtInputText.value, form.district, districtTypeahead.options.value);
+}
+
+function onSchoolBlur() {
+  form.school = resolveTypedOption(schoolInputText.value, form.school, schoolTypeahead.options.value);
+}
+
 function resetForm() {
   form.firstName = '';
   form.lastName = '';
@@ -214,6 +234,8 @@ function resetForm() {
   form.state = null;
   form.district = null;
   form.school = null;
+  districtInputText.value = '';
+  schoolInputText.value = '';
   formRef.value?.resetValidation();
 }
 
