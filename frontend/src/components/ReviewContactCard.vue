@@ -323,10 +323,13 @@
             color="positive"
             label="Approve"
             size="sm"
-            :disable="contact.matchStatus === 'pending' ||
-              (contact.matchStatus === 'ambiguous' && !contact.matchedZohoAccountId && !contact.matchedZohoContactId)"
+            :disable="contact.matchStatus === 'pending'"
             @click="$emit('approve', contact.id)"
-          />
+          >
+            <q-tooltip v-if="contact.matchStatus === 'ambiguous'">
+              No confirmed Zoho match — approving exports this as a new lead, same as "new_account". Pick a candidate above first if one looks right.
+            </q-tooltip>
+          </q-btn>
           <q-btn
             color="primary"
             label="Save"
