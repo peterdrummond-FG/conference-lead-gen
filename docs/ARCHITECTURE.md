@@ -1,4 +1,4 @@
-# Conference Lead Gen — component map
+# CKH Connect — component map
 
 ## Components
 

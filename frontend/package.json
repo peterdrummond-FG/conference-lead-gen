@@ -1,8 +1,8 @@
 {
   "name": "conference-lead-gen",
   "version": "0.0.1",
-  "description": "Conference Lead Gen — MASS/Alliance conference contact-capture pilot",
-  "productName": "Conference Lead Gen",
+  "description": "CKH Connect — MASS/Alliance conference contact-capture pilot",
+  "productName": "CKH Connect",
   "author": "Peter Drummond <peter.drummond@flippengroup.com>",
   "type": "module",
   "private": true,

@@ -65,7 +65,7 @@ async function download() {
   const url = URL.createObjectURL(res.data);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'conference-leads.csv';
+  link.download = 'ckh-connect-leads.csv';
   link.click();
   URL.revokeObjectURL(url);
 

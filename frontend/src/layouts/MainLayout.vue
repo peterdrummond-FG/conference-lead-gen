@@ -2,7 +2,7 @@
   <q-layout view="hHh lpr fFf">
     <q-header v-if="sessionStore.user && !kioskModeStore.locked" class="bg-white text-dark app-header" bordered>
       <q-toolbar>
-        <q-toolbar-title class="app-logo">Conference Lead Intake</q-toolbar-title>
+        <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
         <q-tabs class="nav-pills" indicator-color="transparent" no-caps dense>
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
           <q-route-tab to="/intake" label="Intake" />

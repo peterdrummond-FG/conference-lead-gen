@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     headers: {
       ...corsHeaders(req),
       "Content-Type": "text/csv",
-      "Content-Disposition": 'attachment; filename="conference-leads.csv"',
+      "Content-Disposition": 'attachment; filename="ckh-connect-leads.csv"',
       // The client POSTs this to export-confirm once the blob is in hand.
       // Until it does, these contacts stay unsynced and re-exportable.
       "X-Export-Batch-Id": batch.id,
