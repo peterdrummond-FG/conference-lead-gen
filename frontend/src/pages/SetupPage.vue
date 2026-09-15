@@ -11,6 +11,15 @@
         </q-card-section>
 
         <q-card-section v-if="eventStore.activeEvent">
+          <!-- Sales reps have no say in which conferences exist — only
+               whether they're personally linked to one. Kept at the top of
+               this section so admin/Solutions Success can jump straight to
+               switching events without scrolling past SMS/QR instructions
+               meant for reps already at the right one. -->
+          <div v-if="canManageEvents" class="q-mb-md">
+            <q-btn flat color="primary" label="Pick a different event" @click="pickingNew = true" />
+          </div>
+
           <q-banner class="bg-green-1 text-green-10" rounded>
             <div class="text-subtitle1">
               Active: {{ eventStore.activeEvent.name }}
@@ -110,12 +119,6 @@
                 @click="downloadSlide('session')"
               />
             </div>
-          </div>
-
-          <!-- Sales reps have no say in which conferences exist — only
-               whether they're personally linked to one. -->
-          <div v-if="canManageEvents" class="q-mt-md">
-            <q-btn flat color="primary" label="Pick a different event" @click="pickingNew = true" />
           </div>
 
           <div v-if="isSales" class="q-mt-md">

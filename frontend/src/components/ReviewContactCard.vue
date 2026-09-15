@@ -1,6 +1,29 @@
 <template>
-  <q-card bordered class="q-mb-md">
-    <q-card-section class="row items-start q-gutter-sm">
+  <!-- Folded up by default so a reviewer can see many contacts at once
+       (ReviewPage.vue lays these out in a CSS grid); expanding one sets
+       grid-column: 1 / -1 here so its edit form gets a full-width row
+       instead of being squeezed into a grid cell. -->
+  <q-card bordered class="q-mb-md" :style="isExpanded ? { gridColumn: '1 / -1' } : undefined">
+    <q-card-section v-if="!isExpanded" class="cursor-pointer" @click="isExpanded = true">
+      <div class="row items-start no-wrap q-gutter-sm">
+        <q-checkbox v-model="selected" dense class="q-mt-xs" @click.stop />
+        <div class="col overflow-hidden">
+          <div class="row items-center q-gutter-xs">
+            <span class="text-subtitle2 text-weight-medium">{{ contact.firstName }} {{ contact.lastName }}</span>
+            <q-chip v-if="contact.contactIntent" dense size="sm" :class="['tag-chip', intentTone(contact.contactIntent)]">
+              {{ capitalize(contact.contactIntent) }}
+            </q-chip>
+          </div>
+          <div class="text-caption text-grey ellipsis">{{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}</div>
+          <div class="text-caption text-grey ellipsis">{{ contact.schoolName || contact.schoolNameRaw || 'No school on file' }}</div>
+          <div class="text-caption ellipsis">{{ contact.email || 'No email' }}</div>
+          <div class="text-caption">{{ contact.phone || 'No phone' }}</div>
+          <q-chip dense size="sm" class="tag-chip q-mt-xs" :class="`tone-${matchStatusTone}`">{{ matchStatusLabel }}</q-chip>
+        </div>
+      </div>
+    </q-card-section>
+
+    <q-card-section v-else class="row items-start q-gutter-sm">
       <q-checkbox v-model="selected" dense class="q-mt-xs" />
 
       <div v-if="contact.source === 'card_photo'" class="q-mr-sm" style="width: 220px">
@@ -62,6 +85,12 @@
       </q-dialog>
 
       <div class="col">
+        <div class="row items-center">
+          <q-space />
+          <q-btn flat round dense icon="expand_less" size="sm" @click="isExpanded = false">
+            <q-tooltip>Collapse</q-tooltip>
+          </q-btn>
+        </div>
         <div class="row items-center q-gutter-xs">
           <span class="text-subtitle1">{{ contact.firstName }} {{ contact.lastName }}</span>
 
@@ -333,6 +362,7 @@ const maxAutoAttempts = 3;
 const isStuck = computed(() => props.contact.matchStatus === 'pending' && props.contact.matchAttempts >= maxAutoAttempts);
 
 const selected = defineModel<boolean>('selected', { default: false });
+const isExpanded = ref(false);
 const showFullImage = ref(false);
 const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
@@ -600,6 +630,19 @@ const matchStatusTone = computed(() => {
       return 'grey';
   }
 });
+
+function intentTone(intent: 'hot' | 'warm' | 'cold' | null) {
+  switch (intent) {
+    case 'hot':
+      return 'tone-red';
+    case 'warm':
+      return 'tone-orange';
+    case 'cold':
+      return 'tone-blue';
+    default:
+      return 'tone-grey';
+  }
+}
 
 function confidenceTone(level: string) {
   switch (level) {
