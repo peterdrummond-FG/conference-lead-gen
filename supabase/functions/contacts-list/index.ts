@@ -22,8 +22,8 @@ import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { attachDuplicateNames, CONTACT_SELECT, toListItem } from "../_shared/contacts.ts";
 
-// deno-lint-ignore no-explicit-any
 async function scopedContactsForRep(
+  // deno-lint-ignore no-explicit-any
   supabase: any,
   params: { repId: string; currentEventId: string | null; scope: "current" | "past"; reviewStatus: string; matchStatus: string; synced: string | null },
 ) {
