@@ -12,7 +12,18 @@
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
 | `.claude/skills/` | The seven skills. |
 | `mcp/` | MCP configs for headless skill runs. Only `zoho-readonly.json` today. |
-| `scripts/` | Repo guards run in CI. |
+| `scripts/` | Repo guards run in CI, plus `deploy-functions.mjs`. |
+
+## Related docs
+
+| Doc | Covers |
+|---|---|
+| `../README.md` | What the system does, end to end |
+| `../CLAUDE.md` | Load-bearing rules and common commands |
+| `ENGINEERING-LESSONS.md` | How to build features here without repeating the Sept 2026 bugs |
+| `DATA-RETENTION.md` | What's held about whom, and for how long |
+| `../MASS_Alliance_Pilot_App_Architecture.md` | Full design rationale and history |
+| `../supabase/migrations/README.md` | Notes on superseded migrations |
 
 ## Removed: the .NET backend (Stages 1–7)
 

@@ -1,15 +1,15 @@
-// Stage 11 — replaces backend/Services/MatchingQueue.cs,
-// MatchingBackgroundService.cs, and MatchingRetryScanner.cs now that
+// Stage 11 — replaced the .NET MatchingQueue / MatchingBackgroundService /
+// MatchingRetryScanner (removed 2026-09-14; git history at ebd5bba) now that
 // matching state lives in Supabase Postgres instead of an in-process .NET
 // channel. One poll loop covers what used to be three mechanisms:
 //   - claim_pending_contacts' `FOR UPDATE SKIP LOCKED` replaces
 //     MatchingQueue's in-flight ConcurrentDictionary tracking.
 //   - claim_pending_contacts' attempts/cooldown condition replaces
 //     MatchingRetryScanner's separate stuck-Pending sweep.
-// processContact below is a near-verbatim port of
-// MatchingBackgroundService.ProcessAsync, including its exact
-// ResearchInput/ResearchOutput/MatchOutput field contracts and its
-// auto-approve rule.
+// processContact below is a near-verbatim port of the .NET
+// MatchingBackgroundService.ProcessAsync (removed 2026-09-14; git history at
+// ebd5bba), including its exact ResearchInput/ResearchOutput/MatchOutput field
+// contracts and its auto-approve rule.
 //
 // Stage 13 (SMS photo intake) added a second, independent poll loop below
 // — photoLoop — for card photos that arrived via Twilio MMS rather than
@@ -499,7 +499,8 @@ async function photoLoop() {
 // its name was retired on 2026-09-03 and is now a 410 stub; its original
 // implementation (which this was ported from) is in git history at ebd5bba.
 //
-// Ported from supabase/functions/transcribe-voice-memo/index.ts — same
+// Ported from the original Edge-Function transcription path (that file is now
+// a 410 stub; the implementation is in git history at ebd5bba) — same
 // claim-then-mark-processing idempotency guard (still worth keeping even
 // with no OpenAI cost-griefing concern anymore: it's also what makes a
 // crash/restart mid-transcription safe rather than double-processing).
