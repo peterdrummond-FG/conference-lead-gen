@@ -127,35 +127,36 @@
     </div>
 
     <div v-else>
-      <!-- Rendered outside .contacts-grid on purpose — a taller item sharing
-           a CSS grid row with short ones stretches that whole row's track
-           height, leaving the short neighbors floating over dead space and
-           pushing every later card far down the page. Keeping at most one
-           expanded card in its own slot means the grid below only ever
-           holds same-height collapsed cards, which pack tightly. -->
-      <ReviewContactCard
-        v-if="expandedContact"
-        :key="expandedContact.id"
-        :contact="expandedContact"
-        :expanded="true"
-        :selected="selectedMap[expandedContact.id] ?? false"
-        class="expanded-card-slot"
-        @update:expanded="(v: boolean) => { if (!v) expandedId = null; }"
-        @update:selected="(v: boolean) => (selectedMap[expandedContact!.id] = v)"
-        @approve="approve"
-        @reject="reject"
-        @update="update"
-        @retry-match="retryMatch"
-        @duplicates-resolved="load"
-      />
-
+      <!-- Expanded card is a flex item alongside the collapsed ones, not a
+           separate CSS grid track — a grid row's height is set by its
+           tallest member, so sharing a grid row stretched every short
+           neighbor over dead space below it. Flexbox rows don't stretch to
+           match siblings (align-items: flex-start), so the collapsed cards
+           can wrap into the space beside the expanded one instead of
+           leaving it empty. -->
       <div class="contacts-grid">
+        <ReviewContactCard
+          v-if="expandedContact"
+          :key="expandedContact.id"
+          :contact="expandedContact"
+          :expanded="true"
+          :selected="selectedMap[expandedContact.id] ?? false"
+          class="expanded-card"
+          @update:expanded="(v: boolean) => { if (!v) expandedId = null; }"
+          @update:selected="(v: boolean) => (selectedMap[expandedContact!.id] = v)"
+          @approve="approve"
+          @reject="reject"
+          @update="update"
+          @retry-match="retryMatch"
+          @duplicates-resolved="load"
+        />
         <ReviewContactCard
           v-for="contact in gridContacts"
           :key="contact.id"
           :contact="contact"
           :expanded="false"
           :selected="selectedMap[contact.id] ?? false"
+          class="collapsed-card"
           @update:expanded="(v: boolean) => { if (v) expandedId = contact.id; }"
           @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
           @approve="approve"
@@ -197,9 +198,8 @@ const contacts = ref<ContactListItem[]>([]);
 const loading = ref(false);
 const selectedMap = reactive<Record<string, boolean>>({});
 const page = ref(1);
-// At most one contact expanded at a time — see the template comment above
-// the grid for why (a shared CSS grid row can't hold one tall card and
-// several short ones without stretching the short ones' row too).
+// At most one contact expanded at a time — the layout only has one
+// enlarged flex-basis slot (see .expanded-card below).
 const expandedId = ref<string | null>(null);
 const profiles = ref<Profile[]>([]);
 const repFilter = ref<string | null>(null);
@@ -375,25 +375,32 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* Folded-up cards are short and roughly uniform height, so a plain grid
-   packs them tightly. The expanded card is deliberately NOT a member of
-   this grid (see expandedContact in the template) — a CSS grid row's
-   track height is set by its tallest member, so a tall item sharing a row
-   with these would stretch the row and strand its short neighbors above a
-   lot of dead space. */
+/* Flexbox, not CSS grid — a grid row's track height is set by its tallest
+   member, so the expanded card (tall) sharing a row with collapsed ones
+   (short) stretched the whole row and stranded the short cards above dead
+   space. Flex rows don't stretch siblings to match height (align-items:
+   flex-start), so collapsed cards wrap into the space beside the expanded
+   one instead of leaving it empty. */
 .contacts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
-  align-items: start;
+  align-items: flex-start;
 }
 
 /* Roughly half the page width, per how big an expanded card should feel —
    comfortable for the edit form without taking over the whole row like the
    old full-width version did. */
-.expanded-card-slot {
-  width: 50%;
+.expanded-card {
+  flex: 0 1 50%;
   min-width: 360px;
+}
+
+/* Grow to fill remaining row space (mirrors the old grid's
+   minmax(320px, 1fr) auto-fill columns) while wrapping once a row fills up. */
+.collapsed-card {
+  flex: 1 1 320px;
+  max-width: 100%;
 }
 
 .scope-tabs {
