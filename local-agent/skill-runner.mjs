@@ -1,8 +1,8 @@
 // Invokes a Claude Code skill headlessly. Originally a near-verbatim port of
-// backend/Services/SkillRunner.cs — same temp-file input hand-off, same 180s
-// timeout / 2 attempts / 5s backoff, same defensive brace-counting JSON
-// extraction (the CLI can prepend markdown fences or prose despite being told
-// to print only JSON).
+// the .NET SkillRunner (removed 2026-09-14; in git history at ebd5bba) — same
+// temp-file input hand-off, same 180s timeout / 2 attempts / 5s backoff, same
+// defensive brace-counting JSON extraction (the CLI can prepend markdown
+// fences or prose despite being told to print only JSON).
 //
 // Hardened 2026-09-14 (audit A1/A2/A4/A5). Three things changed, all of them
 // load-bearing:

@@ -2,9 +2,10 @@
 
 ## 1. Overview
 
-**As of Stage 8, three intake paths feed one database**: a kiosk form/QR
-code, a local folder-watcher for business-card photos, and texting photos
-(and optionally a voice memo) to a Twilio number. Before anything reaches
+**Four intake paths feed one database**: a kiosk form/QR code, a local
+folder-watcher for business-card photos, texting photos (and optionally a
+voice memo) to a Twilio number, and pasting a typed note covering several
+people at once (Stage 17, section 9b). Before anything reaches
 Zoho, every new contact is first checked against everyone already captured
 at the *same event* — catching the same person's card photographed twice,
 or someone who both scanned the QR code and handed over a card — since
@@ -466,30 +467,96 @@ The Zoho matching check runs after this point, asynchronously (section 6) — th
 kiosk never waits on it, so a slow or briefly-down Zoho connection never shows
 up as lag at the table.
 
-## 8. Security note — implemented in Stage 9, unified with the kiosk PIN
+## 8. Security posture (rewritten after the Sept 2026 audit)
 
-The original pilot version of this app ran open on venue WiFi with no auth at
-all (`/setup`, `/review`, `/export` unlocked same as `/intake`) — accepted risk
-for a short-lived, staff-supervised test run, with a staff PIN flagged here as
-a minimum requirement before it ran unsupervised. **That PIN now exists.**
-`app_settings.staff_pin` (default `1234` — change this before real use, see
-section 11) is a single shared secret serving two roles at once, deliberately
-unified rather than two separate secrets: it's the kiosk-unlock PIN in the
-frontend (`kioskStore`, held in-memory only) *and* the server-side gate
-(`requireStaffPin`, `supabase/functions/_shared/auth.ts`) every privileged Edge
-Function checks via the `x-staff-pin` header. Public routes (`contacts-create`,
-`districts-list`, etc. — anything `/intake` itself needs before a rep has
-unlocked anything) ignore the header entirely; a privileged one 401s without
-it, which the frontend's response interceptor treats as "session died" and
-re-locks the kiosk. Every Edge Function also requires a valid Supabase anon-key
-JWT to pass the gateway's own check first — a real security boundary the
-staff-PIN sits on top of, not instead of.
+**Superseding the original Stage 9 design.** This section previously described
+a single shared `app_settings.staff_pin` (default `1234`) doing double duty as
+the kiosk-unlock PIN and the server-side gate, checked via an `x-staff-pin`
+header. That is gone. Commit `165d535` replaced it with real per-user
+authentication, and a security audit in September 2026 hardened what remained.
+The details below are current; the history is kept because the *shape* of the
+old design is a useful thing not to rebuild.
 
-Separately, RLS is enabled with **zero policies** on every table (section 3) —
-nothing is reachable directly by a client key at all; every read/write must go
-through an Edge Function using the service-role key, which bypasses RLS
-entirely. The staff-PIN check happens inside those functions, not at the
-database layer.
+### Identity and authorisation
+
+Real Supabase Auth accounts, with a `profiles` row per user carrying a role:
+`admin`, `solutionsSuccess`, or `sales`. `requireUser()`
+(`supabase/functions/_shared/auth.ts`) validates the caller's access token and
+resolves it to that row; every staff-gated Edge Function checks the role
+itself.
+
+- A `sales` rep's reads are forced to their own contacts **server-side** —
+  `contacts-list` never puts another rep's rows on the wire. Writes and
+  single-row reads 404 (not 403) on someone else's contact, so a rep can't
+  confirm an id exists.
+- `admin`/`solutionsSuccess` see everything; only they can export or manage
+  accounts. `profiles-update` refuses a self role-change.
+- Public by design: `contacts-create`, `districts-list`, `schools-list`,
+  `events-active` — everything `/intake` needs before anyone logs in.
+
+`events-active` returns `folderCode` and the rep assignments **only to a
+logged-in caller**. That code is the SMS bind token: anyone holding it can bind
+a phone and push media into the pipeline (audit S11).
+
+### Database
+
+RLS is enabled with **zero policies** on every table. Nothing is reachable by a
+client key at all; every read and write goes through an Edge Function using the
+service-role key, which bypasses RLS. Role checks happen inside those
+functions, not at the database layer. Stored functions pin `search_path`.
+
+### The agent boundary — the important one
+
+The pipeline's riskiest surface isn't the web API; it's that skills read
+content supplied by anyone who can text the Twilio number, drop a file, or fill
+in the public form, and until September 2026 those `claude -p` sessions ran
+with permissions skipped and **no tool scoping at all** — inheriting the
+operator's entire account-level MCP fleet (Gmail, Drive, Supabase project
+admin, a write-capable Zoho CRM connector). A line of instruction text printed
+on a business card had all of that in reach.
+
+Now:
+
+- `local-agent/skill-profiles.mjs` gives each skill a least-privilege profile,
+  enforced with `--strict-mcp-config` plus a computed `--disallowedTools`. The
+  text-only skills get `Read` and nothing else; only `match-contact` reaches
+  Zoho, and only through the read-only connector.
+- **Skills never hold credentials.** A skill returns JSON and the calling
+  program performs the authenticated write. `process-cards` used to be handed
+  `$SUPABASE_SERVICE_ROLE_KEY` and told to `curl` with it.
+- The subprocess gets an explicit env allowlist, and runs from a working
+  directory containing only a `.claude/skills` symlink — not the repo root,
+  which holds `.env`.
+- Every skill's SKILL.md carries a data-vs-instructions anchor naming the
+  specific decision an injection would try to flip. That's the second layer;
+  the tool profile is the first.
+- Model output is schema-validated (`local-agent/schemas.mjs`) before anything
+  is persisted.
+
+### Other hardening from the audit
+
+- Constant-time comparison for the service-role key and the kiosk PIN.
+- An unrecognised CORS origin gets **no** `Access-Control-Allow-Origin` header.
+- `contacts-create` (public, unauthenticated) has field caps, format
+  validation, an IP rate limit and a honeypot — every row it inserts costs two
+  `claude -p` runs downstream.
+- Content types are allowlisted before becoming Storage keys or prompt
+  fragments.
+- Security headers on Vercel, including `frame-ancestors` — which the existing
+  `<meta>` CSP cannot express, so the app had been framable.
+- Source media is purged after 90 days; deleting a contact now deletes its
+  photo and voice memo (`docs/DATA-RETENTION.md`).
+
+### Known remaining gap
+
+**The kiosk lock is still client-side.** Locking hides the app behind `/intake`
+by setting a `localStorage` flag, while the rep's session stays live
+underneath — so clearing that key from the device's own console restores full
+access without needing the PIN. The per-user PIN
+(`profiles.kiosk_pin`) is also stored in plaintext and has no rate limit or
+lockout. This is tracked as audit finding **N2** and deliberately deferred; the
+interim default PIN is a known pilot decision. Do not treat the kiosk lock as a
+security boundary against someone holding the device.
 
 ## 9. Texting it in — Twilio SMS/MMS + local voice-memo transcription (Stage 13–14)
 
@@ -543,6 +610,46 @@ Both loops use the same optimistic-claim pattern as `matchingLoop`'s stuck-row
 handling (an `UPDATE ... WHERE status = 'pending_*'` that returns nothing if
 another poll already claimed the row first) — not just to avoid double
 billing, but because it's also what makes a crash/restart safe.
+
+## 9b. Pasting a typed note (Stage 17)
+
+A fourth intake path. A rep types notes on their phone during a conference —
+usually covering several people in one block, in whatever shorthand they use —
+and pastes the whole thing into `/notes`.
+
+`notes-submit` records it in `note_submissions` (capped at 20,000 characters;
+a bigger paste is a mis-paste, not a day's notes) and resolves the target event
+**server-side**: the rep's own `current_event_id` wins over whichever event
+happens to be active, because a rep writing up notes on the way home is still
+filing them against the conference they were just at.
+
+`local-agent`'s `noteLoop` claims the row with the same optimistic
+claim-then-mark-processing the SMS loops use, runs `extract-note-contacts`, and
+posts each person to `contacts-from-note`. From there it is the ordinary
+pipeline: `matchingLoop` researches and matches each new row, and `intentLoop`
+classifies whichever arrived with interaction notes.
+
+Two design points worth keeping:
+
+- **The skill only returns JSON.** It never posts anything and is never given
+  the service-role key, so a note containing instruction-like text — most
+  likely because the rep pasted something they copied elsewhere — has no
+  credential within reach even in the worst case. This is the pattern every
+  skill now follows.
+- **Event and rep come from the submission row, never the caller.** That is the
+  seam where a note's contents stop being able to influence anything but the
+  contact's own fields.
+
+`notes-status` polls the submission so the rep sees what was actually extracted
+— including a `skipped` list for anything the skill deliberately didn't turn
+into a contact (a mention with no name attached), so a silent drop is never
+invisible.
+
+Why not SMS: over ~160 characters (70 with a single smart quote, which pasted
+phone notes are full of) the handset segments the message, Twilio doesn't
+guarantee reassembly, and segments can arrive as separate webhooks out of order
+with nothing identifying which piece is which. A multi-contact note is always
+past that threshold.
 
 ## 10. Resolved and open items
 
@@ -608,36 +715,64 @@ billing, but because it's also what makes a crash/restart safe.
   `SUPABASE_SERVICE_ROLE_KEY` as the new-style key; `local-agent/.env` and
   `watcher/.env` need that one specifically, or auth checks silently 401.
 
-**Still open (blocking a live pilot run):**
-- **Twilio account + MMS-enabled phone number** — not yet created; secrets
-  not yet set; the webhook has never received a real Twilio request (every
-  test so far simulated what it would produce).
-- **`local-agent`/`watcher` need to run continuously** on whichever Mac does
-  this job — set up as macOS Login Items (section 2), with `claude`, `ffmpeg`,
-  `sips`, and the `whisper` CLI confirmed present on that machine.
-- **`frontend/` isn't deployed to Vercel yet** — code and `vercel.json` are
-  ready, but nothing pushed to an actual account/project; once it is, the
-  Supabase `ALLOWED_ORIGINS` secret needs the real Vercel URL(s) added (CORS
-  currently only allows localhost).
-- **Change the staff PIN off the default `1234`** before real use (section 8) —
-  there's a change-PIN form on `/setup` already.
-- **Old pilot data**: not yet checked whether the earlier local .NET Postgres
-  database holds real pilot data that needs migrating into Supabase before
-  cutover.
-- **`backend/` (the old .NET app)**: nothing depends on it once the frontend
-  is fully on Vercel — decommission or keep as reference, undecided.
-- **Matching thresholds**: I haven't set actual score cutoffs for
-  high/medium/low match confidence yet — that needs a first real pass against
-  your data to calibrate rather than a guessed number up front.
-- **`Conference` lookup field on Accounts**: exists, links Accounts to
-  Campaigns, and is unused in every record I checked — worth asking whoever
-  manages Zoho whether it was built for something we should be reusing here
-  instead of (or alongside) our own `Events` table.
-- **Seeding the district/school list**: still starts empty and grows via
-  "add new," unchanged from the original design — never revisited in favor of
-  seeding from an existing Zoho Accounts export/state DOE roster.
-- **Still assumes one active event/table at a time**: `Events.is_active` is a
-  single unique-partial-index row (section 3); two intake tables running at
-  once against the same Supabase project would need a real multi-active-event
-  design, not just "point both at the same database" — worth confirming if
-  that's a real scenario before it comes up live.
+**Resolved since (Sept 14-15, 2026):**
+- **Stage 16 — SMS conference setup**: a rep can text "setup a new conference"
+  and pick from fuzzy-matched event names instead of needing the folder code
+  (section 9).
+- **Stage 17 — pasted-note intake**: section 9b.
+- **Proactive SMS**: a 60-minute inactivity reminder and a "N contacts
+  received" confirmation, on a pg_cron schedule.
+- **Real auth replaced the shared staff PIN** (section 8); `backend/` (the old
+  .NET app) removed entirely — it was unauthenticated, ran a second competing
+  matching pipeline, and was the only reason the repo root held Zoho
+  credentials.
+- **Security audit and remediation** — see `docs/ENGINEERING-LESSONS.md` for
+  the generalised lessons. Headline items: skills are now sandboxed and hold no
+  credentials; model output is schema-validated; three orphaned but still-live
+  Edge Functions (two of them public unauthenticated INSERTs) were retired;
+  export no longer loses leads on a failed download; duplicate detection uses
+  equality rather than `ILIKE` against raw input.
+- **CI exists** (`.github/workflows/ci.yml`, mirrored to `.gitlab-ci.yml`) with
+  unit tests and two repo guards: no skill may run unsandboxed, and no
+  deployed function may lack a source in the repo.
+- **Frontend is deployed to Vercel** and `ALLOWED_ORIGINS` is set (confirmed
+  from function logs, Sept 15).
+- **Twilio is live** — A2P 10DLC campaign with public Privacy Policy and Terms
+  pages at `/privacy` and `/terms`.
+
+**Still open:**
+- **Credential rotation.** The service-role key and the Zoho client secret /
+  refresh token were readable by permission-skipped agent sessions for the life
+  of the project and should be treated as disclosed. The repo-root `.env` is
+  deliberately still present because it holds the only copy of the Zoho values
+  needed to revoke them — delete it after.
+- **Kiosk lock is not a security boundary** (audit N2, deferred) — see the end
+  of section 8.
+- **`IP_HASH_SALT` unset**, so the rate limiter's IP hash is unsalted.
+- **The retention purge job isn't scheduled.** `local-agent/purge-expired-media.mjs`
+  works and is tested; nothing runs it yet, so 90-day retention is a policy and
+  a script rather than a guarantee. The window itself should be confirmed
+  against what attendees were actually told in the Privacy Policy.
+- **Matching thresholds**: no numeric cutoffs for high/medium/low confidence —
+  still pure LLM judgment, wanting a real calibration pass against live data.
+- **`Conference` lookup field on Accounts**: exists in Zoho, links Accounts to
+  Campaigns, unused in every record checked — worth asking whoever manages Zoho
+  whether it was built for something we should reuse.
+- **District/school list seeding**: 5,970 districts and 13,780 schools are
+  loaded, but the "+ add new" free-text path is gone (it was two public
+  unauthenticated INSERT endpoints), so an unmatched typed name is now kept as
+  plain text on the contact rather than creating a row. Confirm that's the
+  desired long-term behaviour.
+- **Still assumes one active event at a time**: `events.is_active` is a single
+  unique-partial-index row. Two intake tables running at once against the same
+  project would need a real multi-active-event design.
+- **Observability**: failures are `console.log`/`console.error` to a local file
+  or the Supabase log stream. No alerting — the first signal of a stuck
+  pipeline is still a rep asking why a lead never appeared.
+
+**Note on this section's history.** An earlier version of this list had
+"staff PIN still defaults to 1234", "frontend isn't deployed to Vercel yet",
+"Twilio account not yet created", and "`backend/` — decommission or keep,
+undecided" as open blockers. All four are resolved above; the old entries were
+removed rather than left to rot, since a stale open-items list is worse than
+none. Git history has them.
