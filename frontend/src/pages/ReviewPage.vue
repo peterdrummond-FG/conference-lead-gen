@@ -127,12 +127,36 @@
     </div>
 
     <div v-else>
+      <!-- Rendered outside .contacts-grid on purpose — a taller item sharing
+           a CSS grid row with short ones stretches that whole row's track
+           height, leaving the short neighbors floating over dead space and
+           pushing every later card far down the page. Keeping at most one
+           expanded card in its own slot means the grid below only ever
+           holds same-height collapsed cards, which pack tightly. -->
+      <ReviewContactCard
+        v-if="expandedContact"
+        :key="expandedContact.id"
+        :contact="expandedContact"
+        :expanded="true"
+        :selected="selectedMap[expandedContact.id] ?? false"
+        class="expanded-card-slot"
+        @update:expanded="(v: boolean) => { if (!v) expandedId = null; }"
+        @update:selected="(v: boolean) => (selectedMap[expandedContact!.id] = v)"
+        @approve="approve"
+        @reject="reject"
+        @update="update"
+        @retry-match="retryMatch"
+        @duplicates-resolved="load"
+      />
+
       <div class="contacts-grid">
         <ReviewContactCard
-          v-for="contact in pagedContacts"
+          v-for="contact in gridContacts"
           :key="contact.id"
           :contact="contact"
+          :expanded="false"
           :selected="selectedMap[contact.id] ?? false"
+          @update:expanded="(v: boolean) => { if (v) expandedId = contact.id; }"
           @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
           @approve="approve"
           @reject="reject"
@@ -173,6 +197,10 @@ const contacts = ref<ContactListItem[]>([]);
 const loading = ref(false);
 const selectedMap = reactive<Record<string, boolean>>({});
 const page = ref(1);
+// At most one contact expanded at a time — see the template comment above
+// the grid for why (a shared CSS grid row can't hold one tall card and
+// several short ones without stretching the short ones' row too).
+const expandedId = ref<string | null>(null);
 const profiles = ref<Profile[]>([]);
 const repFilter = ref<string | null>(null);
 const syncedFilterOptions = [
@@ -219,6 +247,13 @@ const filteredContacts = computed(() => (
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / PER_PAGE)));
 const pagedContacts = computed(() => filteredContacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
+// Looked up in the full list, not just pagedContacts, so it stays rendered
+// even if a reload happens to shift it off the current page.
+const expandedContact = computed(() => contacts.value.find((c) => c.id === expandedId.value) ?? null);
+// The expanded contact (if on this page) is rendered separately above, in
+// its own non-grid slot — see the template comment.
+const gridContacts = computed(() => pagedContacts.value.filter((c) => c.id !== expandedId.value));
+
 async function load() {
   loading.value = true;
   try {
@@ -237,6 +272,7 @@ async function load() {
     contacts.value = data;
     for (const key of Object.keys(selectedMap)) delete selectedMap[key];
     for (const c of data) selectedMap[c.id] = false;
+    expandedId.value = null;
     if (page.value > pageCount.value) page.value = pageCount.value;
   } finally {
     loading.value = false;
@@ -323,6 +359,11 @@ watch([repFilter, syncedFilter, salesScope], () => {
 watch(eventFilter, () => {
   page.value = 1;
 });
+// Changing pages closes whatever's expanded — otherwise its own slot would
+// keep showing a contact that's no longer part of the visible page.
+watch(page, () => {
+  expandedId.value = null;
+});
 
 onMounted(async () => {
   const loads: Promise<unknown>[] = [load()];
@@ -334,16 +375,25 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* Folded-up cards are short and roughly uniform height; an expanded one
-   (ReviewContactCard sets grid-column: 1 / -1 on itself) claims a full-width
-   row of its own so its edit form has room without squeezing neighbors.
-   align-items: start keeps a short card from being stretched to match a
-   taller one sharing its row track. */
+/* Folded-up cards are short and roughly uniform height, so a plain grid
+   packs them tightly. The expanded card is deliberately NOT a member of
+   this grid (see expandedContact in the template) — a CSS grid row's
+   track height is set by its tallest member, so a tall item sharing a row
+   with these would stretch the row and strand its short neighbors above a
+   lot of dead space. */
 .contacts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
   align-items: start;
+}
+
+/* Roughly half the page width, per how big an expanded card should feel —
+   comfortable for the edit form without taking over the whole row like the
+   old full-width version did. */
+.expanded-card-slot {
+  width: 50%;
+  min-width: 360px;
 }
 
 .scope-tabs {

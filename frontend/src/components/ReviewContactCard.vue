@@ -1,10 +1,15 @@
 <template>
-  <!-- Folded up by default so a reviewer can see many contacts at once
-       (ReviewPage.vue lays these out in a CSS grid). Expanding one used to
-       span the full grid row (grid-column: 1 / -1), but that hid every
-       other card behind it — spanning 2 columns instead gives the edit
-       form room while leaving the rest of the row visible alongside it. -->
-  <q-card bordered class="q-mb-md" :style="isExpanded ? { gridColumn: 'span 2' } : undefined">
+  <!-- Folded up by default so a reviewer can see many contacts at once.
+       Expanding used to resize this card in place inside ReviewPage's CSS
+       grid (via grid-column span) — but a taller item in a shared grid row
+       stretches that whole row's track height, so same-row neighbors ended
+       up floating in a lot of dead space and everything after was pushed
+       far down the page. ReviewPage now renders whichever contact is
+       expanded in its own slot outside the grid (see expandedContact
+       there), so this component no longer needs to size itself — it's
+       always a plain block, and the `expanded` model is just an open/closed
+       flag driven by the parent. -->
+  <q-card bordered class="q-mb-md">
     <q-card-section v-if="!isExpanded" class="cursor-pointer" @click="isExpanded = true">
       <div class="row items-start no-wrap q-gutter-sm">
         <q-checkbox v-model="selected" dense class="q-mt-xs" @click.stop />
@@ -363,7 +368,10 @@ const maxAutoAttempts = 3;
 const isStuck = computed(() => props.contact.matchStatus === 'pending' && props.contact.matchAttempts >= maxAutoAttempts);
 
 const selected = defineModel<boolean>('selected', { default: false });
-const isExpanded = ref(false);
+// Controlled by ReviewPage (which decides which single contact, if any, is
+// the one rendered outside the grid) rather than owned locally — see the
+// comment at the top of the template.
+const isExpanded = defineModel<boolean>('expanded', { default: false });
 const showFullImage = ref(false);
 const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
