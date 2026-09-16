@@ -97,15 +97,22 @@ const router = useRouter();
 const sessionStore = useSessionStore();
 const kioskModeStore = useKioskModeStore();
 
+// effectiveRole (real role, or the admin-only "view as" preview role when
+// set) rather than sessionStore.user?.role directly -- found 2026-09-16: the
+// nav tabs stayed keyed to the real admin's own role no matter who they
+// picked in the "View as" switcher, so previewing a sales rep still showed
+// every admin-only tab (Export) instead of what that rep would actually see.
+// The switcher's own visibility (below) stays on the real role regardless --
+// an admin previewing someone must always be able to switch back.
 const canSeeSetup = computed(() => (
-  sessionStore.user?.role === 'admin' || sessionStore.user?.role === 'solutionsSuccess' || sessionStore.user?.role === 'sales'
+  sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess' || sessionStore.effectiveRole === 'sales'
 ));
 
 // Matches the /export route's own meta.roles guard (router/index.ts) — sales
 // could otherwise still click into the tab even though the router would
 // bounce them straight back out.
 const canSeeExport = computed(() => (
-  sessionStore.user?.role === 'admin' || sessionStore.user?.role === 'solutionsSuccess'
+  sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
 
 const showUnlockDialog = ref(false);

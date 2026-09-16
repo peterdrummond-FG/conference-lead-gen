@@ -88,8 +88,12 @@
                  one instead of silently inheriting whichever conference
                  happened to be activated most recently system-wide (see
                  events-active's fallback comment — this is the bug where a
-                 rep's "link myself" locked in the wrong conference). -->
-            <div v-if="activeEvents.length > 1" class="q-mt-sm">
+                 rep's "link myself" locked in the wrong conference). Hidden
+                 during a sales preview (isSales && viewingAs) for the same
+                 write-hazard reason as the personal QR/link-myself section
+                 below -- switchEvent always writes to the real caller's own
+                 profile, never the previewed rep's. -->
+            <div v-if="activeEvents.length > 1 && (canManageEvents || !sessionStore.viewingAs)" class="q-mt-sm">
               <q-select
                 :model-value="eventStore.activeEvent.id"
                 :options="activeEvents"
@@ -157,7 +161,14 @@
               </ol>
             </div>
 
-            <div v-if="isSales && sessionStore.user?.repSlug" class="q-mt-md text-center">
+            <!-- These two personal sections stay gated on !sessionStore.viewingAs even
+                 though isSales now follows effectiveRole (see isSales below): the buttons
+                 here call profiles-set-current-event with no explicit target, which always
+                 writes to the real caller's own profile (session-store.ts's own comment on
+                 viewingAs). Rendering them while previewing someone else would show that
+                 rep's name next to controls that actually mutate the admin's own account --
+                 exactly the write-hazard "view as" is documented not to have. -->
+            <div v-if="isSales && !sessionStore.viewingAs && sessionStore.user?.repSlug" class="q-mt-md text-center">
               <div class="text-caption text-grey q-mb-sm">
                 Your own QR code — reusable at every conference you work. Whichever event you're
                 linked to below is where its scans land. Drop it on a slide or open it on an iPad;
@@ -172,7 +183,12 @@
               />
             </div>
 
-            <div v-if="isSales" class="q-mt-md">
+            <div v-if="isSales && sessionStore.viewingAs" class="q-mt-md text-center text-caption text-grey">
+              {{ sessionStore.viewingAs.name }}'s own QR and event link aren't shown in preview —
+              those controls always act on your own admin account, not theirs.
+            </div>
+
+            <div v-if="isSales && !sessionStore.viewingAs" class="q-mt-md">
               <q-separator class="q-mb-md" />
               <div class="text-caption text-grey q-mb-xs">
                 {{ sessionStore.user?.currentEventName ? `You're linked to: ${sessionStore.user.currentEventName}` : "You're not linked to this event yet." }}
@@ -396,13 +412,20 @@ const linkingCell = ref<string | null>(null);
 // Keyed by rep id — a specific Manage Users row's QR download.
 const downloadingSlideFor = ref<string | null>(null);
 
-const isAdmin = computed(() => sessionStore.user?.role === 'admin');
-const isSales = computed(() => sessionStore.user?.role === 'sales');
+// effectiveRole (not sessionStore.user?.role) so admin's "View as" preview
+// (MainLayout's switcher) actually reshapes this page into what the
+// previewed role would see -- e.g. hides the admin-only Reps & events /
+// Manage Users cards below when previewing a sales rep. This is purely a
+// display/visibility change: every write this page can still trigger stays
+// gated server-side by the real caller's own JWT (profiles-create etc.), so
+// there's no security implication to it following the preview.
+const isAdmin = computed(() => sessionStore.effectiveRole === 'admin');
+const isSales = computed(() => sessionStore.effectiveRole === 'sales');
 // Picking/activating a conference, assigning booth/session reps, and
 // managing accounts are all admin/solutionsSuccess actions — a sales rep
 // reaching Setup is here only to download QR slides and link themself to
 // the event, never to reconfigure it.
-const canManageEvents = computed(() => isAdmin.value || sessionStore.user?.role === 'solutionsSuccess');
+const canManageEvents = computed(() => isAdmin.value || sessionStore.effectiveRole === 'solutionsSuccess');
 const linkingMyself = ref(false);
 
 // Every currently-active conference (not just this login's own) — lets
