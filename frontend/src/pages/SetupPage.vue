@@ -10,173 +10,174 @@
           </div>
         </q-card-section>
 
-        <q-card-section v-if="eventStore.activeEvent">
+        <q-card-section v-if="eventStore.activeEvent || canManageEvents">
           <!-- Sales reps have no say in which conferences exist — only
-               whether they're personally linked to one. Kept at the top of
-               this section so admin/Solutions Success can jump straight to
-               switching events without scrolling past SMS/QR instructions
-               meant for reps already at the right one. -->
-          <div v-if="canManageEvents" class="q-mb-md">
-            <q-btn flat color="primary" label="Pick a different event" @click="pickingNew = true" />
+               whether they're personally linked to one. The activate-a-new
+               form (below) renders right under this button, not past the
+               SMS/QR instructions, so switching doesn't require scrolling. -->
+          <div v-if="canManageEvents && eventStore.activeEvent" class="q-mb-md">
+            <q-btn flat color="primary" label="Activate a New Event" @click="pickingNew = true" />
           </div>
 
-          <q-banner class="bg-green-1 text-green-10" rounded>
-            <div class="text-subtitle1">
-              Active: {{ eventStore.activeEvent.name }}
-            </div>
-            <div class="text-caption">
-              {{ eventStore.activeEvent.state }}
-            </div>
-          </q-banner>
-
-          <!-- Several conferences can be active at once (different reps,
-               different cities, same day) — this switches which one this
-               admin/Solutions Success login is administering (rep
-               assignment, QR slides), without creating a new one. -->
-          <div v-if="canManageEvents && activeEvents.length > 1" class="q-mt-sm">
+          <div v-if="canManageEvents && (!eventStore.activeEvent || pickingNew)">
             <q-select
-              :model-value="eventStore.activeEvent.id"
-              :options="activeEvents"
-              option-label="name"
-              option-value="id"
-              emit-value
-              map-options
-              dense
-              label="Switch to a different active conference"
-              :loading="switchingEvent"
-              @update:model-value="switchEvent"
-            >
-              <template v-slot:option="scope">
-                <q-item v-bind="scope.itemProps">
-                  <q-item-section>
-                    <q-item-label>{{ scope.opt.name }}</q-item-label>
-                    <q-item-label caption>{{ scope.opt.state }} · activated {{ formatRelativeTime(scope.opt.activatedAt) }}</q-item-label>
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-select>
-          </div>
-
-          <div v-if="eventStore.activeEvent.folderCode" class="q-mt-sm">
-            <div class="text-caption">Card-photo folder for today:</div>
-            <div class="text-subtitle2 text-weight-bold">{{ eventStore.activeEvent.folderCode }}</div>
-            <div class="text-caption text-grey">
-              Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
-            </div>
-            <div class="text-caption text-grey q-mt-xs">
-              Already know this code? After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event instead of texting SETUP. By texting this code, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
-            </div>
-          </div>
-
-          <q-separator class="q-my-md" />
-
-          <div v-if="eventStore.activeEvent.folderCode">
-            <div class="text-subtitle2 text-weight-bold">
-              Texting in cards &amp; notes (no laptop needed)
-            </div>
-            <div class="text-caption text-grey q-mb-sm">
-              Every rep does this once per event, then just texts photos as they go.
-            </div>
-            <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
-              <li>
-                Text
-                <span class="text-weight-bold">SETUP</span>
-                to
-                <span class="text-weight-bold">{{ twilioNumber }}</span>
-                to activate SMS-based conference lead capture. By texting SETUP, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture.
-                <span class="text-grey">Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.</span>
-                Then reply to the prompts to find and confirm today's event by name. Do this again if you switch phones or events.
-              </li>
-              <li>Text a photo of a business card — one card filling the frame, or several laid out together on the table.</li>
-              <li>
-                Optional: right after, record and send a voice memo about the conversation. If it's
-                about someone from earlier (not the card you just sent), just say their name — the
-                system reads it and sorts the note onto the right person.
-              </li>
-              <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
-            </ol>
-          </div>
-
-          <div v-if="eventStore.activeEvent.isLinkedRep" class="q-mt-md text-center">
-            <div class="text-caption text-grey q-mb-sm">
-              Your own QR code for this event — leads that scan it are credited to you. Drop it on a
-              slide or open it on an iPad; attendees scan it, not the laptop screen.
-            </div>
-            <q-btn
-              color="primary"
-              icon="image"
-              label="Download my QR (PNG)"
-              :loading="generatingMySlide"
-              @click="downloadMySlide"
-            />
-          </div>
-          <div v-else-if="isSales" class="q-mt-md text-center text-caption text-grey">
-            You're not linked to this event yet — ask an admin to link you in Setup's reps &amp; events
-            table before you have a QR code to hand out.
-          </div>
-
-          <div v-if="isSales" class="q-mt-md">
-            <q-separator class="q-mb-md" />
-            <div class="text-caption text-grey q-mb-xs">
-              {{ sessionStore.user?.currentEventName ? `You're linked to: ${sessionStore.user.currentEventName}` : "You're not linked to this event yet." }}
-            </div>
-            <q-btn
-              flat no-caps color="primary"
-              :label="isLinkedToActiveEvent ? 'Unlink myself' : 'Link myself to this event'"
-              :loading="linkingMyself"
-              @click="toggleMyCurrentEvent"
-            />
-          </div>
-        </q-card-section>
-
-        <q-card-section v-if="canManageEvents && (!eventStore.activeEvent || pickingNew)">
-          <q-select
-            v-model="selectedCampaign"
-            :options="campaignOptions"
-            option-label="name"
-            use-input
-            fill-input
-            hide-selected
-            input-debounce="300"
-            label="Search campaigns"
-            @filter="filterFn"
-          />
-
-          <!--
-            Zoho's Campaigns module has no State field at all (confirmed
-            against live data — every one of 671 real conference campaigns has
-            none), so the rep supplies the conference's location directly
-            rather than anything being copied from the campaign. Shown once a
-            campaign is picked, since that's the point at which it's actually
-            needed. This is the conference's own location, used only as a
-            fallback signal when resolving card-photo contacts — it never
-            gates or defaults the intake form's own attendee-supplied state.
-          -->
-          <div v-if="selectedCampaign" class="row q-col-gutter-md q-mt-sm">
-            <q-select
-              v-model="stateOption"
-              class="col"
-              :options="stateOptions"
+              v-model="selectedCampaign"
+              :options="campaignOptions"
               option-label="name"
               use-input
               fill-input
               hide-selected
-              input-debounce="0"
-              label="Conference location (state) *"
-              :rules="[(v: UsStateOption | null) => !!v || 'Required']"
-              @filter="filterStates"
+              input-debounce="300"
+              label="Search campaigns"
+              @filter="filterFn"
             />
+
+            <!--
+              Zoho's Campaigns module has no State field at all (confirmed
+              against live data — every one of 671 real conference campaigns has
+              none), so the rep supplies the conference's location directly
+              rather than anything being copied from the campaign. Shown once a
+              campaign is picked, since that's the point at which it's actually
+              needed. This is the conference's own location, used only as a
+              fallback signal when resolving card-photo contacts — it never
+              gates or defaults the intake form's own attendee-supplied state.
+            -->
+            <div v-if="selectedCampaign" class="row q-col-gutter-md q-mt-sm">
+              <q-select
+                v-model="stateOption"
+                class="col"
+                :options="stateOptions"
+                option-label="name"
+                use-input
+                fill-input
+                hide-selected
+                input-debounce="0"
+                label="Conference location (state) *"
+                :rules="[(v: UsStateOption | null) => !!v || 'Required']"
+                @filter="filterStates"
+              />
+            </div>
+
+            <div class="q-mt-md text-right">
+              <q-btn
+                color="primary"
+                label="Activate"
+                :disable="!selectedCampaign || !stateOption"
+                :loading="activating"
+                @click="activate"
+              />
+            </div>
           </div>
 
-          <div class="q-mt-md text-right">
-            <q-btn
-              color="primary"
-              label="Activate"
-              :disable="!selectedCampaign || !stateOption"
-              :loading="activating"
-              @click="activate"
-            />
-          </div>
+          <template v-if="eventStore.activeEvent">
+            <q-banner class="bg-green-1 text-green-10" rounded>
+              <div class="text-subtitle1">
+                Active: {{ eventStore.activeEvent.name }}
+              </div>
+              <div class="text-caption">
+                {{ eventStore.activeEvent.state }}
+              </div>
+            </q-banner>
+
+            <!-- Several conferences can be active at once (different reps,
+                 different cities, same day) — this switches which one this
+                 admin/Solutions Success login is administering (rep
+                 assignment, QR slides), without creating a new one. -->
+            <div v-if="canManageEvents && activeEvents.length > 1" class="q-mt-sm">
+              <q-select
+                :model-value="eventStore.activeEvent.id"
+                :options="activeEvents"
+                option-label="name"
+                option-value="id"
+                emit-value
+                map-options
+                dense
+                label="Switch to a different active conference"
+                :loading="switchingEvent"
+                @update:model-value="switchEvent"
+              >
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.name }}</q-item-label>
+                      <q-item-label caption>{{ scope.opt.state }} · activated {{ formatRelativeTime(scope.opt.activatedAt) }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+            </div>
+
+            <div v-if="eventStore.activeEvent.folderCode" class="q-mt-sm">
+              <div class="text-caption">Card-photo folder for today:</div>
+              <div class="text-subtitle2 text-weight-bold">{{ eventStore.activeEvent.folderCode }}</div>
+              <div class="text-caption text-grey">
+                Create/use a subfolder with this exact name under the watcher's inbox folder for today's card photos.
+              </div>
+              <div class="text-caption text-grey q-mt-xs">
+                Already know this code? After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }} to bind your phone to today's event instead of texting SETUP. By texting this code, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.
+              </div>
+            </div>
+
+            <q-separator class="q-my-md" />
+
+            <div v-if="eventStore.activeEvent.folderCode">
+              <div class="text-subtitle2 text-weight-bold">
+                Texting in cards &amp; notes (no laptop needed)
+              </div>
+              <div class="text-caption text-grey q-mb-sm">
+                Every rep does this once per event, then just texts photos as they go.
+              </div>
+              <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
+                <li>
+                  Text
+                  <span class="text-weight-bold">SETUP</span>
+                  to
+                  <span class="text-weight-bold">{{ twilioNumber }}</span>
+                  to activate SMS-based conference lead capture. By texting SETUP, you agree to receive recurring automated text messages from Flippen Group related to conference lead capture.
+                  <span class="text-grey">Msg&amp;data rates may apply. Msg frequency varies. Reply HELP for help, STOP to cancel.</span>
+                  Then reply to the prompts to find and confirm today's event by name. Do this again if you switch phones or events.
+                </li>
+                <li>Text a photo of a business card — one card filling the frame, or several laid out together on the table.</li>
+                <li>
+                  Optional: right after, record and send a voice memo about the conversation. If it's
+                  about someone from earlier (not the card you just sent), just say their name — the
+                  system reads it and sorts the note onto the right person.
+                </li>
+                <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
+              </ol>
+            </div>
+
+            <div v-if="eventStore.activeEvent.isLinkedRep" class="q-mt-md text-center">
+              <div class="text-caption text-grey q-mb-sm">
+                Your own QR code for this event — leads that scan it are credited to you. Drop it on a
+                slide or open it on an iPad; attendees scan it, not the laptop screen.
+              </div>
+              <q-btn
+                color="primary"
+                icon="image"
+                label="Download my QR (PNG)"
+                :loading="generatingMySlide"
+                @click="downloadMySlide"
+              />
+            </div>
+            <div v-else-if="isSales" class="q-mt-md text-center text-caption text-grey">
+              You're not linked to this event yet — ask an admin to link you in Setup's reps &amp; events
+              table before you have a QR code to hand out.
+            </div>
+
+            <div v-if="isSales" class="q-mt-md">
+              <q-separator class="q-mb-md" />
+              <div class="text-caption text-grey q-mb-xs">
+                {{ sessionStore.user?.currentEventName ? `You're linked to: ${sessionStore.user.currentEventName}` : "You're not linked to this event yet." }}
+              </div>
+              <q-btn
+                flat no-caps color="primary"
+                :label="isLinkedToActiveEvent ? 'Unlink myself' : 'Link myself to this event'"
+                :loading="linkingMyself"
+                @click="toggleMyCurrentEvent"
+              />
+            </div>
+          </template>
         </q-card-section>
       </q-card>
 
