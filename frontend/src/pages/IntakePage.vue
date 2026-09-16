@@ -55,7 +55,7 @@
               map-options
               clearable
               borderless
-              label="Where did you sign up? (optional)"
+              label="Where did you hear about us? (optional)"
             />
 
             <q-select
