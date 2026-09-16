@@ -26,6 +26,9 @@
 // npm:twilio@5's CJS/ESM interop doesn't expose validateRequest as a named
 // export under Deno — it's only reachable off the default export (verified
 // via a BOOT_ERROR in function_logs on the first deploy attempt).
+// Same reasoning as _shared/supabase-client.ts: no import map is deployed
+// alongside this function for a bare specifier to resolve against.
+// deno-lint-ignore no-import-prefix
 import twilioPkg from "npm:twilio@5";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { US_STATE_BY_ABBREVIATION, VALID_US_STATES } from "../_shared/usStates.ts";
@@ -163,10 +166,14 @@ function normalizeBody(text: string): string {
 // rather than the exact GSM-7 table: a false negative here just means an
 // eligible note gets pointed at the notes page instead, which is the safe
 // direction to be wrong in — a false positive would resurrect the
-// out-of-order-segment problem this whole check exists to avoid.
+// out-of-order-segment problem this whole check exists to avoid. A code-point
+// walk rather than a /[^\x00-\x7F]/ regex -- deno-lint's no-control-regex
+// rule flags that escape range as looking like an accidental raw control
+// character, and there's no legitimate reason to override it here when a
+// plain comparison says the same thing just as clearly.
 function fitsOneSmsSegment(text: string): boolean {
-  const limit = /[^\x00-\x7F]/.test(text) ? 70 : 160;
-  return text.length <= limit;
+  const isAscii = [...text].every((ch) => ch.codePointAt(0)! <= 0x7f);
+  return text.length <= (isAscii ? 160 : 70);
 }
 
 Deno.serve(async (req) => {
