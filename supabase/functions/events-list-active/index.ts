@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data, error } = await supabase
     .from("events")
-    .select("id, name, slug, state, activated_at, booth_rep_id, session_rep_id")
+    .select("id, name, slug, state, activated_at, event_reps(rep_id)")
     .eq("is_active", true)
     .order("activated_at", { ascending: false });
   if (error) return errorResponse(req, 500, error.message);
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     slug: e.slug,
     state: e.state,
     activatedAt: e.activated_at,
-    boothRepId: e.booth_rep_id,
-    sessionRepId: e.session_rep_id,
+    // deno-lint-ignore no-explicit-any
+    repIds: ((e.event_reps ?? []) as any[]).map((r) => r.rep_id),
   })));
 });

@@ -2,11 +2,17 @@
 // false (Twilio's own POST is never a Supabase-authenticated call — it
 // carries its own X-Twilio-Signature instead, checked below).
 //
-// Flow: no media -> either a folder-code bind attempt, or a step in the
-// Stage 16 "setup a new conference" SMS conversation (see
-// conference_setup_sessions/match_events_by_name in
-// 20260909170000_conference_setup_sms.sql) -> bind this phone number to an
-// event (phone_event_bindings) either way. Media present -> classify each
+// Flow: no media -> a step in the Stage 16 "setup a new conference" SMS
+// conversation (see conference_setup_sessions/match_conferences_by_name in
+// 20260909170000_conference_setup_sms.sql and, for Stage 20's rework,
+// 20260917110000_sms_setup_finds_new_conferences.sql -- picking an
+// already-active conference just binds; picking one Zoho has but nobody has
+// activated yet activates it first, state auto-detected from its name),
+// or a folder-code bind attempt (binds phone_event_bindings), or --
+// Stage 18, once already bound -- a short single-contact note that fits one
+// SMS segment (see fitsOneSmsSegment and 20260916110000_sms_note_intake.sql;
+// anything longer or multi-person is pointed at the web notes page instead).
+// Media present -> classify each
 // attachment photo/audio off its content-type, insert one inbound_messages
 // row per item. Audio downloads+uploads to Storage fully in the background
 // (EdgeRuntime.waitUntil) after the TwiML reply is already sent, since
@@ -22,6 +28,7 @@
 // via a BOOT_ERROR in function_logs on the first deploy attempt).
 import twilioPkg from "npm:twilio@5";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { US_STATE_BY_ABBREVIATION } from "../_shared/usStates.ts";
 
 const { validateRequest } = twilioPkg;
 
@@ -41,10 +48,40 @@ const START_TRIGGER_PHRASES = new Set([
   "set up conference",
 ]);
 
+// Stage 20: a candidate is either a conference someone already activated
+// (kind 'event' -- picking it just binds this phone, same as always) or one
+// Zoho has but nobody has activated yet (kind 'campaign' -- picking it
+// activates it first, using a state auto-detected from the name, then
+// binds). See match_conferences_by_name and conference_date_from_name in
+// 20260917110000_sms_setup_finds_new_conferences.sql.
 interface SetupCandidate {
-  id: string;
+  kind: "event" | "campaign";
+  eventId: string | null;
+  zohoCampaignId: string | null;
   name: string;
-  state: string;
+  state: string | null;
+}
+
+// This org's campaign/event names consistently carry a two-letter postal
+// code for the conference's state, right after the date prefix
+// ("2026 09.28 (TX) Region 19 ESC LEAD Summit") or as a trailing ", XX"
+// (e.g. "...Carlsbad, CA..."). Tried in that order since the parenthetical
+// form is the dominant, clearly-intentional convention; a regional code
+// that isn't a real postal abbreviation ("(TW)" for "Texas West") matches
+// neither and correctly falls through to null -- see
+// US_STATE_BY_ABBREVIATION for why guessing wrong isn't an option here.
+function stateFromConferenceName(name: string): string | null {
+  const paren = /\(([A-Za-z]{2})\)/.exec(name);
+  if (paren) {
+    const state = US_STATE_BY_ABBREVIATION[paren[1].toUpperCase()];
+    if (state) return state;
+  }
+  const suffix = /,\s*([A-Za-z]{2})\b/.exec(name);
+  if (suffix) {
+    const state = US_STATE_BY_ABBREVIATION[suffix[1].toUpperCase()];
+    if (state) return state;
+  }
+  return null;
 }
 
 function twiml(message: string): Response {
@@ -92,6 +129,19 @@ function extFromContentType(ct: string): string | null {
 
 function normalizeBody(text: string): string {
   return text.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+// GSM-7 encodable text fits 160 chars in a single SMS segment; anything
+// outside that charset forces UCS-2 encoding, which caps a single segment at
+// 70 — a curly quote from autocorrect is enough to trigger it (see
+// 20260914140000_pasted_note_intake.sql). Checked against plain 7-bit ASCII
+// rather than the exact GSM-7 table: a false negative here just means an
+// eligible note gets pointed at the notes page instead, which is the safe
+// direction to be wrong in — a false positive would resurrect the
+// out-of-order-segment problem this whole check exists to avoid.
+function fitsOneSmsSegment(text: string): boolean {
+  const limit = /[^\x00-\x7F]/.test(text) ? 70 : 160;
+  return text.length <= limit;
 }
 
 Deno.serve(async (req) => {
@@ -202,9 +252,56 @@ Deno.serve(async (req) => {
         return twiml(`Please reply with a number from 1-${candidates.length}, or text cancel.`);
       }
 
+      // Already active: bind only, same as always. Not yet activated: needs
+      // activating first -- picked.state came from stateFromConferenceName
+      // when the candidate list was built, since Zoho campaigns carry no
+      // structured state field (see events_activate's p_state param).
+      let eventId = picked.eventId;
+      let eventName = picked.name;
+      if (picked.kind === "campaign") {
+        if (!picked.state) {
+          await supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: "campaign name did not carry a recognizable state",
+          });
+          return twiml(`I can't tell what state "${picked.name}" is in from its name, so I can't set it up by text. Ask an admin to activate it from the Setup page on the web, then text its folder code here — or reply with a different number, or text cancel.`);
+        }
+
+        const { data: activated, error: activateError } = await supabase.rpc("events_activate", {
+          p_zoho_campaign_id: picked.zohoCampaignId,
+          p_name: picked.name,
+          p_state: picked.state,
+        });
+        if (activateError) {
+          // Same 'CKH01' user-facing/technical split events-activate/index.ts
+          // uses -- see 20260917100000_event_reps_and_activation_guard.sql.
+          console.error("events_activate failed (SMS setup)", activateError);
+          const friendly = activateError.code === "CKH01"
+            ? activateError.message
+            : "Couldn't activate that conference — try again, or activate it from the Setup page on the web.";
+          await supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: friendly,
+          });
+          return twiml(friendly);
+        }
+        eventId = activated.id;
+        eventName = activated.name;
+      }
+
       await supabase.from("phone_event_bindings").upsert({
         phone_number: from,
-        event_id: picked.id,
+        event_id: eventId,
         updated_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
         expiry_notified_at: null,
@@ -218,20 +315,31 @@ Deno.serve(async (req) => {
         twilio_message_sid: sid,
         from_phone: from,
         to_phone: to,
-        event_id: picked.id,
+        event_id: eventId,
         kind: "conference_setup",
         status: "completed",
         body,
       });
-      return twiml(`${picked.name} activated — you can now send contact cards for this event.`);
+      const activatedNote = picked.kind === "campaign" ? ` (${picked.state}, just activated)` : "";
+      return twiml(`${eventName}${activatedNote} — you can now send contact cards for this event.`);
     }
 
     if (session?.step === "awaiting_name") {
-      const { data: matches, error: matchError } = await supabase.rpc("match_events_by_name", { p_query: body });
-      if (matchError) console.error("match_events_by_name failed", matchError);
-      const candidates: SetupCandidate[] = (matches ?? []).map(
-        (m: SetupCandidate) => ({ id: m.id, name: m.name, state: m.state }),
-      );
+      // Stage 20: searches both already-active events (pick -> bind) and
+      // not-yet-activated Zoho campaigns (pick -> activate, then bind) --
+      // "setup a new conference" couldn't previously find or create
+      // anything that wasn't already an event, no matter how well it
+      // matched. See 20260917110000_sms_setup_finds_new_conferences.sql.
+      const { data: matches, error: matchError } = await supabase.rpc("match_conferences_by_name", { p_query: body });
+      if (matchError) console.error("match_conferences_by_name failed", matchError);
+      // deno-lint-ignore no-explicit-any
+      const candidates: SetupCandidate[] = (matches ?? []).map((m: any) => ({
+        kind: m.kind,
+        eventId: m.event_id,
+        zohoCampaignId: m.zoho_campaign_id,
+        name: m.name,
+        state: m.kind === "event" ? m.state : stateFromConferenceName(m.name),
+      }));
 
       if (candidates.length === 0) {
         await supabase.from("inbound_messages").insert({
@@ -261,8 +369,11 @@ Deno.serve(async (req) => {
         body,
       });
 
-      const list = candidates.map((c, i) => `${i + 1}. ${c.name} (${c.state})`).join("\n");
-      return twiml(`Are any of these the conference you want to activate?\n${list}\nReply with the number, or text cancel.`);
+      const list = candidates.map((c, i) => {
+        if (c.kind === "event") return `${i + 1}. ${c.name} (${c.state}) — already active`;
+        return `${i + 1}. ${c.name}${c.state ? ` (${c.state})` : " (can't tell the state, won't be settable by text)"}`;
+      }).join("\n");
+      return twiml(`Are any of these the conference you want?\n${list}\nReply with the number, or text cancel.`);
     }
 
     if (START_TRIGGER_PHRASES.has(normalized)) {
@@ -293,6 +404,62 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!event) {
+      // Not a folder code either. If this phone is already bound to an
+      // event, this wasn't a mistyped code — Stage 18: a short, one-contact
+      // note fits inside a single SMS segment and is worth accepting
+      // directly, rather than replying with a confusing "doesn't match a
+      // known event code" for text that was never meant to be one. Longer or
+      // multi-person notes still go to the web notes page — see
+      // fitsOneSmsSegment and 20260916110000_sms_note_intake.sql.
+      const { data: binding } = await supabase
+        .from("phone_event_bindings")
+        .select("event_id")
+        .eq("phone_number", from)
+        .maybeSingle();
+
+      if (binding && body.length > 0) {
+        if (!fitsOneSmsSegment(body)) {
+          await supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            event_id: binding.event_id,
+            kind: "text_note",
+            status: "failed",
+            body,
+            error: "text exceeds a single SMS segment",
+          });
+          return twiml("That's too long for a text — keep it to one short contact, or use the notes page in the app for anything longer or for multiple people.");
+        }
+
+        // Logged first, and note_submissions only inserted if that log entry
+        // was new. Every other branch in this function performs an upsert
+        // (phone_event_bindings) or a delete for its real side effect, both
+        // idempotent against a Twilio retry of the same MessageSid; this
+        // branch's real side effect is a plain insert, which isn't. The
+        // unique twilio_message_sid constraint is what makes a retry
+        // detectable at all, so it has to run before the non-idempotent
+        // write, not after — otherwise a retry (Twilio resends on a slow ack
+        // or non-2xx) would create a second note_submissions row, and a
+        // second contact, for the same text.
+        const { error: logError } = await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          event_id: binding.event_id,
+          kind: "text_note",
+          status: "completed",
+          body,
+        });
+        if (logError) {
+          if (logError.code !== "23505") console.error("insert inbound_messages failed", logError);
+          return twiml("Got it — logging that contact now, check Review shortly.");
+        }
+
+        await supabase.from("note_submissions").insert({ event_id: binding.event_id, from_phone: from, body });
+        return twiml("Got it — logging that contact now, check Review shortly.");
+      }
+
       await supabase.from("inbound_messages").insert({
         twilio_message_sid: sid,
         from_phone: from,

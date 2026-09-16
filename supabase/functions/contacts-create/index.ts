@@ -1,20 +1,28 @@
 // POST { firstName, lastName, email?, phone?, title?, state?, schoolDistrictId?,
-//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw?, qrChannel?, eventSlug? }
-// -> { id, createdAt }, 201. Public (kiosk form, no PIN).
+//        schoolDistrictNameRaw?, schoolId?, schoolNameRaw?, channel?, repId?,
+//        eventSlug? } -> { id, createdAt }, 201. Public (kiosk form, no PIN).
 //
 // State/district/school are all attendee-optional. A typed value that didn't
 // match an existing district/school row arrives as *NameRaw plain text
 // instead of an id — it is never turned into a new school_districts/schools
 // row here (that's what created the free-text junk this schema replaced).
 //
-// qrChannel ('booth' | 'session') is the ?channel= query param IntakePage.vue
-// read off the URL the attendee actually scanned — anything else (missing,
-// a bookmarked/typed URL, a stale value) is silently dropped to null rather
-// than rejected, since which QR drove the scan is a nice-to-have tag, not
-// something worth blocking a submission over.
+// channel ('booth' | 'session', optional) is now a plain form field the
+// attendee picks themselves — Stage 19 retired the old per-channel QR/rep
+// slot (events.booth_rep_id/session_rep_id), so which physical QR was
+// scanned no longer implies a channel. Still stored in contacts.qr_channel;
+// only the source of the value changed.
+//
+// repId is the specific rep whose QR the attendee scanned
+// (/connect/<slug>/<repId> — see routes.ts). It is revalidated here against
+// event_reps rather than trusted outright: a stale QR (the rep was
+// unlinked), a bookmarked/typed URL, or a tampered param all just fail the
+// lookup and fall back to no rep credited, the same forgiving treatment the
+// old channel-based lookup got — which rep gets credit is a nice-to-have
+// attribution, not something worth blocking a submission over.
 //
 // eventSlug is the specific event that QR's URL encoded
-// (/connect/<slug>-<channel> — see routes.ts). Multiple conferences can be
+// (/connect/<slug>/<repId> — see routes.ts). Multiple conferences can be
 // active at once (20260915120000_event_slug_and_concurrent_events.sql), so
 // this — not "the" active event — is what decides which event a submission
 // belongs to. Falls back to the most-recently-activated active event only
@@ -22,7 +30,7 @@
 // ambiguous by construction once more than one event is active.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-import { LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
+import { isUuid, LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
 
 // Generous on purpose: conference wifi is usually one NAT, so this has to
@@ -90,9 +98,10 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { id: crypto.randomUUID(), createdAt: new Date().toISOString() }, 201);
   }
 
-  const qrChannel = body.qrChannel === "booth" || body.qrChannel === "session" ? body.qrChannel : null;
+  const qrChannel = body.channel === "booth" || body.channel === "session" ? body.channel : null;
   const eventSlug = optionalString(body.eventSlug, LIMITS.name);
   if (eventSlug === undefined) return errorResponse(req, 400, "eventSlug is invalid.");
+  const repIdParam = isUuid(body.repId) ? body.repId : null;
 
   const supabase = serviceClient();
 
@@ -117,7 +126,7 @@ Deno.serve(async (req) => {
   if (eventSlug) {
     const { data: bySlug, error: eventError } = await supabase
       .from("events")
-      .select("id, booth_rep_id, session_rep_id")
+      .select("id")
       .eq("slug", eventSlug)
       .maybeSingle();
     if (eventError) return errorResponse(req, 500, eventError.message);
@@ -126,7 +135,7 @@ Deno.serve(async (req) => {
   } else {
     const { data: mostRecent, error: eventError } = await supabase
       .from("events")
-      .select("id, booth_rep_id, session_rep_id")
+      .select("id")
       .eq("is_active", true)
       .order("activated_at", { ascending: false })
       .limit(1)
@@ -136,18 +145,23 @@ Deno.serve(async (req) => {
     activeEvent = mostRecent;
   }
 
-  // Whichever rep is currently credited for this channel on the event (set
-  // via events-assign-rep) — null if that channel has no rep assigned, or
-  // the scan carried no channel at all.
-  const repId = qrChannel === "booth"
-    ? activeEvent.booth_rep_id
-    : qrChannel === "session"
-    ? activeEvent.session_rep_id
-    : null;
+  // The rep whose QR was actually scanned, revalidated against event_reps —
+  // a stale/unlinked/tampered repId just means no rep gets credited, not a
+  // rejected submission (see header comment).
+  let repId: string | null = null;
+  if (repIdParam) {
+    const { data: linkedRep, error: linkedRepError } = await supabase
+      .from("event_reps")
+      .select("rep_id")
+      .eq("event_id", activeEvent.id)
+      .eq("rep_id", repIdParam)
+      .maybeSingle();
+    if (linkedRepError) return errorResponse(req, 500, linkedRepError.message);
+    repId = linkedRep?.rep_id ?? null;
+  }
 
-  // A breakout-session QR is only ever scanned by someone sitting in the
-  // talk right now — that's a stronger self-selected engagement signal than
-  // a booth walk-up, so it starts hot instead of unclassified.
+  // Signing up from a breakout session is a stronger self-selected engagement
+  // signal than a booth walk-up, so it starts hot instead of unclassified.
   // contact_intent_is_manual defaults to false, so local-agent's intentLoop
   // still takes over (and can downgrade this) the moment real interaction
   // notes show up — this is a starting value, not a lock.

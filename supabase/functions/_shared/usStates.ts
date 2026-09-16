@@ -56,3 +56,66 @@ export const VALID_US_STATES: ReadonlySet<string> = new Set([
   "Wisconsin",
   "Wyoming",
 ]);
+
+// This org's Zoho campaign/event names consistently carry a two-letter
+// postal code marking the conference's state (e.g. "2026 09.28 (TX) Region
+// 19 ESC LEAD Summit") -- used by twilio-webhook to auto-detect the state
+// when activating a conference over SMS, since Zoho campaigns carry no
+// structured state field at all (see contacts-create's own comment on the
+// same gap). A regional code that isn't a real postal abbreviation (e.g.
+// "(TW)" for "Texas West") deliberately has no entry here and so won't
+// match -- guessing wrong silently corrupts district-resolution fallback
+// and Review's state filter for the whole conference.
+export const US_STATE_BY_ABBREVIATION: Readonly<Record<string, string>> = {
+  AL: "Alabama",
+  AK: "Alaska",
+  AZ: "Arizona",
+  AR: "Arkansas",
+  CA: "California",
+  CO: "Colorado",
+  CT: "Connecticut",
+  DE: "Delaware",
+  DC: "District of Columbia",
+  FL: "Florida",
+  GA: "Georgia",
+  HI: "Hawaii",
+  ID: "Idaho",
+  IL: "Illinois",
+  IN: "Indiana",
+  IA: "Iowa",
+  KS: "Kansas",
+  KY: "Kentucky",
+  LA: "Louisiana",
+  ME: "Maine",
+  MD: "Maryland",
+  MA: "Massachusetts",
+  MI: "Michigan",
+  MN: "Minnesota",
+  MS: "Mississippi",
+  MO: "Missouri",
+  MT: "Montana",
+  NE: "Nebraska",
+  NV: "Nevada",
+  NH: "New Hampshire",
+  NJ: "New Jersey",
+  NM: "New Mexico",
+  NY: "New York",
+  NC: "North Carolina",
+  ND: "North Dakota",
+  OH: "Ohio",
+  OK: "Oklahoma",
+  OR: "Oregon",
+  PA: "Pennsylvania",
+  RI: "Rhode Island",
+  SC: "South Carolina",
+  SD: "South Dakota",
+  TN: "Tennessee",
+  TX: "Texas",
+  UT: "Utah",
+  VT: "Vermont",
+  VA: "Virginia",
+  WA: "Washington",
+  WV: "West Virginia",
+  WI: "Wisconsin",
+  WY: "Wyoming",
+};

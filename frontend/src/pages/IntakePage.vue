@@ -47,6 +47,18 @@
             <q-input v-model="form.title" label="Title" borderless />
 
             <q-select
+              v-model="form.channel"
+              :options="CHANNEL_OPTIONS"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              clearable
+              borderless
+              label="Where did you sign up? (optional)"
+            />
+
+            <q-select
               v-model="form.state"
               :options="stateOptions"
               option-label="name"
@@ -127,16 +139,24 @@ import type { QForm } from 'quasar';
 const eventStore = useEventStore();
 const route = useRoute();
 
-// Which physical QR code got scanned to land here — set on the URL by the
-// two slides SetupPage.vue generates (?channel=booth / ?channel=session).
-// Anything else (no param, a bookmarked/typed URL, a stale value) reads as
-// null rather than being guessed at.
-const qrChannel = route.query.channel === 'booth' || route.query.channel === 'session'
+// Which specific rep's QR got scanned to land here (routes.ts pulls it off
+// /connect/<slug>/<repId>) — revalidated server-side against event_reps, so
+// a bookmarked/typed URL or a stale value (the rep was unlinked) just means
+// no rep gets credited rather than anything breaking here. A pre-Stage-19
+// QR (/connect/<slug>-booth or -session) carries no repId at all.
+const repId = typeof route.query.repId === 'string' ? route.query.repId : undefined;
+
+// A pre-Stage-19 QR also still carries ?channel= directly — kept as the
+// initial value of the form's own channel picker below so an old slide
+// doesn't lose that signal outright, but the attendee's own selection is
+// otherwise what decides it now (Stage 19: booth/session is no longer tied
+// to which QR was scanned).
+const initialChannel = route.query.channel === 'booth' || route.query.channel === 'session'
   ? route.query.channel
   : null;
 
 // Which specific event's QR this was (routes.ts pulls it off
-// /connect/<slug>-<channel>) — multiple conferences can be active at once,
+// /connect/<slug>/<repId>) — multiple conferences can be active at once,
 // so this, not "the" active event, is what both events-active and
 // contacts-create resolve against. Missing for a bare/legacy /intake link.
 const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventSlug : undefined;
@@ -145,6 +165,11 @@ const formRef = ref<QForm | null>(null);
 const submitting = ref(false);
 const submitted = ref(false);
 const stateOptions = ref<UsStateOption[]>(US_STATES);
+
+const CHANNEL_OPTIONS = [
+  { label: 'At the booth', value: 'booth' as const },
+  { label: 'In a breakout session', value: 'session' as const },
+];
 
 const form = reactive({
   firstName: '',
@@ -155,6 +180,11 @@ const form = reactive({
   state: null as UsStateOption | null,
   district: null as TypeaheadOption | null,
   school: null as TypeaheadOption | null,
+  // Optional — Stage 19 retired the old channel-per-QR scheme, so this is
+  // the attendee's own answer rather than something inferred from which QR
+  // they scanned. Left null rather than defaulted, so "didn't answer" stays
+  // distinguishable from a real choice.
+  channel: initialChannel as 'booth' | 'session' | null,
 });
 
 // State gates district, district gates school — changing an upstream field
@@ -234,6 +264,7 @@ function resetForm() {
   form.state = null;
   form.district = null;
   form.school = null;
+  form.channel = initialChannel;
   districtInputText.value = '';
   schoolInputText.value = '';
   formRef.value?.resetValidation();
@@ -261,7 +292,8 @@ async function onSubmit() {
       schoolDistrictNameRaw: form.district && !form.district.id ? form.district.name : null,
       schoolId: form.school?.id ?? null,
       schoolNameRaw: form.school && !form.school.id ? form.school.name : null,
-      qrChannel,
+      channel: form.channel,
+      repId,
       eventSlug,
     });
 
