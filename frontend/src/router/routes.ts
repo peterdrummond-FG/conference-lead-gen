@@ -24,14 +24,26 @@ const routes: RouteRecordRaw[] = [
       { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
-      // The QR codes SetupPage.vue generates — one per event per channel,
-      // e.g. /connect/hignell-booth. "connect" echoes the slide's own
-      // "Connect With Us" headline rather than a cryptic prefix, and the
+      // The QR codes SetupPage.vue generates — one per event per rep (Stage
+      // 19: booth/session is no longer tied to which QR was scanned, so
+      // there's no longer a shared per-channel code; each rep gets their
+      // own, e.g. /connect/hignell/<repId>). "connect" echoes the slide's
+      // own "Connect With Us" headline rather than a cryptic prefix, and the
       // slug is what lets multiple reps run concurrent conferences without
-      // their leads mixing (see 20260915120000_event_slug_and_concurrent_events.sql)
-      // — the QR itself is always scanned, but the slide also spells the URL
-      // out for anyone who can't scan, so it needs to stay short enough to
-      // type on a phone keyboard.
+      // their leads mixing (see 20260915120000_event_slug_and_concurrent_events.sql).
+      {
+        path: 'connect/:slug/:repId',
+        redirect: (to) => ({
+          path: '/intake',
+          query: { eventSlug: String(to.params.slug ?? ''), repId: String(to.params.repId ?? '') },
+        }),
+      },
+      // Pre-Stage-19 QR codes (/connect/<slug>-booth or -session), kept
+      // working so anything already printed still captures leads — just
+      // without a specific rep credited, since that concept no longer
+      // exists for this URL shape. channel is passed through since the
+      // attendee's own channel dropdown didn't exist yet when these were
+      // printed either.
       {
         path: 'connect/:slugChannel',
         redirect: (to) => {

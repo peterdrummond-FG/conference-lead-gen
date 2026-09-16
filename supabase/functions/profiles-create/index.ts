@@ -43,6 +43,15 @@ Deno.serve(async (req) => {
     phoneNumber = normalizeUsPhone(body.phoneNumber);
     if (!phoneNumber) return errorResponse(req, 400, "phoneNumber must be a valid US phone number.");
   }
+  // A sales rep with no phone number can never be credited for a texted-in
+  // card or note (contacts-from-ocr/contacts-from-note match the sender's
+  // number against profiles.phone_number) and can never be linked to an
+  // event's QR in a way that's checkable against who actually texted it in —
+  // catch that at creation time instead of a rep silently going uncredited
+  // for weeks.
+  if (body.role === "sales" && !phoneNumber) {
+    return errorResponse(req, 400, "phoneNumber is required for a sales account.");
+  }
 
   const supabase = serviceClient();
 

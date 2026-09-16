@@ -48,21 +48,37 @@ Deno.serve(async (req) => {
   // the contact's own fields.
   const { data: submission, error: submissionError } = await supabase
     .from("note_submissions")
-    .select("id, event_id, submitted_by, event:events(state)")
+    .select("id, event_id, submitted_by, from_phone, event:events(state)")
     .eq("id", body.noteSubmissionId)
     .maybeSingle();
   if (submissionError) return errorResponse(req, 500, submissionError.message);
   if (!submission) return errorResponse(req, 404, `No note submission with id '${body.noteSubmissionId}'.`);
 
-  // Only a sales rep's own paste credits them on the contact — Review's rep
-  // filter is built from sales profiles, so crediting an admin here would
-  // produce a rep_id that can never be filtered for.
-  const { data: submitter } = await supabase
-    .from("profiles")
-    .select("id, role")
-    .eq("id", submission.submitted_by)
-    .maybeSingle();
-  const repId = submitter?.role === "sales" ? submitter.id : null;
+  // Exactly one of submitted_by/from_phone identifies the sender (enforced
+  // by note_submissions_source_check). A web paste credits the pasting
+  // profile directly; an SMS note has no profile session at all, so it's
+  // resolved the same way contacts-from-ocr credits a texted-in card photo —
+  // by matching the sending number against a sales profile's phone_number.
+  // Only a sales rep's own submission credits them on the contact — Review's
+  // rep filter is built from sales profiles, so crediting an admin here
+  // would produce a rep_id that can never be filtered for.
+  let repId: string | null = null;
+  if (submission.submitted_by) {
+    const { data: submitter } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .eq("id", submission.submitted_by)
+      .maybeSingle();
+    repId = submitter?.role === "sales" ? submitter.id : null;
+  } else if (submission.from_phone) {
+    const { data: rep } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("phone_number", submission.from_phone)
+      .eq("role", "sales")
+      .maybeSingle();
+    repId = rep?.id ?? null;
+  }
 
   // deno-lint-ignore no-explicit-any
   const eventState = (submission.event as any)?.state ?? null;

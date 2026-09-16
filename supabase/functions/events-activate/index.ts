@@ -38,7 +38,18 @@ Deno.serve(async (req) => {
     p_name: body.name,
     p_state: state,
   });
-  if (error) return errorResponse(req, 500, error.message);
+  if (error) {
+    // events_activate() marks the exceptions it raises on purpose (already
+    // active, ran out of code-generation attempts) with a custom SQLSTATE
+    // ('CKH01') -- those messages are written for a non-technical admin to
+    // read as-is. Anything else is an unexpected DB error, logged here in
+    // full but never forwarded verbatim (20260917100000_event_reps_and_activation_guard.sql).
+    console.error("events_activate failed", error);
+    const friendly = error.code === "CKH01"
+      ? error.message
+      : "Could not activate the event. Please try again or contact support.";
+    return errorResponse(req, error.code === "CKH01" ? 409 : 500, friendly);
+  }
 
   // Concurrent conferences mean activating no longer implies "the" active
   // event (see 20260915120000_event_slug_and_concurrent_events.sql) -- the

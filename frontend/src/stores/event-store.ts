@@ -9,8 +9,9 @@ export interface ActiveEvent {
   slug: string;
   activatedAt: string;
   folderCode: string | null;
-  boothRepId: string | null;
-  sessionRepId: string | null;
+  // Both only present for an authenticated caller (events-active) — absent
+  // (undefined) for the public Intake fetch.
+  isLinkedRep?: boolean;
 }
 
 export const useEventStore = defineStore('event', {

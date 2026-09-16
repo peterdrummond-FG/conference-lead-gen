@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: target, error: targetError } = await supabase
     .from("profiles")
-    .select("id, role")
+    .select("id, role, phone_number")
     .eq("id", body.id)
     .maybeSingle();
   if (targetError) return errorResponse(req, 500, targetError.message);
@@ -50,14 +50,26 @@ Deno.serve(async (req) => {
   const updates: Record<string, unknown> = {};
   if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim();
   if (typeof body.role === "string") updates.role = body.role;
+  let effectivePhone = target.phone_number;
   if (body.phoneNumber !== undefined) {
     if (body.phoneNumber === null) {
       updates.phone_number = null;
+      effectivePhone = null;
     } else {
       const phoneNumber = normalizeUsPhone(body.phoneNumber);
       if (!phoneNumber) return errorResponse(req, 400, "phoneNumber must be a valid US phone number.");
       updates.phone_number = phoneNumber;
+      effectivePhone = phoneNumber;
     }
+  }
+
+  // Same requirement as profiles-create, checked against the role/phone this
+  // update would leave in place — otherwise an admin could bypass it by
+  // clearing an existing sales rep's phone, or promoting someone to sales
+  // without ever setting one.
+  const effectiveRole = typeof body.role === "string" ? body.role : target.role;
+  if (effectiveRole === "sales" && !effectivePhone) {
+    return errorResponse(req, 400, "A sales account requires a phone number.");
   }
 
   const { data: updated, error } = await supabase

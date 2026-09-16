@@ -126,18 +126,14 @@ async function renderQrCanvas(url: string): Promise<HTMLCanvasElement> {
   return qrCanvas;
 }
 
-export type ConnectSlideChannel = 'booth' | 'session';
-
-const CHANNEL_EYEBROW: Record<ConnectSlideChannel, string> = {
-  booth: 'AT OUR BOOTH',
-  session: "IN TODAY'S SESSION",
-};
-
 export interface ConnectSlideDetails {
   eventName: string;
   state: string;
   intakeUrl: string;
-  channel: ConnectSlideChannel;
+  // Stage 19: one QR per rep rather than one per booth/session channel — the
+  // eyebrow now identifies whose code this is, the only visual difference
+  // between two reps' otherwise-identical slides for the same event.
+  repName: string;
 }
 
 // Draws the CKH-branded "scan to connect" slide onto an offscreen canvas.
@@ -172,15 +168,14 @@ export async function renderConnectSlide(
     logoHeight,
   );
 
-  // Eyebrow tag identifying which of the two slides this is — the only
-  // visual difference between the booth and breakout-session versions
-  // besides the QR itself, so a rep glancing at two open files (or two
-  // printed pages) can tell them apart at a glance.
+  // Eyebrow tag naming whose QR this is — a rep glancing at two open files
+  // (or two printed pages) for the same event can tell them apart at a
+  // glance.
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = CKH_GOLD;
   ctx.font = `700 30px ${FONT_STACK}`;
-  ctx.fillText(CHANNEL_EYEBROW[details.channel], COL_X, 460);
+  ctx.fillText(details.repName.toUpperCase(), COL_X, 460);
 
   // Headline + gold accent rule, standing in for the print flyer's nested
   // gold border. Baseline sits 120px below the eyebrow's — at this 96px
@@ -257,7 +252,7 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}-${details.channel}.png`;
+  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}-${details.repName.toLowerCase().replace(/\s+/g, '-')}.png`;
   link.click();
   URL.revokeObjectURL(url);
 }
