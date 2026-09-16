@@ -156,10 +156,16 @@ const initialChannel = route.query.channel === 'booth' || route.query.channel ==
   : null;
 
 // Which specific event's QR this was (routes.ts pulls it off
-// /connect/<slug>/<repId>) — multiple conferences can be active at once,
-// so this, not "the" active event, is what both events-active and
-// contacts-create resolve against. Missing for a bare/legacy /intake link.
+// /connect/<slug>/<repId>, pre-Stage-20) — multiple conferences can be
+// active at once, so this, not "the" active event, is what both
+// events-active and contacts-create resolve against. Missing for a
+// bare/legacy /intake link, or for a Stage 20 rep QR (repSlug below).
 const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventSlug : undefined;
+
+// A rep's own reusable QR (routes.ts pulls it off /connect/<repSlug>) — the
+// event is whatever that rep is currently linked to, resolved server-side
+// (events-active/contacts-create), never anything this page decides itself.
+const repSlug = typeof route.query.repSlug === 'string' ? route.query.repSlug : undefined;
 
 const formRef = ref<QForm | null>(null);
 const submitting = ref(false);
@@ -295,6 +301,7 @@ async function onSubmit() {
       channel: form.channel,
       repId,
       eventSlug,
+      repSlug,
     });
 
     submitted.value = true;
@@ -308,7 +315,7 @@ async function onSubmit() {
 }
 
 onMounted(async () => {
-  await eventStore.fetchActive(eventSlug);
+  await eventStore.fetchActive(eventSlug, repSlug);
 });
 </script>
 

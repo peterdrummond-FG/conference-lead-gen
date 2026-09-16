@@ -7,6 +7,7 @@ import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { normalizeUsPhone } from "../_shared/phone.ts";
+import { withUniqueRepSlug } from "../_shared/repSlug.ts";
 
 const CREATABLE_ROLES_BY_CALLER: Record<string, string[]> = {
   admin: ["solutionsSuccess", "sales"],
@@ -62,21 +63,27 @@ Deno.serve(async (req) => {
   });
   if (createError || !created.user) return errorResponse(req, 500, createError?.message ?? "Could not create the account.");
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .insert({
-      id: created.user.id,
-      name: body.name.trim(),
-      role: body.role,
-      phone_number: phoneNumber,
-    })
-    .select()
-    .single();
-  if (profileError) {
+  // Only a sales rep hands out a QR code, so only a sales rep gets a
+  // rep_slug -- generated here rather than left to a client, and retried on
+  // collision since profiles.name (unlike rep_slug) was never unique.
+  const name = body.name.trim();
+  const { data: profile, error: profileError } = body.role === "sales"
+    ? await withUniqueRepSlug(name, (candidate) =>
+      supabase
+        .from("profiles")
+        .insert({ id: created.user.id, name, role: body.role, phone_number: phoneNumber, rep_slug: candidate })
+        .select()
+        .single())
+    : await supabase
+      .from("profiles")
+      .insert({ id: created.user.id, name, role: body.role, phone_number: phoneNumber })
+      .select()
+      .single();
+  if (profileError || !profile) {
     // Don't leave a login with no matching profile behind -- requireUser
     // would 401 it forever with no way to fix it short of direct SQL.
     await supabase.auth.admin.deleteUser(created.user.id);
-    return errorResponse(req, 500, profileError.message);
+    return errorResponse(req, 500, profileError?.message ?? "Could not create the profile.");
   }
 
   return jsonResponse(req, {
@@ -85,6 +92,7 @@ Deno.serve(async (req) => {
     role: profile.role,
     phoneNumber: profile.phone_number,
     currentEventId: profile.current_event_id,
+    repSlug: profile.rep_slug,
     email: created.user.email,
   }, 201);
 });

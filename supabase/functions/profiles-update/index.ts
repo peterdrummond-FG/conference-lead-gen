@@ -10,6 +10,7 @@ import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { normalizeUsPhone } from "../_shared/phone.ts";
+import { withUniqueRepSlug } from "../_shared/repSlug.ts";
 
 const MANAGEABLE_ROLES_BY_CALLER: Record<string, string[]> = {
   admin: ["solutionsSuccess", "sales"],
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: target, error: targetError } = await supabase
     .from("profiles")
-    .select("id, role, phone_number")
+    .select("id, name, role, phone_number, rep_slug")
     .eq("id", body.id)
     .maybeSingle();
   if (targetError) return errorResponse(req, 500, targetError.message);
@@ -72,13 +73,28 @@ Deno.serve(async (req) => {
     return errorResponse(req, 400, "A sales account requires a phone number.");
   }
 
-  const { data: updated, error } = await supabase
-    .from("profiles")
-    .update(updates)
-    .eq("id", body.id)
-    .select()
-    .single();
-  if (error) return errorResponse(req, 500, error.message);
+  // A promotion into 'sales' needs a rep_slug just as much as a fresh
+  // profiles-create does -- without this, a solutionsSuccess account
+  // promoted straight to sales would have no QR link ever, since nothing
+  // else back-fills one. Existing sales reps already have one (or the
+  // 20260916212541 migration's backfill gave them one), so this only ever
+  // fires on that transition.
+  const effectiveName = typeof updates.name === "string" ? updates.name : target.name;
+  const { data: updated, error } = effectiveRole === "sales" && !target.rep_slug
+    ? await withUniqueRepSlug(effectiveName, (candidate) =>
+      supabase
+        .from("profiles")
+        .update({ ...updates, rep_slug: candidate })
+        .eq("id", body.id)
+        .select()
+        .single())
+    : await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", body.id)
+      .select()
+      .single();
+  if (error || !updated) return errorResponse(req, 500, error?.message ?? "Could not update the profile.");
 
   return jsonResponse(req, {
     id: updated.id,
@@ -86,5 +102,6 @@ Deno.serve(async (req) => {
     role: updated.role,
     phoneNumber: updated.phone_number,
     currentEventId: updated.current_event_id,
+    repSlug: updated.rep_slug,
   });
 });
