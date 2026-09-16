@@ -208,9 +208,10 @@
         <q-card-section>
           <div class="text-h6">Reps &amp; events</div>
           <div class="text-caption text-grey">
-            Check a box to link a rep to a conference for the pre-Stage-20 per-event QR codes still
-            in the field. A rep's own reusable QR (Manage Users, below) doesn't depend on this — it
-            follows whichever event their own "link myself to this event" toggle points at instead.
+            Who's actually linked to each conference right now (profiles.current_event_id) — the
+            same link a rep sets themselves with "Link myself to this event" above, or you set
+            per-rep in Manage Users below. A rep can only be linked to one conference at a time, so
+            checking a different one here unchecks whichever they were on.
           </div>
         </q-card-section>
         <q-card-section v-if="!activeEvents.length" class="text-caption text-grey">
@@ -244,13 +245,13 @@
               <tr v-for="event in activeEvents" :key="event.id">
                 <td class="text-left" style="white-space: normal; word-break: break-word">
                   {{ event.name }}
-                  <div v-if="!event.repIds.length" class="text-caption text-orange-9">
+                  <div v-if="!salesProfiles.some((r) => r.currentEventId === event.id)" class="text-caption text-orange-9">
                     <q-icon name="warning" size="14px" /> No reps linked yet
                   </div>
                 </td>
                 <td v-for="rep in salesProfiles" :key="rep.id" class="text-center">
                   <q-checkbox
-                    :model-value="event.repIds.includes(rep.id)"
+                    :model-value="rep.currentEventId === event.id"
                     :disable="linkingCell === `${event.id}:${rep.id}`"
                     @update:model-value="(v: boolean) => toggleEventRep(event, rep, v)"
                   />
@@ -387,7 +388,6 @@ interface ActiveEventOption {
   slug: string;
   state: string;
   activatedAt: string;
-  repIds: string[];
 }
 
 // The number Twilio's SMS/MMS webhook is configured against — not stored
@@ -623,21 +623,20 @@ async function deleteProfile(p: Profile) {
   Notify.create({ type: 'positive', message: `${p.name}'s account was deleted.` });
 }
 
-// Optimistic against the local activeEvents list (so the checkbox and the
-// "no reps linked" flag update instantly) but reconciled from the server if
-// this happens to be the event the viewer is also personally showing at the
-// top of the page (their own "Download my QR" visibility depends on it).
+// Writes straight to the rep's current_event_id via the same endpoint
+// Manage Users' "Link to current event"/"Unlink" button uses -- this matrix
+// used to be a separate event_reps join table (many events per rep at
+// once), but current_event_id is exclusive, so checking a different event
+// for the same rep silently unchecks whichever one they were on. Reloads
+// the whole profiles list rather than patching one cell optimistically,
+// since that's the only way the now-stale checkbox on the rep's *previous*
+// row also updates.
 async function toggleEventRep(event: ActiveEventOption, rep: Profile, linked: boolean) {
   const key = `${event.id}:${rep.id}`;
   linkingCell.value = key;
   try {
-    await api.post('/events-assign-rep', { eventId: event.id, repId: rep.id, linked });
-    event.repIds = linked
-      ? [...event.repIds, rep.id]
-      : event.repIds.filter((id) => id !== rep.id);
-    if (event.id === eventStore.activeEvent?.id) {
-      await eventStore.fetchActive();
-    }
+    await api.post('/profiles-assign-current-event', { repId: rep.id, eventId: linked ? event.id : null });
+    await loadProfiles();
   } finally {
     linkingCell.value = null;
   }
