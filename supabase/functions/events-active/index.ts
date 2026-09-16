@@ -13,7 +13,7 @@
 // (/connect/<slug>/<repId>); SetupPage relies on the logged-in user's own
 // current_event_id.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { requireUser } from "../_shared/auth.ts";
+import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { optionalString, LIMITS } from "../_shared/validate.ts";
 
@@ -69,24 +69,26 @@ Deno.serve(async (req) => {
     isLinkedRep = !!link;
   }
 
-  // Audit S11. folder_code is the SMS bind token: anyone holding it can text
-  // the Twilio number, bind a phone to this event, and push photos and voice
-  // memos into the intake pipeline. Intake itself never needs it -- it is for
-  // the Setup page, which is staff-gated -- so it is returned only to a
-  // logged-in caller. slug is not sensitive -- it's the whole point of the QR
-  // code being public -- so it's returned either way; SetupPage needs it to
-  // build the /connect/<slug>/<repId> URL.
+  // Audit S11 (and its regression, found 2026-09-16): folder_code is the SMS
+  // bind token -- anyone holding it can text the Twilio number, bind a phone
+  // to this event, and push photos and voice memos into the intake pipeline.
+  // "Returned only to a logged-in caller" was not the right boundary: with
+  // multiple conferences active at once, ANY authenticated user (a sales rep
+  // included) could pass a DIFFERENT event's public slug here and get that
+  // event's folder_code -- e.g. a rep still logged into the SPA on a booth
+  // device who opens another conference's /connect/<slug>/<repId> link. The
+  // real boundary is staff, or a rep actually linked to *this* event -- both
+  // already computed above. slug is not sensitive -- it's the whole point of
+  // the QR code being public -- so it's returned either way; SetupPage needs
+  // it to build the /connect/<slug>/<repId> URL.
+  const canSeeFolderCode = !!user && (hasRole(user, ["admin", "solutionsSuccess"]) || isLinkedRep);
   return jsonResponse(req, {
     id: data.id,
     name: data.name,
     state: data.state,
     slug: data.slug,
     activatedAt: data.activated_at,
-    ...(user
-      ? {
-        folderCode: data.folder_code,
-        isLinkedRep,
-      }
-      : {}),
+    ...(user ? { isLinkedRep } : {}),
+    ...(canSeeFolderCode ? { folderCode: data.folder_code } : {}),
   });
 });

@@ -1,6 +1,7 @@
 // Shared helpers for every contacts-* Edge Function — direct ports of
 // ContactEndpoints.cs's ToListItem, DuplicateDetection.cs, and
 // LocalDistrictResolution.cs.
+import { escapeLike } from "./validate.ts";
 
 // No embed for local_duplicate_of_contact_id: PostgREST can't disambiguate
 // a self-referencing FK's direction from a column-name hint alone — it
@@ -113,6 +114,17 @@ export interface DistrictResolution {
 // inserted as a new row — that insert-on-miss behavior (including the old
 // "(none provided on card)" placeholder) is what created the free-text junk
 // this schema replaced.
+//
+// escapeLike is required here, not cosmetic (found 2026-09-16, same class as
+// the ILIKE-vs-equality bug audit rule #11 already fixed in duplicate
+// detection and districts-list/schools-list). `name` is OCR'd card text or
+// note-extraction output -- untrusted -- and this ILIKE is meant as
+// case-insensitive EQUALITY (the "exactly one match" check below only makes
+// sense for that), not a substring search. Unescaped, a `%` or `_` in the
+// input turns it into a wildcard: e.g. an OCR'd name with a stray underscore
+// could silently resolve to an unrelated district (and its state), wrongly
+// attributing a lead's account in the Zoho export with no raw-text fallback
+// to catch it.
 export async function resolveDistrict(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -121,13 +133,14 @@ export async function resolveDistrict(
 ): Promise<DistrictResolution> {
   const name = districtNameRaw?.trim();
   if (!name) return { id: null, state: null, raw: null };
+  const pattern = escapeLike(name);
 
   if (conferenceState) {
     const { data: scoped } = await supabase
       .from("school_districts")
       .select("id, state")
       .eq("state", conferenceState)
-      .ilike("name", name)
+      .ilike("name", pattern)
       .maybeSingle();
     if (scoped) return { id: scoped.id, state: scoped.state, raw: null };
   }
@@ -135,7 +148,7 @@ export async function resolveDistrict(
   const { data: matches } = await supabase
     .from("school_districts")
     .select("id, state")
-    .ilike("name", name);
+    .ilike("name", pattern);
   if (matches?.length === 1) return { id: matches[0].id, state: matches[0].state, raw: null };
 
   return { id: null, state: null, raw: name };
@@ -172,6 +185,10 @@ export interface SchoolResolution {
   raw: string | null;
 }
 
+// Same escapeLike requirement as resolveDistrict above, and for the same
+// reason: `name` is untrusted OCR/note text, and unescaped `%`/`_` turns this
+// intended-as-equality lookup into a wildcard match against an unrelated
+// school.
 export async function resolveSchool(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -184,7 +201,7 @@ export async function resolveSchool(
     .from("schools")
     .select("id")
     .eq("district_id", districtId)
-    .ilike("name", name)
+    .ilike("name", escapeLike(name))
     .maybeSingle();
   if (existing) return { id: existing.id, raw: null };
   return { id: null, raw: name };
