@@ -3,6 +3,10 @@
 // setup needed for these two. The service-role key bypasses RLS entirely,
 // which is intentional: every table has RLS enabled with zero policies, and
 // all reads/writes are meant to go exclusively through these functions.
+// Every function is deployed as a standalone file bundle (see
+// scripts/deploy-functions.mjs), with no deno.json/import map ever uploaded
+// alongside it for a bare specifier to resolve against.
+// deno-lint-ignore no-import-prefix
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 export function serviceClient() {
