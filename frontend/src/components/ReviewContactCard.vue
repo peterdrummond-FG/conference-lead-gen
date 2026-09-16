@@ -1,15 +1,14 @@
 <template>
   <!-- Folded up by default so a reviewer can see many contacts at once.
-       Expanding used to resize this card in place inside ReviewPage's CSS
-       grid (via grid-column span) — but a taller item in a shared grid row
-       stretches that whole row's track height, so same-row neighbors ended
-       up floating in a lot of dead space and everything after was pushed
-       far down the page. ReviewPage now renders whichever contact is
-       expanded in its own slot outside the grid (see expandedContact
-       there), so this component no longer needs to size itself — it's
-       always a plain block, and the `expanded` model is just an open/closed
-       flag driven by the parent. -->
-  <q-card bordered class="q-mb-md">
+       ReviewPage positions every card (collapsed or expanded) with
+       useMasonryGrid.ts, which measures each card's real offsetHeight —
+       offsetHeight excludes margin, so this can't carry its own
+       q-mb-md-style bottom margin without silently doubling up on top of
+       the masonry gap. Spacing between cards comes entirely from that
+       composable's `gap` option. The `expanded` model is just an
+       open/closed flag driven by the parent (ReviewPage owns which single
+       contact, if any, is expanded). -->
+  <q-card bordered>
     <q-card-section v-if="!isExpanded" class="cursor-pointer" @click="isExpanded = true">
       <div class="row items-start no-wrap q-gutter-sm">
         <q-checkbox v-model="selected" dense class="q-mt-xs" @click.stop />
