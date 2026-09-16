@@ -3,6 +3,7 @@
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { escapeLike } from "../_shared/validate.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -21,7 +22,10 @@ Deno.serve(async (req) => {
     .select("*")
     .order("name", { ascending: false })
     .limit(50);
-  if (search) query = query.ilike("name", `%${search}%`);
+  // escapeLike: same ILIKE-metacharacter miss as districts-list/schools-list
+  // used to have (audit S11) -- an unescaped `%`/`_` in a staff-typed search
+  // could turn a scoped substring search into a wider scan than intended.
+  if (search) query = query.ilike("name", `%${escapeLike(search)}%`);
 
   const { data, error } = await query;
   if (error) return errorResponse(req, 500, error.message);
