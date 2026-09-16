@@ -28,7 +28,7 @@
 // via a BOOT_ERROR in function_logs on the first deploy attempt).
 import twilioPkg from "npm:twilio@5";
 import { serviceClient } from "../_shared/supabase-client.ts";
-import { US_STATE_BY_ABBREVIATION } from "../_shared/usStates.ts";
+import { US_STATE_BY_ABBREVIATION, VALID_US_STATES } from "../_shared/usStates.ts";
 
 const { validateRequest } = twilioPkg;
 
@@ -51,9 +51,13 @@ const START_TRIGGER_PHRASES = new Set([
 // Stage 20: a candidate is either a conference someone already activated
 // (kind 'event' -- picking it just binds this phone, same as always) or one
 // Zoho has but nobody has activated yet (kind 'campaign' -- picking it
-// activates it first, using a state auto-detected from the name, then
-// binds). See match_conferences_by_name and conference_date_from_name in
-// 20260917110000_sms_setup_finds_new_conferences.sql.
+// activates it first, using a state auto-detected from the name if
+// possible, then binds). See match_conferences_by_name and
+// conference_date_from_name in 20260917110000_sms_setup_finds_new_conferences.sql.
+// Stage 20.1: when a campaign's state can't be auto-detected, the session
+// moves to a third step ('awaiting_state', storing this same candidate as
+// the session's single-element candidates array) rather than dead-ending --
+// see 20260917120000_conference_setup_awaiting_state_step.sql.
 interface SetupCandidate {
   kind: "event" | "campaign";
   eventId: string | null;
@@ -82,6 +86,27 @@ function stateFromConferenceName(name: string): string | null {
     if (state) return state;
   }
   return null;
+}
+
+// Case-insensitive match against the full state name a rep texts in reply
+// to "what state is this in" (Stage 20.1) -- VALID_US_STATES is exact-case,
+// but a rep's keyboard/autocorrect isn't going to reliably produce "Texas"
+// over "texas" or "TEXAS".
+function matchValidState(text: string): string | null {
+  const normalized = text.trim().toLowerCase();
+  for (const state of VALID_US_STATES) {
+    if (state.toLowerCase() === normalized) return state;
+  }
+  return null;
+}
+
+// Shared with both the initial pick (awaiting_selection) and the
+// state-collection follow-up (awaiting_state) -- events_activate can fail
+// for the same reasons from either path.
+function activationFailureReply(name: string, error: { code?: string; message: string }): string {
+  return error.code === "CKH01"
+    ? error.message
+    : `Couldn't activate ${name} right now — try again in a minute, or ask your Solutions Success contact to activate it from the Setup page.`;
 }
 
 function twiml(message: string): Response {
@@ -200,19 +225,6 @@ Deno.serve(async (req) => {
     }
     const session = isStale ? null : rawSession;
 
-    if (session && normalized === "cancel") {
-      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
-      return twiml("Setup cancelled.");
-    }
-
     // A repeated trigger phrase mid-conversation (e.g. a rep re-sending it
     // after not seeing a reply) restarts the flow rather than being read as
     // the conference name/selection the current step was expecting.
@@ -231,7 +243,7 @@ Deno.serve(async (req) => {
         status: "completed",
         body,
       });
-      return twiml("Starting over — what's the name of the conference?");
+      return twiml("Starting over — what's the name of the conference? Type as much as you remember.");
     }
 
     if (session?.step === "awaiting_selection") {
@@ -249,29 +261,37 @@ Deno.serve(async (req) => {
           body,
           error: "reply did not match a candidate number",
         });
-        return twiml(`Please reply with a number from 1-${candidates.length}, or text cancel.`);
+        return twiml(`That's not one of the options — just reply with the number (ie. 2) from the list above. If it's none of these reply "SETUP" to start over`);
       }
 
-      // Already active: bind only, same as always. Not yet activated: needs
-      // activating first -- picked.state came from stateFromConferenceName
-      // when the candidate list was built, since Zoho campaigns carry no
-      // structured state field (see events_activate's p_state param).
+      // Already active: bind only, same as always. Not yet activated and we
+      // could parse a state from its name: activate then bind. Not yet
+      // activated and we couldn't: ask for the state instead of failing --
+      // see the awaiting_state branch below.
+      if (picked.kind === "campaign" && !picked.state) {
+        await supabase.from("conference_setup_sessions").upsert({
+          phone_number: from,
+          step: "awaiting_state",
+          candidates: [picked],
+          updated_at: new Date().toISOString(),
+        });
+        await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "completed",
+          body,
+        });
+        return twiml(`I can't tell what state "${picked.name}" is in, text the full state name the conference is in here so I can set it up.`);
+      }
+
       let eventId = picked.eventId;
       let eventName = picked.name;
       if (picked.kind === "campaign") {
-        if (!picked.state) {
-          await supabase.from("inbound_messages").insert({
-            twilio_message_sid: sid,
-            from_phone: from,
-            to_phone: to,
-            kind: "conference_setup",
-            status: "failed",
-            body,
-            error: "campaign name did not carry a recognizable state",
-          });
-          return twiml(`I can't tell what state "${picked.name}" is in from its name, so I can't set it up by text. Ask an admin to activate it from the Setup page on the web, then text its folder code here — or reply with a different number, or text cancel.`);
-        }
-
+        // picked.state came from stateFromConferenceName when the candidate
+        // list was built, since Zoho campaigns carry no structured state
+        // field (see events_activate's p_state param).
         const { data: activated, error: activateError } = await supabase.rpc("events_activate", {
           p_zoho_campaign_id: picked.zohoCampaignId,
           p_name: picked.name,
@@ -281,9 +301,7 @@ Deno.serve(async (req) => {
           // Same 'CKH01' user-facing/technical split events-activate/index.ts
           // uses -- see 20260917100000_event_reps_and_activation_guard.sql.
           console.error("events_activate failed (SMS setup)", activateError);
-          const friendly = activateError.code === "CKH01"
-            ? activateError.message
-            : "Couldn't activate that conference — try again, or activate it from the Setup page on the web.";
+          const friendly = activationFailureReply(picked.name, activateError);
           await supabase.from("inbound_messages").insert({
             twilio_message_sid: sid,
             from_phone: from,
@@ -320,8 +338,68 @@ Deno.serve(async (req) => {
         status: "completed",
         body,
       });
-      const activatedNote = picked.kind === "campaign" ? ` (${picked.state}, just activated)` : "";
-      return twiml(`${eventName}${activatedNote} — you can now send contact cards for this event.`);
+      const reply = picked.kind === "campaign"
+        ? `${eventName} (${picked.state}) is activated and you're linked to it. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`
+        : `You're linked to ${eventName}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready.`;
+      return twiml(reply);
+    }
+
+    if (session?.step === "awaiting_state") {
+      const candidate = ((session.candidates ?? []) as SetupCandidate[])[0];
+      const state = matchValidState(body);
+
+      if (!state) {
+        await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "failed",
+          body,
+          error: "reply did not match a US state name",
+        });
+        return twiml("I didn't recognize that as a US state — reply with the full name (like Texas or Ohio).");
+      }
+
+      const { data: activated, error: activateError } = await supabase.rpc("events_activate", {
+        p_zoho_campaign_id: candidate.zohoCampaignId,
+        p_name: candidate.name,
+        p_state: state,
+      });
+      if (activateError) {
+        console.error("events_activate failed (SMS setup, state supplied)", activateError);
+        const friendly = activationFailureReply(candidate.name, activateError);
+        await supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "failed",
+          body,
+          error: friendly,
+        });
+        return twiml(friendly);
+      }
+
+      await supabase.from("phone_event_bindings").upsert({
+        phone_number: from,
+        event_id: activated.id,
+        updated_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        expiry_notified_at: null,
+        contacts_confirmed_through: new Date().toISOString(),
+      });
+      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
+      await supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        event_id: activated.id,
+        kind: "conference_setup",
+        status: "completed",
+        body,
+      });
+      return twiml(`${activated.name} (${state}) is activated and you're linked to it. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`);
     }
 
     if (session?.step === "awaiting_name") {
@@ -351,7 +429,7 @@ Deno.serve(async (req) => {
           body,
           error: "no fuzzy match found",
         });
-        return twiml("I couldn't find a close match. Try the name again, or text cancel.");
+        return twiml(`I couldn't find a close match for "${body}". Try typing more of the official name — the state or city helps too.`);
       }
 
       await supabase.from("conference_setup_sessions").upsert({
@@ -369,11 +447,15 @@ Deno.serve(async (req) => {
         body,
       });
 
+      // A not-yet-active campaign always reads "I'll set it up when you pick
+      // it" regardless of whether a state could be parsed from its name --
+      // if not, picking it now asks for the state instead of failing (see
+      // the awaiting_state step), so it's never a dead end either way.
       const list = candidates.map((c, i) => {
-        if (c.kind === "event") return `${i + 1}. ${c.name} (${c.state}) — already active`;
-        return `${i + 1}. ${c.name}${c.state ? ` (${c.state})` : " (can't tell the state, won't be settable by text)"}`;
+        if (c.kind === "event") return `${i + 1}. ${c.name} (${c.state}) — already active, I'll just link your phone`;
+        return `${i + 1}. ${c.name}${c.state ? ` (${c.state})` : ""} — not active yet, I'll set it up when you pick it`;
       }).join("\n");
-      return twiml(`Are any of these the conference you want?\n${list}\nReply with the number, or text cancel.`);
+      return twiml(`Here's what I found — reply with the number:\n${list}\n(If none of these are right, try texting the name again with more detail.)`);
     }
 
     if (START_TRIGGER_PHRASES.has(normalized)) {
@@ -391,7 +473,7 @@ Deno.serve(async (req) => {
         status: "completed",
         body,
       });
-      return twiml("What's the name of the conference?");
+      return twiml("What's the name of the conference? (as much as you remember)");
     }
 
     // Fallback: exact folder-code bind attempt (unchanged from before Stage 16).
@@ -399,7 +481,7 @@ Deno.serve(async (req) => {
     // phone keyboard routinely auto-capitalizes the first letter of a text.
     const { data: event } = await supabase
       .from("events")
-      .select("id")
+      .select("id, name")
       .eq("folder_code", body.toLowerCase())
       .maybeSingle();
 
@@ -429,7 +511,7 @@ Deno.serve(async (req) => {
             body,
             error: "text exceeds a single SMS segment",
           });
-          return twiml("That's too long for a text — keep it to one short contact, or use the notes page in the app for anything longer or for multiple people.");
+          return twiml("That's too long for one text. Keep it to one short line about one person, or use the Notes page in the app for anything longer or for multiple people.");
         }
 
         // Logged first, and note_submissions only inserted if that log entry
@@ -453,11 +535,11 @@ Deno.serve(async (req) => {
         });
         if (logError) {
           if (logError.code !== "23505") console.error("insert inbound_messages failed", logError);
-          return twiml("Got it — logging that contact now, check Review shortly.");
+          return twiml("Got it — that contact's logged and will show up in Review in a few minutes.");
         }
 
         await supabase.from("note_submissions").insert({ event_id: binding.event_id, from_phone: from, body });
-        return twiml("Got it — logging that contact now, check Review shortly.");
+        return twiml("Got it — that contact's logged and will show up in Review in a few minutes.");
       }
 
       await supabase.from("inbound_messages").insert({
@@ -469,7 +551,7 @@ Deno.serve(async (req) => {
         body,
         error: "text did not match a known event folder code",
       });
-      return twiml("Sorry, that doesn't match a known event code. Text your event's folder code first.");
+      return twiml("I didn't recognize that. If you have your event's folder code, text it to link your phone. If not, text SETUP and I'll help you find your conference by name.");
     }
 
     await supabase.from("phone_event_bindings").upsert({
@@ -492,7 +574,7 @@ Deno.serve(async (req) => {
       status: "completed",
       body,
     });
-    return twiml("Got it — bound to this event. Text card photos (and an optional voice memo) now.");
+    return twiml(`You're linked to ${event.name}. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`);
   }
 
   // Media present: this phone must already be bound to an event.
@@ -512,7 +594,7 @@ Deno.serve(async (req) => {
       body,
       error: "no event binding for this phone number",
     });
-    return twiml("Text your event's folder code first, then send card photos.");
+    return twiml("Your phone isn't linked to an event yet. Text your folder code, or text SETUP to find your conference by name — then send card photos.");
   }
 
   let received = 0;
