@@ -127,44 +127,33 @@
     </div>
 
     <div v-else>
-      <!-- Expanded card is a flex item alongside the collapsed ones, not a
-           separate CSS grid track — a grid row's height is set by its
-           tallest member, so sharing a grid row stretched every short
-           neighbor over dead space below it. Flexbox rows don't stretch to
-           match siblings (align-items: flex-start), so the collapsed cards
-           can wrap into the space beside the expanded one instead of
-           leaving it empty. -->
-      <div class="contacts-grid">
-        <ReviewContactCard
-          v-if="expandedContact"
-          :key="expandedContact.id"
-          :contact="expandedContact"
-          :expanded="true"
-          :selected="selectedMap[expandedContact.id] ?? false"
-          class="expanded-card"
-          @update:expanded="(v: boolean) => { if (!v) expandedId = null; }"
-          @update:selected="(v: boolean) => (selectedMap[expandedContact!.id] = v)"
-          @approve="approve"
-          @reject="reject"
-          @update="update"
-          @retry-match="retryMatch"
-          @duplicates-resolved="load"
-        />
-        <ReviewContactCard
-          v-for="contact in gridContacts"
-          :key="contact.id"
-          :contact="contact"
-          :expanded="false"
-          :selected="selectedMap[contact.id] ?? false"
-          class="collapsed-card"
-          @update:expanded="(v: boolean) => { if (v) expandedId = contact.id; }"
-          @update:selected="(v: boolean) => (selectedMap[contact.id] = v)"
-          @approve="approve"
-          @reject="reject"
-          @update="update"
-          @retry-match="retryMatch"
-          @duplicates-resolved="load"
-        />
+      <!-- Neither CSS Grid nor Flexbox can pack items of different heights
+           without gaps — both size a shared row/line to its tallest
+           member, so a collapsed card sharing one with the tall expanded
+           card gets stranded above dead space (tried both, twice — see
+           useMasonryGrid.ts for the full history). Every child here is
+           absolutely positioned by that composable instead, measured and
+           placed into whichever column has the least height so far. -->
+      <div class="contacts-grid" ref="gridEl" :style="{ height: containerHeight + 'px' }">
+        <div
+          v-for="item in masonryItems"
+          :key="item.id"
+          :ref="(el) => setCardEl(item.id, el)"
+          :style="styleFor(item.id)"
+        >
+          <ReviewContactCard
+            :contact="contactsById.get(item.id)!"
+            :expanded="item.id === expandedId"
+            :selected="selectedMap[item.id] ?? false"
+            @update:expanded="(v: boolean) => { expandedId = v ? item.id : null; }"
+            @update:selected="(v: boolean) => (selectedMap[item.id] = v)"
+            @approve="approve"
+            @reject="reject"
+            @update="update"
+            @retry-match="retryMatch"
+            @duplicates-resolved="load"
+          />
+        </div>
       </div>
 
       <div v-if="pageCount > 1" class="row justify-center q-mt-md">
@@ -179,6 +168,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import ReviewContactCard from '@/components/ReviewContactCard.vue';
+import { useMasonryGrid, type MasonryItem } from '@/composables/useMasonryGrid';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
@@ -198,9 +188,10 @@ const contacts = ref<ContactListItem[]>([]);
 const loading = ref(false);
 const selectedMap = reactive<Record<string, boolean>>({});
 const page = ref(1);
-// At most one contact expanded at a time — the layout only has one
-// enlarged flex-basis slot (see .expanded-card below).
+// At most one contact expanded at a time — masonryItems below gives it
+// span: 2, everything else span: 1.
 const expandedId = ref<string | null>(null);
+const gridEl = ref<HTMLElement | null>(null);
 const profiles = ref<Profile[]>([]);
 const repFilter = ref<string | null>(null);
 const syncedFilterOptions = [
@@ -247,12 +238,15 @@ const filteredContacts = computed(() => (
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / PER_PAGE)));
 const pagedContacts = computed(() => filteredContacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
 
-// Looked up in the full list, not just pagedContacts, so it stays rendered
-// even if a reload happens to shift it off the current page.
-const expandedContact = computed(() => contacts.value.find((c) => c.id === expandedId.value) ?? null);
-// The expanded contact (if on this page) is rendered separately above, in
-// its own non-grid slot — see the template comment.
-const gridContacts = computed(() => pagedContacts.value.filter((c) => c.id !== expandedId.value));
+const contactsById = computed(() => new Map(pagedContacts.value.map((c) => [c.id, c])));
+const masonryItems = computed<MasonryItem[]>(() => (
+  pagedContacts.value.map((c) => ({ id: c.id, span: c.id === expandedId.value ? 2 : 1 }))
+));
+const { styleFor, containerHeight, setCardEl } = useMasonryGrid(
+  () => gridEl.value,
+  () => masonryItems.value,
+  { minColWidth: 320, gap: 16 },
+);
 
 async function load() {
   loading.value = true;
@@ -375,32 +369,15 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* Flexbox, not CSS grid — a grid row's track height is set by its tallest
-   member, so the expanded card (tall) sharing a row with collapsed ones
-   (short) stretched the whole row and stranded the short cards above dead
-   space. Flex rows don't stretch siblings to match height (align-items:
-   flex-start), so collapsed cards wrap into the space beside the expanded
-   one instead of leaving it empty. */
+/* Children are absolutely positioned by useMasonryGrid.ts (each measured
+   and placed into whichever column has the least height so far) — CSS
+   Grid and Flexbox were both tried and both size a shared row/line to its
+   tallest member, stranding short cards above dead space next to the
+   expanded one. position: relative here is what makes the children's
+   position: absolute coordinates relative to this container rather than
+   the page. */
 .contacts-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-/* Roughly half the page width, per how big an expanded card should feel —
-   comfortable for the edit form without taking over the whole row like the
-   old full-width version did. */
-.expanded-card {
-  flex: 0 1 50%;
-  min-width: 360px;
-}
-
-/* Grow to fill remaining row space (mirrors the old grid's
-   minmax(320px, 1fr) auto-fill columns) while wrapping once a row fills up. */
-.collapsed-card {
-  flex: 1 1 320px;
-  max-width: 100%;
+  position: relative;
 }
 
 .scope-tabs {
