@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
         authToken,
         binding.phone_number,
         fromNumber,
-        `Your session expired. Respond ${folderCode} to reactivate your session.`,
+        `Your session is about to pause. Text in more contacts now or respond ${folderCode} to reactivate your session.`,
       );
       sent++;
     } catch (err) {
