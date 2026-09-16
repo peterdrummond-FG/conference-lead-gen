@@ -50,41 +50,6 @@ async function getLogo(): Promise<HTMLImageElement> {
   return cachedLogo;
 }
 
-// Wraps to at most maxLines, ellipsising anything that still doesn't fit.
-// Campaign names run long ("Texas Association of School Administrators
-// Midwinter Conference"), and at slide type sizes one line will not hold them.
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxLines: number,
-): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (!current || ctx.measureText(candidate).width <= maxWidth) {
-      current = candidate;
-      continue;
-    }
-    lines.push(current);
-    current = word;
-    if (lines.length === maxLines) break;
-  }
-  if (lines.length < maxLines && current) lines.push(current);
-
-  if (lines.join(' ') !== words.join(' ')) {
-    let last = lines[maxLines - 1] ?? '';
-    while (last && ctx.measureText(`${last}…`).width > maxWidth) {
-      last = last.slice(0, -1).trimEnd();
-    }
-    lines[maxLines - 1] = `${last}…`;
-  }
-  return lines;
-}
-
 // Shrinks a single line until it fits, and leaves ctx.font set to the size
 // it settled on.
 function fitFontSize(
@@ -127,12 +92,11 @@ async function renderQrCanvas(url: string): Promise<HTMLCanvasElement> {
 }
 
 export interface ConnectSlideDetails {
-  eventName: string;
-  state: string;
   intakeUrl: string;
-  // Stage 19: one QR per rep rather than one per booth/session channel — the
-  // eyebrow now identifies whose code this is, the only visual difference
-  // between two reps' otherwise-identical slides for the same event.
+  // Stage 20: one QR per rep, reused across every conference they work,
+  // rather than one per (event, rep) — the slide itself carries no rep or
+  // event identity anymore (two reps' slides are pixel-identical), so this
+  // is used only to name the downloaded file, not drawn on the canvas.
   repName: string;
 }
 
@@ -168,44 +132,22 @@ export async function renderConnectSlide(
     logoHeight,
   );
 
-  // Eyebrow tag naming whose QR this is — a rep glancing at two open files
-  // (or two printed pages) for the same event can tell them apart at a
-  // glance.
+  // Headline + gold accent rule, standing in for the print flyer's nested
+  // gold border. Stage 20 dropped the rep-name eyebrow and the event
+  // name/state lines that used to fill this column (the slide is now one
+  // generic, reusable artifact — see ConnectSlideDetails), so the headline
+  // sits roughly midway between the logo plate and the QR card's anchored
+  // scan hint below, rather than hard up against either.
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = CKH_GOLD;
-  ctx.font = `700 30px ${FONT_STACK}`;
-  ctx.fillText(details.repName.toUpperCase(), COL_X, 460);
-
-  // Headline + gold accent rule, standing in for the print flyer's nested
-  // gold border. Baseline sits 120px below the eyebrow's — at this 96px
-  // bold size the ascender reaches ~70px above its own baseline, so
-  // anything tighter climbed into the eyebrow line (the bug this fixes).
   ctx.fillStyle = '#FFFFFF';
   fitFontSize(ctx, 'CONNECT WITH US', COL_WIDTH, 96, 60);
-  ctx.fillText('CONNECT WITH US', COL_X, 580);
+  ctx.fillText('CONNECT WITH US', COL_X, 620);
 
   ctx.fillStyle = CKH_GOLD;
-  ctx.fillRect(COL_X, 618, 200, 5);
+  ctx.fillRect(COL_X, 658, 200, 5);
 
-  // Event name, then its state
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = `600 40px ${FONT_STACK}`;
-  const eventLines = wrapText(ctx, details.eventName, COL_WIDTH, 2);
-  eventLines.forEach((line, i) => {
-    ctx.fillText(line, COL_X, 700 + i * 50);
-  });
-
-  ctx.fillStyle = MUTED_BLUE;
-  ctx.font = `400 32px ${FONT_STACK}`;
-  ctx.fillText(
-    details.state,
-    COL_X,
-    700 + (eventLines.length - 1) * 50 + 48,
-  );
-
-  // Scan hint + spelled-out URL, bottom-anchored to the QR card's lower edge
-  // so the event name wrapping to two lines can't push them around.
+  // Scan hint + spelled-out URL, bottom-anchored to the QR card's lower edge.
   const urlBaseline = QR_CARD.centerY + QR_CARD.size / 2;
   ctx.fillStyle = MUTED_BLUE;
   ctx.font = `400 28px ${FONT_STACK}`;
@@ -252,7 +194,7 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `ckh-connect-slide-${details.eventName.toLowerCase().replace(/\s+/g, '-')}-${details.repName.toLowerCase().replace(/\s+/g, '-')}.png`;
+  link.download = `ckh-connect-slide-${details.repName.toLowerCase().replace(/\s+/g, '-')}.png`;
   link.click();
   URL.revokeObjectURL(url);
 }

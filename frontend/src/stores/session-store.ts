@@ -10,6 +10,7 @@ export interface SessionUser {
   role: Role;
   currentEventId: string | null;
   currentEventName: string | null;
+  repSlug: string | null;
 }
 
 // Replaces kiosk-store.ts (shared-PIN lock/unlock) and role-store.ts
@@ -44,6 +45,7 @@ export const useSessionStore = defineStore('session', {
         email: string | null;
         currentEventId: string | null;
         currentEventName: string | null;
+        repSlug: string | null;
       }>('/me');
       this.user = data;
     },

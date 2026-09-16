@@ -1,6 +1,6 @@
 <template>
   <q-page class="q-pa-lg flex flex-center">
-    <div style="width: 480px; max-width: 92vw" class="q-gutter-md">
+    <div style="width: 640px; max-width: 92vw" class="q-gutter-md">
       <q-card>
         <q-card-section>
           <div class="text-h5">Event Setup</div>
@@ -81,9 +81,15 @@
 
             <!-- Several conferences can be active at once (different reps,
                  different cities, same day) — this switches which one this
-                 admin/Solutions Success login is administering (rep
-                 assignment, QR slides), without creating a new one. -->
-            <div v-if="canManageEvents && activeEvents.length > 1" class="q-mt-sm">
+                 login is working with, without creating a new one. For
+                 admin/Solutions Success that's which one they're
+                 administering (rep assignment, QR slides); for a sales rep
+                 with no event linked yet it's the only way to pick the right
+                 one instead of silently inheriting whichever conference
+                 happened to be activated most recently system-wide (see
+                 events-active's fallback comment — this is the bug where a
+                 rep's "link myself" locked in the wrong conference). -->
+            <div v-if="activeEvents.length > 1" class="q-mt-sm">
               <q-select
                 :model-value="eventStore.activeEvent.id"
                 :options="activeEvents"
@@ -92,7 +98,7 @@
                 emit-value
                 map-options
                 dense
-                label="Switch to a different active conference"
+                :label="canManageEvents ? 'Switch to a different active conference' : 'Which conference are you at?'"
                 :loading="switchingEvent"
                 @update:model-value="switchEvent"
               >
@@ -105,6 +111,10 @@
                   </q-item>
                 </template>
               </q-select>
+              <div v-if="isSales" class="text-caption text-grey q-mt-xs">
+                Multiple conferences are active right now — pick the one you're actually at. This
+                also links you to it, same as the button below.
+              </div>
             </div>
 
             <div v-if="eventStore.activeEvent.folderCode" class="q-mt-sm">
@@ -147,10 +157,11 @@
               </ol>
             </div>
 
-            <div v-if="eventStore.activeEvent.isLinkedRep" class="q-mt-md text-center">
+            <div v-if="isSales && sessionStore.user?.repSlug" class="q-mt-md text-center">
               <div class="text-caption text-grey q-mb-sm">
-                Your own QR code for this event — leads that scan it are credited to you. Drop it on a
-                slide or open it on an iPad; attendees scan it, not the laptop screen.
+                Your own QR code — reusable at every conference you work. Whichever event you're
+                linked to below is where its scans land. Drop it on a slide or open it on an iPad;
+                attendees scan it, not the laptop screen.
               </div>
               <q-btn
                 color="primary"
@@ -159,10 +170,6 @@
                 :loading="generatingMySlide"
                 @click="downloadMySlide"
               />
-            </div>
-            <div v-else-if="isSales" class="q-mt-md text-center text-caption text-grey">
-              You're not linked to this event yet — ask an admin to link you in Setup's reps &amp; events
-              table before you have a QR code to hand out.
             </div>
 
             <div v-if="isSales" class="q-mt-md">
@@ -185,9 +192,9 @@
         <q-card-section>
           <div class="text-h6">Reps &amp; events</div>
           <div class="text-caption text-grey">
-            Check a box to link a rep to a conference — this credits them for scans of their own QR
-            code (download it once linked) and is separate from a rep's own "link myself to this
-            event" toggle below, which only controls their notes/SMS scoping.
+            Check a box to link a rep to a conference for the pre-Stage-20 per-event QR codes still
+            in the field. A rep's own reusable QR (Manage Users, below) doesn't depend on this — it
+            follows whichever event their own "link myself to this event" toggle points at instead.
           </div>
         </q-card-section>
         <q-card-section v-if="!activeEvents.length" class="text-caption text-grey">
@@ -197,16 +204,29 @@
           No sales reps yet — add one below first.
         </q-card-section>
         <q-card-section v-else style="overflow-x: auto">
-          <q-markup-table flat dense>
+          <!-- table-layout: fixed + a capped/wrapping first column stop the
+               table's natural width (long conference names) from pushing
+               the whole thing past the card — rep columns stay narrow
+               (checkboxes only need so much room) and overflow-x above is
+               just the safety net for however many reps get added. -->
+          <q-markup-table flat dense style="table-layout: fixed; width: 100%">
             <thead>
               <tr>
-                <th class="text-left">Conference</th>
-                <th v-for="rep in salesProfiles" :key="rep.id" class="text-center">{{ rep.name }}</th>
+                <th class="text-left" style="width: 45%">Conference</th>
+                <th
+                  v-for="rep in salesProfiles"
+                  :key="rep.id"
+                  class="text-center ellipsis"
+                  :style="{ width: `${55 / salesProfiles.length}%` }"
+                >
+                  <q-tooltip>{{ rep.name }}</q-tooltip>
+                  {{ rep.name }}
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="event in activeEvents" :key="event.id">
-                <td class="text-left">
+                <td class="text-left" style="white-space: normal; word-break: break-word">
                   {{ event.name }}
                   <div v-if="!event.repIds.length" class="text-caption text-orange-9">
                     <q-icon name="warning" size="14px" /> No reps linked yet
@@ -218,14 +238,6 @@
                     :disable="linkingCell === `${event.id}:${rep.id}`"
                     @update:model-value="(v: boolean) => toggleEventRep(event, rep, v)"
                   />
-                  <q-btn
-                    v-if="event.repIds.includes(rep.id)"
-                    flat round dense size="sm" icon="qr_code_2" color="primary"
-                    :loading="downloadingSlideFor === `${event.id}:${rep.id}`"
-                    @click="downloadRepSlide(event, rep)"
-                  >
-                    <q-tooltip>Download {{ rep.name }}'s QR for {{ event.name }}</q-tooltip>
-                  </q-btn>
                 </td>
               </tr>
             </tbody>
@@ -259,6 +271,15 @@
                   :label="isLinkedToCurrentEvent(p) ? 'Unlink' : 'Link to current event'"
                   @click="toggleCurrentEvent(p)"
                 />
+              </q-item-section>
+              <q-item-section v-if="p.role === 'sales' && p.repSlug" side>
+                <q-btn
+                  flat round dense icon="qr_code_2" color="primary"
+                  :loading="downloadingSlideFor === p.id"
+                  @click="downloadRepSlide(p)"
+                >
+                  <q-tooltip>Download {{ p.name }}'s QR</q-tooltip>
+                </q-btn>
               </q-item-section>
               <q-item-section v-if="p.id !== sessionStore.user?.id" side>
                 <q-btn flat round dense icon="delete" color="grey-7" @click="confirmDeleteProfile(p)" />
@@ -368,10 +389,11 @@ const stateOptions = ref<UsStateOption[]>(US_STATES);
 const activating = ref(false);
 const pickingNew = ref(false);
 const generatingMySlide = ref(false);
-// Keyed "<eventId>:<repId>" — a specific matrix cell's link toggle or QR
-// download, not a page-wide loading flag, since several cells are
-// independently actionable at once.
+// Keyed "<eventId>:<repId>" — a specific matrix cell's link toggle, not a
+// page-wide loading flag, since several cells are independently actionable
+// at once.
 const linkingCell = ref<string | null>(null);
+// Keyed by rep id — a specific Manage Users row's QR download.
 const downloadingSlideFor = ref<string | null>(null);
 
 const isAdmin = computed(() => sessionStore.user?.role === 'admin');
@@ -384,8 +406,9 @@ const canManageEvents = computed(() => isAdmin.value || sessionStore.user?.role 
 const linkingMyself = ref(false);
 
 // Every currently-active conference (not just this login's own) — lets
-// admin/solutionsSuccess switch which one they're administering instead of
-// only ever seeing whichever they personally activated.
+// admin/solutionsSuccess switch which one they're administering, and lets a
+// sales rep pick which one they're actually at, instead of either silently
+// inheriting whichever conference was activated most recently system-wide.
 const activeEvents = ref<ActiveEventOption[]>([]);
 const switchingEvent = ref(false);
 
@@ -420,15 +443,15 @@ function isLinkedToCurrentEvent(p: Profile) {
   return !!eventStore.activeEvent && p.currentEventId === eventStore.activeEvent.id;
 }
 
-// Short, memorable, per-(event, rep) URLs (routes.ts redirects these into
-// /intake?eventSlug=...&repId=...) — the QR itself is always scanned, but
-// the slide also spells the URL out for anyone who can't scan, so it needs
-// to be typeable on a phone keyboard. The slug is what makes leads from
-// concurrent conferences (multiple reps, same day) attribute correctly
-// instead of racing to whichever event happens to be "active" — see
-// 20260915120000_event_slug_and_concurrent_events.sql.
-function intakeUrlForRep(slug: string, repId: string) {
-  return `${window.location.origin}/connect/${slug}/${repId}`;
+// Short, memorable, per-rep URL (routes.ts redirects this into
+// /intake?repSlug=...) — the QR itself is always scanned, but the slide also
+// spells the URL out for anyone who can't scan, so it needs to be typeable
+// on a phone keyboard. Stage 20: one of these per rep, reused across every
+// conference they work, rather than one per (event, rep) — which event a
+// scan belongs to is resolved server-side from that rep's current_event_id,
+// not from anything in the URL (20260916212541_add_profiles_rep_slug.sql).
+function intakeUrlForRep(repSlug: string) {
+  return `${window.location.origin}/connect/${repSlug}`;
 }
 
 function filterFn(val: string, update: (cb: () => void) => void) {
@@ -463,8 +486,10 @@ async function activate() {
   }
 }
 
+// Any logged-in role can call events-list-active now (see its own header
+// comment) -- a sales rep needs this exactly when there's more than one
+// active conference to disambiguate between.
 async function loadActiveEvents() {
-  if (!canManageEvents.value) return;
   const { data } = await api.get<ActiveEventOption[]>('/events-list-active');
   activeEvents.value = data;
 }
@@ -475,6 +500,11 @@ async function switchEvent(eventId: string) {
   try {
     await api.post('/profiles-set-current-event', { eventId });
     await eventStore.fetchActive();
+    // sessionStore.user.currentEventId/-Name feed the sales-only "You're
+    // linked to: X" caption and the Download-my-QR/Link-myself visibility
+    // just below -- without this refetch they'd keep showing the
+    // pre-switch event until the next full page load.
+    await sessionStore.fetchMe();
   } finally {
     switchingEvent.value = false;
   }
@@ -491,17 +521,15 @@ function formatRelativeTime(iso: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-// The sales rep's own QR for the event they're currently viewing — shown
-// only once events-active says they're actually linked (event_reps), so a
-// rep can't download a QR that contacts-create would just fail to credit.
+// The sales rep's own reusable QR — shown once they have a repSlug at all
+// (profiles-create/-update always generates one for a sales account), since
+// downloading it no longer depends on being linked to any particular event.
 async function downloadMySlide() {
-  if (!eventStore.activeEvent || !sessionStore.user) return;
+  if (!sessionStore.user?.repSlug) return;
   generatingMySlide.value = true;
   try {
     await generateConnectSlidePng({
-      eventName: eventStore.activeEvent.name,
-      state: eventStore.activeEvent.state,
-      intakeUrl: intakeUrlForRep(eventStore.activeEvent.slug, sessionStore.user.id),
+      intakeUrl: intakeUrlForRep(sessionStore.user.repSlug),
       repName: sessionStore.user.name,
     });
   } finally {
@@ -509,17 +537,14 @@ async function downloadMySlide() {
   }
 }
 
-// Admin/Solutions Success downloading a specific rep's QR for a specific
-// event straight from the matrix, without needing to be logged in as that
-// rep.
-async function downloadRepSlide(event: ActiveEventOption, rep: Profile) {
-  const key = `${event.id}:${rep.id}`;
-  downloadingSlideFor.value = key;
+// Admin/Solutions Success downloading a specific rep's own QR from Manage
+// Users, without needing to be logged in as that rep.
+async function downloadRepSlide(rep: Profile) {
+  if (!rep.repSlug) return;
+  downloadingSlideFor.value = rep.id;
   try {
     await generateConnectSlidePng({
-      eventName: event.name,
-      state: event.state,
-      intakeUrl: intakeUrlForRep(event.slug, rep.id),
+      intakeUrl: intakeUrlForRep(rep.repSlug),
       repName: rep.name,
     });
   } finally {
@@ -627,9 +652,9 @@ async function toggleMyCurrentEvent() {
 
 onMounted(() => {
   void eventStore.fetchActive();
+  void loadActiveEvents();
   if (canManageEvents.value) {
     void loadProfiles();
-    void loadActiveEvents();
   }
 });
 </script>

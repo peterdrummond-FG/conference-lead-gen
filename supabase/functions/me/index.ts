@@ -1,4 +1,4 @@
-// GET -> { id, name, role, email, currentEventId, currentEventName }.
+// GET -> { id, name, role, email, currentEventId, currentEventName, repSlug }.
 // Any logged-in user. The first call the frontend makes after login (or on
 // app boot with an existing session) -- a Supabase Auth session alone only
 // carries id/email, not this app's role/current-event state.
@@ -30,5 +30,6 @@ Deno.serve(async (req) => {
     email: authUser?.user?.email ?? null,
     currentEventId: user.currentEventId,
     currentEventName: event?.name ?? null,
+    repSlug: user.repSlug,
   });
 });

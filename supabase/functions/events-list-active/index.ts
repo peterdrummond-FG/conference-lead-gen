@@ -1,5 +1,5 @@
 // GET -> every currently-active Event, most recently activated first.
-// Staff-gated (admin/solutionsSuccess) -- feeds Setup's event switcher.
+// Any logged-in user -- feeds Setup's event switcher.
 //
 // Multiple conferences can be active at once (see
 // 20260915120000_event_slug_and_concurrent_events.sql), so unlike
@@ -7,8 +7,17 @@
 // letting an admin/solutionsSuccess switch which one they're administering
 // via profiles-set-current-event instead of only ever seeing whichever one
 // they personally activated.
+//
+// Opened up from admin/solutionsSuccess-only (2026-09-16 audit follow-up): a
+// sales rep with no current_event_id got events-active's ambiguous
+// "whichever event was activated most recently" fallback with no way to see
+// or correct it -- at a multi-conference day, "link myself to this event"
+// silently linked them to the wrong conference because Setup never offered
+// them the list to pick from. There is nothing sensitive in this response
+// (name/slug/state/activatedAt/repIds -- no folder_code), so no role check
+// is needed beyond being authenticated.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { hasRole, requireUser } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
@@ -18,7 +27,6 @@ Deno.serve(async (req) => {
 
   const user = await requireUser(req);
   if (!user) return errorResponse(req, 401, "Unauthorized");
-  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
 
   const supabase = serviceClient();
   const { data, error } = await supabase

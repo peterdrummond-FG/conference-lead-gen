@@ -13,6 +13,7 @@ export interface AuthedUser {
   name: string;
   role: "admin" | "solutionsSuccess" | "sales";
   currentEventId: string | null;
+  repSlug: string | null;
   kioskPin: string;
 }
 
@@ -27,7 +28,7 @@ export async function requireUser(req: Request): Promise<AuthedUser | null> {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, name, role, current_event_id, kiosk_pin")
+    .select("id, name, role, current_event_id, rep_slug, kiosk_pin")
     .eq("id", user.id)
     .maybeSingle();
   if (profileError || !profile) return null;
@@ -37,6 +38,7 @@ export async function requireUser(req: Request): Promise<AuthedUser | null> {
     name: profile.name,
     role: profile.role,
     currentEventId: profile.current_event_id,
+    repSlug: profile.rep_slug,
     kioskPin: profile.kiosk_pin,
   };
 }

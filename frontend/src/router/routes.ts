@@ -24,13 +24,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
-      // The QR codes SetupPage.vue generates — one per event per rep (Stage
-      // 19: booth/session is no longer tied to which QR was scanned, so
-      // there's no longer a shared per-channel code; each rep gets their
-      // own, e.g. /connect/hignell/<repId>). "connect" echoes the slide's
-      // own "Connect With Us" headline rather than a cryptic prefix, and the
-      // slug is what lets multiple reps run concurrent conferences without
-      // their leads mixing (see 20260915120000_event_slug_and_concurrent_events.sql).
+      // Pre-Stage-20 QR codes — one per event per rep
+      // (/connect/<eventSlug>/<repId>), kept working so anything already
+      // printed still captures leads. "connect" echoes the slide's own
+      // "Connect With Us" headline rather than a cryptic prefix.
       {
         path: 'connect/:slug/:repId',
         redirect: (to) => ({
@@ -38,19 +35,22 @@ const routes: RouteRecordRaw[] = [
           query: { eventSlug: String(to.params.slug ?? ''), repId: String(to.params.repId ?? '') },
         }),
       },
-      // Pre-Stage-19 QR codes (/connect/<slug>-booth or -session), kept
-      // working so anything already printed still captures leads — just
-      // without a specific rep credited, since that concept no longer
-      // exists for this URL shape. channel is passed through since the
-      // attendee's own channel dropdown didn't exist yet when these were
-      // printed either.
+      // A bare single-segment token is one of two things. Pre-Stage-19 QR
+      // codes (/connect/<slug>-booth or -session) are kept working so
+      // anything already printed still captures leads — just without a
+      // specific rep credited, since that concept didn't exist for this URL
+      // shape. Anything else is a Stage 20 rep's own reusable QR
+      // (/connect/<repSlug> — one code for every conference that rep works;
+      // see generateConnectSlide.ts and 20260916212541_add_profiles_rep_slug.sql)
+      // — the event it belongs to is resolved server-side from that rep's
+      // current_event_id at submission time, not from anything in the URL.
       {
         path: 'connect/:slugChannel',
         redirect: (to) => {
           const raw = String(to.params.slugChannel ?? '');
-          const match = /^(.+)-(booth|session)$/.exec(raw);
-          if (!match) return { path: '/intake' };
-          return { path: '/intake', query: { eventSlug: match[1], channel: match[2] } };
+          const channelMatch = /^(.+)-(booth|session)$/.exec(raw);
+          if (channelMatch) return { path: '/intake', query: { eventSlug: channelMatch[1], channel: channelMatch[2] } };
+          return { path: '/intake', query: { repSlug: raw } };
         },
       },
       // Pre-slug aliases, kept so any slide already printed/downloaded

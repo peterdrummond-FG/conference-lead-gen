@@ -92,6 +92,9 @@ export interface Profile {
   role: Role;
   phoneNumber: string | null;
   currentEventId: string | null;
+  // Only ever set for role === 'sales' — the identifier in their reusable
+  // /connect/<repSlug> QR (see generateConnectSlide.ts).
+  repSlug: string | null;
   email: string | null;
 }
 

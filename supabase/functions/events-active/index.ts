@@ -1,17 +1,19 @@
-// GET ?slug=<slug> -> the Event that slug belongs to, or null. GET with no
-// slug -> the caller's own linked event (profiles.current_event_id), or (for
-// staff with none linked) whichever event was activated most recently.
-// Public — Intake needs this to know which event contacts are attached to
-// without a PIN.
+// GET ?slug=<slug> -> the Event that slug belongs to, or null. GET
+// ?repSlug=<repSlug> -> the event that sales rep is currently linked to
+// (profiles.current_event_id), or null if they aren't linked to one right
+// now. GET with neither -> the caller's own linked event, or (for staff with
+// none linked) whichever event was activated most recently. Public — Intake
+// needs this to know which event contacts are attached to without a PIN.
 //
 // Multiple conferences can be active at once (see
 // 20260915120000_event_slug_and_concurrent_events.sql), so there is no
 // longer a single "the active event" to fall back to blindly -- a bare GET
-// with no slug and no linked user picks *an* event, not necessarily the
-// right one, which is why every real caller should be passing one or the
-// other. IntakePage reads the slug off the per-rep QR URL
-// (/connect/<slug>/<repId>); SetupPage relies on the logged-in user's own
-// current_event_id.
+// with no slug/repSlug and no linked user picks *an* event, not necessarily
+// the right one, which is why every real caller should be passing one of the
+// others. IntakePage reads slug off a pre-Stage-20 per-event QR URL
+// (/connect/<slug>/<repId>) and repSlug off a rep's own reusable QR
+// (/connect/<repSlug> -- see 20260916212541_add_profiles_rep_slug.sql);
+// SetupPage relies on the logged-in user's own current_event_id.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -25,6 +27,8 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const slug = optionalString(url.searchParams.get("slug"), LIMITS.name);
   if (slug === undefined) return errorResponse(req, 400, "slug is invalid.");
+  const repSlug = optionalString(url.searchParams.get("repSlug"), LIMITS.name);
+  if (repSlug === undefined) return errorResponse(req, 400, "repSlug is invalid.");
 
   const supabase = serviceClient();
   const user = await requireUser(req); // null for the public intake form
@@ -34,6 +38,21 @@ Deno.serve(async (req) => {
     const { data: bySlug, error } = await supabase.from("events").select("*").eq("slug", slug).maybeSingle();
     if (error) return errorResponse(req, 500, error.message);
     data = bySlug;
+  } else if (repSlug) {
+    const { data: rep, error: repError } = await supabase
+      .from("profiles")
+      .select("current_event_id")
+      .eq("rep_slug", repSlug)
+      .eq("role", "sales")
+      .maybeSingle();
+    if (repError) return errorResponse(req, 500, repError.message);
+    if (!rep?.current_event_id) {
+      data = null;
+    } else {
+      const { data: linked, error } = await supabase.from("events").select("*").eq("id", rep.current_event_id).maybeSingle();
+      if (error) return errorResponse(req, 500, error.message);
+      data = linked;
+    }
   } else if (user?.currentEventId) {
     const { data: linked, error } = await supabase.from("events").select("*").eq("id", user.currentEventId).maybeSingle();
     if (error) return errorResponse(req, 500, error.message);

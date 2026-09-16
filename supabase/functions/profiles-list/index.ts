@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   let query = supabase
     .from("profiles")
-    .select("id, name, role, phone_number, current_event_id")
+    .select("id, name, role, phone_number, current_event_id, rep_slug")
     .order("name");
   if (user.role === "solutionsSuccess") query = query.eq("role", "sales");
 
@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
       role: p.role,
       phoneNumber: p.phone_number,
       currentEventId: p.current_event_id,
+      repSlug: p.rep_slug,
       email: emailById.get(p.id) ?? null,
     })),
   );
