@@ -31,8 +31,10 @@
     <q-card-section v-else class="row items-start q-gutter-sm">
       <q-checkbox v-model="selected" dense class="q-mt-xs" />
 
-      <div v-if="contact.source === 'card_photo'" class="q-mr-sm" style="width: 220px">
-        <div class="text-caption text-grey q-mb-xs">Original card</div>
+      <div v-if="isPhotoSourced" class="q-mr-sm" style="width: 220px">
+        <div class="text-caption text-grey q-mb-xs">
+          {{ contact.source === 'directory_photo' ? 'Original directory page' : 'Original card' }}
+        </div>
         <q-img
           v-if="contact.hasPhoto && !thumbnailPhotoError"
           :src="thumbnailPhotoUrl ?? undefined"
@@ -244,7 +246,7 @@
             input-debounce="0"
             class="col-6 col-sm-3"
             label="State (optional)"
-            :hint="contact.source === 'card_photo' ? 'Suggested from district/conference — confirm or change' : undefined"
+            :hint="isPhotoSourced ? 'Suggested from district/conference — confirm or change' : undefined"
             @filter="filterStates"
           />
           <q-select
@@ -563,9 +565,19 @@ function linkNewAccount() {
   newAccountName.value = '';
 }
 
+// A directory-page photo (see process-cards SKILL.md Step 1) still has a
+// stored/cropped image behind it the same way a card photo does — the two
+// only differ in what the photo was *of* — so anywhere the review card shows
+// or hints at the original photo, both sources apply.
+const isPhotoSourced = computed(
+  () => props.contact.source === 'card_photo' || props.contact.source === 'directory_photo',
+);
+
 const sourceTone = computed(() => {
   switch (props.contact.source) {
     case 'card_photo':
+      return 'purple';
+    case 'directory_photo':
       return 'purple';
     case 'note':
       return 'blue';
@@ -580,6 +592,8 @@ function sourceLabel(source: string) {
       return 'Form';
     case 'card_photo':
       return 'Card';
+    case 'directory_photo':
+      return 'Directory';
     case 'note':
       return 'Note';
     case 'qr_code':

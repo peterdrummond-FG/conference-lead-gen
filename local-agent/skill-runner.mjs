@@ -125,12 +125,46 @@ function skillEnv() {
   };
 }
 
+// Found 2026-09-21: a Claude account-level usage-limit window (shared by
+// this CLI login and the operator's own interactive session) made every
+// `claude -p` call fail identically, but nothing stopped the five poll loops
+// from independently re-discovering that fact every 20-30s for the better
+// part of an hour -- each one burning a full spawn + (for runSkill callers)
+// its own 2-attempt/5s-backoff cycle to relearn what the previous call already
+// knew. That's the exact "amplification" shape this codebase's other retry
+// logic (claim_pending_contacts' cooldown, MAX_MATCH_ATTEMPTS) exists to
+// avoid, just uncovered here. runClaudeRaw is the one choke point every
+// skill invocation passes through (runSkill's invokeOnce calls it too), so
+// the circuit breaker lives here rather than being duplicated per loop.
+const USAGE_LIMIT_RE = /session limit|usage limit/i;
+const USAGE_LIMIT_COOLDOWN_MS = 5 * 60_000;
+let claudeBlockedUntil = 0;
+
+function logLine(message) {
+  console.log(`${new Date().toISOString()} ${message}`);
+}
+
 // Exported separately from runSkill: process-cards has a plain-text prompt /
 // PROCESS_CARDS_OK-line contract, not the temp-file-JSON-in / JSON-out
 // contract runSkill wraps around the others — but both share the same
 // invocation mechanics, so this is the one place that logic lives.
 export function runClaudeRaw(prompt, cwd, timeoutMs, skillName) {
   return new Promise((resolve, reject) => {
+    // Fail fast without spawning anything while a prior call already proved
+    // the account is rate-limited. exitCode 1 + a message here is exactly
+    // the shape a real failed run produces, so every existing caller (both
+    // this function's own callers and invokeOnce below) handles it with no
+    // changes: it just looks like "the skill failed," which it did.
+    if (Date.now() < claudeBlockedUntil) {
+      resolve({
+        stdout: '',
+        stderr: `claude usage limit still in effect (retrying again after ${new Date(claudeBlockedUntil).toISOString()})`,
+        exitCode: 1,
+        timedOut: false,
+      });
+      return;
+    }
+
     let proc;
     try {
       // stdin: 'ignore' -- the default 'pipe' leaves an open stdin the CLI
@@ -162,6 +196,12 @@ export function runClaudeRaw(prompt, cwd, timeoutMs, skillName) {
     });
     proc.on('close', (exitCode) => {
       clearTimeout(timer);
+      if (USAGE_LIMIT_RE.test(stdout) || USAGE_LIMIT_RE.test(stderr)) {
+        claudeBlockedUntil = Date.now() + USAGE_LIMIT_COOLDOWN_MS;
+        logLine(
+          `WARN claude usage limit detected (${skillName}) — pausing all skill invocations until ${new Date(claudeBlockedUntil).toISOString()}`,
+        );
+      }
       resolve({ stdout, stderr, exitCode, timedOut });
     });
   });
@@ -176,7 +216,19 @@ async function invokeOnce(skillName, input, workdir, timeoutMs, schema) {
     if (timedOut) throw new Error(`${skillName} timed out after ${timeoutMs}ms`);
     if (exitCode !== 0) throw new Error(`${skillName} exited ${exitCode}: ${stderr.trim() || stdout.trim()}`);
 
-    const raw = extractJson(stdout);
+    // extractJson's own error is just "No JSON object found" -- useless for
+    // debugging on its own, since whatever the model printed instead (an
+    // apology, a partial tool-error explanation) is otherwise discarded the
+    // moment this throws. Found 2026-09-21: match-contact was failing this
+    // way often enough to be its own incident, and every prior occurrence was
+    // undiagnosable because nothing had ever logged the actual stdout.
+    let raw;
+    try {
+      raw = extractJson(stdout);
+    } catch (err) {
+      const tail = stdout.trim().slice(-500);
+      throw new Error(`${err.message} — last 500 chars of stdout: ${JSON.stringify(tail)}`);
+    }
     if (!schema) return raw;
 
     // A schema failure is a pipeline failure, never a result to persist:

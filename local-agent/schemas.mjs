@@ -173,10 +173,21 @@ export const NoteExtractionOutput = z.object({
 // service-role key handed to it as a shell env var. It now returns this and
 // the caller does the writing (audit A2) -- so a card printed with
 // instruction-like text has no credential within reach even in the worst case.
+// Added after the 2026-09-21 TN TOSS conference: reps photographing pages of
+// a printed attendee directory (several people per page under a shared
+// district/county header) got "no legible business card detected" or a
+// process-cards timeout on every single photo, because the skill only knew
+// how to look for laid-out physical cards. The fields are identical either
+// way -- contacts-from-ocr and everything downstream doesn't care -- so this
+// is purely a provenance tag (-> contacts.source) letting a reviewer see
+// "this came off a roster page, not a card the person handed the rep."
+export const CardExtractionSourceType = z.enum(['business_card', 'directory_listing']);
+
 export const CardExtractionOutput = z
   .object({
     status: z.enum(['ok', 'no_card_detected']),
     sourceImageHash: z.string().max(200).optional(),
+    sourceType: CardExtractionSourceType.default('business_card'),
     cards: z
       .array(
         z.object({

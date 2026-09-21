@@ -281,6 +281,12 @@ if not isinstance(cards, list) or not cards:
     print("FAIL - process-cards returned no cards")
     sys.exit(0)
 
+# Same provenance tag the Node agent (local-agent/agent.mjs) sends -- only
+# override contacts-from-ocr's 'card_photo' default for the one other shape
+# process-cards can report, so an unexpected value here falls back to the
+# safe default instead of writing an arbitrary string into contacts.source.
+source_override = "directory_photo" if result.get("sourceType") == "directory_listing" else None
+
 url = os.environ["SUPABASE_URL"].rstrip("/") + "/functions/v1/contacts-from-ocr"
 key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 code, base_hash, storage_key = os.environ["CODE"], os.environ["HASH"], os.environ["STORAGE_KEY"]
@@ -313,6 +319,8 @@ for card in cards:
         "sourceImageHash": src_hash,
         "sourceImagePath": storage_key,
     }
+    if source_override:
+        body["source"] = source_override
     if crop:
         body["croppedImagePath"] = f"{prefix}/{crop}" if prefix else crop
     req = urllib.request.Request(
