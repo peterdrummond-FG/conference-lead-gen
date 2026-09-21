@@ -188,9 +188,18 @@ Apply to `districtName`, every entry in `alternateDistrictNames`, and
    Do not widen scope to other states if this returns nothing — absence
    in-state is itself a signal (pushes toward `new_account`), never a reason
    to search nationwide; a same-named district in another state must never
-   surface as a candidate. If a query errors (e.g. a field name mismatch),
-   confirm the real API name via a fields/module-metadata tool and retry once
-   before giving up on that query.
+   surface as a candidate. **Any Zoho tool call can fail for reasons that
+   have nothing to do with your query being wrong** — a field name mismatch,
+   but equally a timeout, a connection error, an empty/malformed response, or
+   anything else the tool surfaces. For a field name mismatch specifically,
+   confirm the real API name via a fields/module-metadata tool and retry once.
+   For every other kind of failure, retry that one query once unchanged
+   before giving up on it. Whatever the cause, a query that still fails after
+   one retry is simply a failed query for that anchor — move on to your
+   remaining anchors, and if none of them yield a usable candidate, that is
+   exactly the "Zoho query failed" row in the classification table below
+   (`ambiguous`/`low`, cause named in `notes`). It is never a reason to stop
+   short of Step 6 below and the Output section's required JSON.
 
 3. **If `schoolName` or `institutionLevelCampusName` is present, also query
    campus-level Accounts** the same way (`Organization_Level = 'Campus /
@@ -339,6 +348,17 @@ and parses stdout directly as JSON — `claude -p "..."
 --dangerously-skip-permissions | python3 -c "import json,sys;
 json.load(sys.stdin)"` — any character outside the `{...}` breaks that parse
 and fails the whole pipeline.
+
+**This rule has no exceptions for how badly the run went.** Every Zoho query
+failing, a tool erroring in a way this file didn't anticipate, genuine
+uncertainty about the right classification — none of that is a reason to
+explain yourself in plain text instead of printing the object. Every one of
+those situations already has a place inside the JSON: `matchStatus:
+"ambiguous"`, `matchConfidence: "low"`, and the specifics in `notes`. A caller
+that gets prose instead of `{...}` cannot tell "this failed" from "this
+timed out" from "this succeeded with low confidence" — it just fails the
+whole pipeline the same way regardless, so a degraded answer inside the
+contract is strictly more useful than a clear explanation outside it.
 
 Wrong (breaks the parser — a leading sentence and a code fence are both
 fatal, even a short one): "Based on my research, here's the match:" followed

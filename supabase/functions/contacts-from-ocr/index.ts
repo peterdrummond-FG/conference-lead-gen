@@ -1,7 +1,7 @@
 // POST { eventFolderCode, firstName, lastName, email?, phone?, title?,
 //        districtName?, schoolName?, extractionConfidence,
 //        sourceImageHash, sourceImagePath, croppedImagePath?,
-//        inboundMessageId? (Stage 13) }
+//        inboundMessageId? (Stage 13), source? (one of ALLOWED_SOURCES) }
 // -> { id, alreadyProcessed, createdAt }. Called only by process-cards
 // (watcher) and, later, the local agent's SMS-photo poll loop — never a
 // browser. Authenticated via the service-role key, not a logged-in user.
@@ -9,6 +9,15 @@ import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts
 import { isServiceRoleCall } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { resolveDistrict, resolveSchool } from "../_shared/contacts.ts";
+
+// 'card_photo' is the default (a single card, a badge, or several cards laid
+// out together). 'directory_photo' was added after the 2026-09-21 TN TOSS
+// conference, where reps started photographing pages of a printed attendee
+// directory instead — same contact fields, but a reviewer needs to be able
+// to tell "the rep spoke to this person" apart from "this came off a roster
+// page." An allowlist rather than trusting the caller's string verbatim —
+// this ends up in a CRM-bound column same as everything else in schemas.mjs.
+const ALLOWED_SOURCES = new Set(["card_photo", "directory_photo"]);
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -95,7 +104,7 @@ Deno.serve(async (req) => {
     .rpc("insert_contact_with_duplicate_check", {
       payload: {
         event_id: targetEvent.id,
-        source: "card_photo",
+        source: ALLOWED_SOURCES.has(body.source) ? body.source : "card_photo",
         rep_id: repId,
         first_name: body.firstName,
         last_name: body.lastName,

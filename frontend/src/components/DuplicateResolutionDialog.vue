@@ -350,6 +350,8 @@ function sourceLabel(source: string) {
       return 'Form';
     case 'card_photo':
       return 'Card';
+    case 'directory_photo':
+      return 'Directory';
     case 'note':
       return 'Note';
     case 'qr_code':

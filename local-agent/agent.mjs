@@ -70,6 +70,48 @@ function sleep(ms) {
 }
 
 // ---------------------------------------------------------------------
+// Hang watchdog
+// ---------------------------------------------------------------------
+// Found 2026-09-21: this process stayed alive but produced zero log output
+// across ALL FIVE loops for ~19 minutes (a Claude usage-limit outage left a
+// tick stuck awaiting something that never resolved -- most likely a hung
+// network call with no timeout of its own). start-agent.command's
+// while-loop only restarts on process EXIT, so a hang that never exits never
+// self-heals; nobody would have noticed short of someone happening to check
+// the log. Each loop below stamps this object right before it starts a new
+// tick, so "last stamped at" reflects the loop is still cycling even while
+// that tick's own work is slow -- a hang inside one tick freezes only that
+// loop's own timestamp.
+const heartbeat = { matching: Date.now(), photo: Date.now(), transcription: Date.now(), intent: Date.now(), note: Date.now() };
+
+// Generous margin above the longest legitimate single-tick duration in this
+// process: photoLoop's own process-cards ceiling is 15 minutes
+// (PHOTO_CLAUDE_TIMEOUT_MS below), matchingLoop's worst case is roughly 3
+// runSkill attempts x (180s timeout + 5s backoff) ~= 9 minutes. 20 minutes
+// clears both with room to spare, so this never fires on real work -- only
+// on a loop that has actually stopped advancing.
+const WATCHDOG_STALL_THRESHOLD_MS = 20 * 60_000;
+const WATCHDOG_CHECK_INTERVAL_MS = 60_000;
+
+async function heartbeatWatchdog() {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    await sleep(WATCHDOG_CHECK_INTERVAL_MS);
+    const now = Date.now();
+    const stalled = Object.entries(heartbeat).filter(([, last]) => now - last > WATCHDOG_STALL_THRESHOLD_MS);
+    if (stalled.length > 0) {
+      const detail = stalled.map(([name, last]) => `${name} (silent ${Math.round((now - last) / 60_000)}m)`).join(', ');
+      log(`FATAL watchdog: ${detail} — exiting so start-agent.command's restart loop can recover`);
+      // Give the log line a moment to actually flush to the file before the
+      // process disappears -- console.log to a redirected file is not
+      // guaranteed synchronous.
+      await sleep(1000);
+      process.exit(1);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
 // Matching poll loop (Stage 11)
 // ---------------------------------------------------------------------
 
@@ -196,6 +238,7 @@ async function matchingLoop() {
   log(`matching loop starting (poll every ${MATCH_POLL_INTERVAL_MS}ms)`);
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    heartbeat.matching = Date.now();
     await matchingTick();
     await sleep(MATCH_POLL_INTERVAL_MS);
   }
@@ -276,9 +319,14 @@ async function convertHeicToJpeg(srcPath) {
 // Posted one card at a time rather than as a batch so a single unusable entry
 // costs only itself -- same reasoning as the skill's old "don't stop the loop
 // on one card's failure" rule.
-async function postExtractedCards({ cards, folderCode, hash, sourceImagePath, storagePrefix, inboundMessageId }) {
+async function postExtractedCards({ cards, folderCode, hash, sourceImagePath, storagePrefix, inboundMessageId, sourceType }) {
   const failures = [];
   let created = 0;
+  // contacts-from-ocr defaults to 'card_photo' if this is omitted -- only
+  // override it for the one other shape process-cards can now report, so a
+  // typo'd/unexpected sourceType value falls back to the safe default rather
+  // than writing an arbitrary string into contacts.source.
+  const source = sourceType === 'directory_listing' ? 'directory_photo' : undefined;
 
   for (const card of cards) {
     const label = [card.firstName, card.lastName].filter(Boolean).join(' ') || `card ${card.index}`;
@@ -306,6 +354,7 @@ async function postExtractedCards({ cards, folderCode, hash, sourceImagePath, st
       sourceImagePath,
       ...(card.cropFileName ? { croppedImagePath: `${storagePrefix}/${card.cropFileName}` } : {}),
       ...(inboundMessageId ? { inboundMessageId } : {}),
+      ...(source ? { source } : {}),
     };
 
     try {
@@ -440,6 +489,7 @@ async function processPhotoMessage(message) {
       cards: extraction.cards,
       folderCode: event.folder_code,
       hash,
+      sourceType: extraction.sourceType,
       sourceImagePath: message.storage_path,
       storagePrefix,
       inboundMessageId: message.id,
@@ -487,6 +537,7 @@ async function photoLoop() {
   log(`sms-photo loop starting (poll every ${PHOTO_POLL_INTERVAL_MS}ms)`);
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    heartbeat.photo = Date.now();
     await photoTick();
     await sleep(PHOTO_POLL_INTERVAL_MS);
   }
@@ -641,6 +692,18 @@ async function linkTranscriptToContacts(message, transcript, prefetched) {
   return attachExcerpts(toAttach);
 }
 
+// Found 2026-09-21: this had no cooldown at all -- every message still
+// orphaned within LINK_RETRY_WINDOW_MINUTES got a fresh attribute-voice-memo
+// call on every single transcription-loop tick (every 20s), forever, with no
+// escalating backoff. During a Claude usage-limit outage this meant the same
+// one contact was retried, and failed, roughly every 29s for over 15 minutes
+// straight -- the exact "amplification" shape flagged elsewhere in this repo
+// (claim_pending_contacts' own cooldown exists for the same reason). In
+// memory only (not persisted) since losing it on a restart just means one
+// message retries a bit sooner than ideal once, not a correctness issue.
+const RETRY_LINK_COOLDOWN_MS = 2 * 60_000;
+const lastRetryLinkAttemptAt = new Map();
+
 // Sweeps completed memos whose first-attempt link (in processAudioMessage,
 // right after transcribing) came up empty, and retries the same
 // correlation now that more time has passed — the photo/contact side of
@@ -664,6 +727,10 @@ async function retryOrphanedTranscripts() {
 
   const orphaned = (data ?? []).filter((m) => !m.matched_contact_ids || m.matched_contact_ids.length === 0);
   for (const message of orphaned) {
+    const lastAttempt = lastRetryLinkAttemptAt.get(message.id) ?? 0;
+    if (Date.now() - lastAttempt < RETRY_LINK_COOLDOWN_MS) continue;
+    lastRetryLinkAttemptAt.set(message.id, Date.now());
+
     try {
       const matchedContactIds = await linkTranscriptToContacts(message, message.transcript);
       await supabase
@@ -672,6 +739,7 @@ async function retryOrphanedTranscripts() {
         .eq('id', message.id);
       if (matchedContactIds.length > 0) {
         log(`retry-link OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
+        lastRetryLinkAttemptAt.delete(message.id);
       }
     } catch (err) {
       log(`retry-link ERROR: ${message.id} — ${err.message ?? err}`);
@@ -836,6 +904,7 @@ async function transcriptionLoop() {
   log(`transcription loop starting (poll every ${TRANSCRIPTION_POLL_INTERVAL_MS}ms)`);
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    heartbeat.transcription = Date.now();
     await transcriptionTick();
     await sleep(TRANSCRIPTION_POLL_INTERVAL_MS);
   }
@@ -937,6 +1006,7 @@ async function intentLoop() {
   log(`intent loop starting (poll every ${INTENT_POLL_INTERVAL_MS}ms)`);
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    heartbeat.intent = Date.now();
     await intentTick();
     await sleep(INTENT_POLL_INTERVAL_MS);
   }
@@ -1109,6 +1179,7 @@ async function noteLoop() {
   log(`note loop starting (poll every ${NOTE_POLL_INTERVAL_MS}ms)`);
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    heartbeat.note = Date.now();
     await noteTick();
     await sleep(NOTE_POLL_INTERVAL_MS);
   }
@@ -1164,5 +1235,7 @@ await reconcileStaleNoteSubmissions();
 // Five independent, concurrently-running loops in one process — a slow
 // process-cards run (up to 15 min) or note extraction (up to 5) must not
 // delay the 20s matching poll, and transcription/intent classification each
-// run independently of the others.
-await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop(), noteLoop()]);
+// run independently of the others. heartbeatWatchdog is a sixth: it never
+// does pipeline work, only exits the process if one of the other five stops
+// advancing (see its own comment above).
+await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop(), noteLoop(), heartbeatWatchdog()]);
