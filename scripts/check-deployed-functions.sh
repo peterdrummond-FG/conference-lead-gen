@@ -9,10 +9,20 @@
 # after the migration that cleaned up the junk they produced. Nothing
 # compared the two lists, so nobody knew.
 #
-# Retired functions are expected to stay deployed as 410 stubs (there is no
-# function-deletion API wired up for this project), so they are listed in
-# RETIRED below rather than treated as drift. Anything deployed that is
-# neither in supabase/functions/ nor in RETIRED is a finding.
+# A retired function can either stay deployed as a 410 stub (RETIRED below)
+# or be deleted outright via the Management API's
+# `DELETE /v1/projects/{ref}/functions/{slug}` (needs SUPABASE_ACCESS_TOKEN;
+# there's no MCP tool for it, so it's a one-off curl, not part of
+# deploy-functions.mjs). Deleted is preferred when nothing still calls or
+# links the slug anywhere (docs, monitoring, a client that hardcodes the
+# URL) -- ten stubs with no such references (auth-*, bootstrap-admins-
+# oneoff, debug-embed, districts-create, reps-*, schools-create) were
+# deleted 2026-09-22. `transcribe-voice-memo` stays as a stub instead: it's
+# referenced by name in docs/ARCHITECTURE.md and README.md as the
+# now-retired precursor to local-agent's Whisper-CLI transcription path,
+# and keeping it 410ing is what makes that history checkable rather than
+# just asserted. Anything deployed that is neither in supabase/functions/
+# nor in RETIRED is a finding.
 set -euo pipefail
 
 ref="${SUPABASE_PROJECT_REF:-yrvppufkerbjpvrxniot}"
@@ -21,16 +31,6 @@ ref="${SUPABASE_PROJECT_REF:-yrvppufkerbjpvrxniot}"
 # that have been retired. Adding a name here is a deliberate decision --
 # verify it really does answer 410 before you do (see the probe below).
 RETIRED=(
-  auth-change-pin
-  auth-verify-pin
-  bootstrap-admins-oneoff
-  debug-embed
-  districts-create
-  reps-delete
-  reps-list
-  reps-upsert
-  reps-verify-pin
-  schools-create
   transcribe-voice-memo
 )
 
