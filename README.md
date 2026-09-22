@@ -36,7 +36,13 @@ review → export.
    browser confirms it actually received the file.
 
 Voice memos are transcribed locally (Whisper CLI) and attributed to the right
-contact, then classified hot/warm/cold.
+contact(s) — a memo can cover more than one person — then classified
+hot/warm/cold. Attribution and OCR both retry automatically against a
+persisted attempt/cooldown state (not a fixed time window) until the person
+they're about actually exists as a contact; a memo or photo that never
+resolves surfaces in `/review` instead of silently disappearing or
+attaching to the wrong person. See `docs/ARCHITECTURE.md`'s "Claim-based
+retry" convention.
 
 ## Stack
 

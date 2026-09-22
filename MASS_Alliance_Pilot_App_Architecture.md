@@ -150,7 +150,9 @@ afterward resolves to that event until they text a different code.
 | MediaContentType / StoragePath | text | nullable — set once the webhook's background upload to `contact-photos`/`voice-memos` completes |
 | Transcript | text | nullable — Whisper output, only for `audio` rows |
 | MatchedContactIds | uuid[] | nullable — which `Contacts` row(s) a voice memo's transcript got merged into |
-| Attempts / Error | int / text | retry bookkeeping, same shape as `Contacts.MatchAttempts` |
+| Attempts / Error | int / text | legacy retry counter, superseded 2026-09-22 by the columns below (kept, unwritten, per this repo's append-only migration convention) |
+| LinkStatus / LinkAttempts / LastLinkAttemptAt | text / int / timestamptz | audio only — `unlinked` / `linked` / `no_candidate_found`, same claim/cooldown shape as `Contacts.MatchStatus`/`MatchAttempts`/`LastMatchAttemptAt`. See section 9. |
+| ProcessingAttempts / LastProcessingAttemptAt / ErrorClass | int / timestamptz / text | OCR/transcription's own claim/cooldown state; `ErrorClass` is `transient` (auto-retried) or `terminal` (needs a human's manual retry) |
 
 **`ReviewStatus` is no longer just about extraction quality.** A record only
 auto-approves if `ExtractionConfidence` is high-or-null, `MatchConfidence` is
@@ -600,11 +602,43 @@ rather than duplicated for the new intake path:
   no-metered-API-key approach used everywhere else in this pipeline — the
   trigger is dropped (`20260903000000_drop_audio_transcription_trigger.sql`),
   and the old Edge Function's source is left in the repo for reference only,
-  unused. **No OpenAI account or key is needed anywhere in this app.** A
-  transcript gets correlated to a linked contact by phone number + a
-  15-minute window around a `photo` message from the same sender, and merged
-  into that `Contact`'s `InteractionNotes` (append, not overwrite) — logic
-  ported verbatim from the retired Edge Function.
+  unused. **No OpenAI account or key is needed anywhere in this app.**
+
+**Attribution (updated 2026-09-22 — supersedes the phone+15-minute-window
+description in earlier drafts of this doc).** A transcript is never blindly
+merged into "the" nearby contact — a memo can name more than one person, and
+a rep's most-recently-captured contact is not reliably who a given memo is
+about. Once transcribed, the memo is matched against every contact captured
+by that same rep at that same event via `card_photo` **or** `directory_photo`
+(the `attribute-voice-memo` skill, given the full transcript and every
+candidate together so it can split a multi-person memo and tell similarly-
+named people apart); each excerpt is merged into that contact's
+`InteractionNotes` (append, not overwrite). If nothing matches confidently —
+zero candidates yet, or the skill can't place the transcript among the ones
+it has — the row is left `LinkStatus = 'unlinked'` rather than guessed at,
+and retried later via `claim_unlinked_audio_messages` (see below) once a
+better candidate set might exist. It never falls back to "attach the whole
+transcript to whoever's card is newest" — that shipped originally as a
+cost/complexity shortcut and, in production, silently glued unrelated
+conversations onto real contacts' notes (see `docs/ENGINEERING-LESSONS.md`
+#14).
+
+**Retry is claim-based, not time-boxed.** Both `photoLoop`'s OCR step and
+voice-memo linking retry via an atomic
+`UPDATE ... WHERE attempts < max AND (cooldown elapsed) ... RETURNING *`
+against state persisted on the `InboundMessages` row itself
+(`LinkStatus`/`LinkAttempts`/`LastLinkAttemptAt` for linking,
+`ProcessingAttempts`/`LastProcessingAttemptAt`/`ErrorClass` for OCR/
+transcription) — the same shape `matchingLoop`'s `claim_pending_contacts`
+already used for CRM matching, not a fixed window measured from when the
+message arrived. A photo OCR failure is classified `transient` (a rate limit,
+a timeout — auto-retried) or `terminal` (no legible card — waits for a
+human's manual retry, `inbound-messages-retry`); previously OCR had no retry
+at all, so a single transient failure stranded a real card forever. A memo or
+photo that exhausts its retries, or a human hasn't yet resolved, shows up in
+`/review`'s unresolved-intake panel instead of silently vanishing. See
+`docs/ARCHITECTURE.md`'s "Claim-based retry" convention for the full pattern
+and `20260922110000_voice_memo_link_state_and_ocr_retry.sql`.
 
 Both loops use the same optimistic-claim pattern as `matchingLoop`'s stuck-row
 handling (an `UPDATE ... WHERE status = 'pending_*'` that returns nothing if
@@ -739,6 +773,21 @@ past that threshold.
   from function logs, Sept 15).
 - **Twilio is live** — A2P 10DLC campaign with public Privacy Policy and Terms
   pages at `/privacy` and `/terms`.
+
+**Resolved since (Sept 22, 2026):**
+- **Voice-memo attribution and OCR retry** — see section 9's updated
+  description, `docs/ARCHITECTURE.md`'s "Claim-based retry" convention, and
+  `docs/ENGINEERING-LESSONS.md` #14. A live-data audit found 14 of 33 voice
+  memos had never attached to any contact, and several others had a full
+  transcript force-attached to the wrong one (candidates were filtered to
+  `card_photo` only, missing the newer `directory_photo` source; two
+  "better than losing the memo" fallbacks blind-attached to whoever's card
+  was most recent when attribution couldn't confidently place a memo).
+  Fixed the candidate filter, removed both fallbacks, replaced the
+  time-window retry with the persisted claim-based state matching's own
+  pipeline already used, and gave photo OCR failures a retry path for the
+  first time. Confirmed live: every voice memo on the TOSS conference
+  (the event being worked when this was found) is now correctly assigned.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
