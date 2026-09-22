@@ -245,6 +245,37 @@ async function matchingLoop() {
 }
 
 // ---------------------------------------------------------------------
+// Shared photo/audio processing-failure classification
+// ---------------------------------------------------------------------
+// 2026-09-22 audit: OCR (process-cards) and transcription failures had no
+// retry at all -- one bad attempt left status='failed' forever, unlike
+// contacts matching's own claim_pending_contacts cooldown/attempts retry.
+// Seen live: inbound_messages row ba97af88 failed with "You've hit your
+// session limit" (a Claude usage-limit blip, not a bad photo) and just sat
+// there. reconcile_retryable_failed_inbound_messages (see
+// 20260922110000_voice_memo_link_state_and_ocr_retry.sql) now resurrects a
+// 'transient' failure for another attempt; this classifies which is which.
+//
+// Deliberately a short allowlist of known-permanent failures, not a
+// denylist of known-transient ones: retrying a handful of times against an
+// error we don't recognize is cheap and bounded (PROCESSING_MAX_ATTEMPTS
+// below), while wrongly calling a real failure "terminal" strands the item
+// exactly like before this existed. Unknown defaults to transient.
+const TERMINAL_ERROR_PATTERNS = [
+  // process-cards itself decided there is no card in the photo -- retrying
+  // the same bytes can't change that answer.
+  /no legible business card detected/i,
+  // Our own defence-in-depth checks (agent.mjs) on a value that's a
+  // deterministic function of this row's id/path -- retrying with identical
+  // inputs fails identically every time.
+  /refusing to (build a prompt|upload)/i,
+];
+
+function classifyProcessingError(message) {
+  return TERMINAL_ERROR_PATTERNS.some((re) => re.test(message)) ? 'terminal' : 'transient';
+}
+
+// ---------------------------------------------------------------------
 // SMS card-photo poll loop (Stage 13)
 // ---------------------------------------------------------------------
 // Card photos texted to the Twilio number land in inbound_messages
@@ -268,6 +299,17 @@ const PHOTO_POLL_INTERVAL_MS = Number(process.env.PHOTO_POLL_INTERVAL_MS ?? 20_0
 // multi-card sheet needs well past what a single-card photo ever did.
 const PHOTO_CLAUDE_TIMEOUT_MS = Number(process.env.PHOTO_CLAUDE_TIMEOUT_MS ?? 900_000);
 const SMS_PHOTO_WORKDIR = path.join(__dirname, '.processing-sms');
+// How many times, and how far apart, a 'transient' OCR/transcription
+// failure (see classifyProcessingError above) gets resurrected for another
+// attempt. Shorter horizon than LINK_MAX_ATTEMPTS/LINK_RETRY_DELAY_MINUTES
+// on purpose: a transient failure here is a rate limit or a timeout, which
+// clears in minutes, not the "person never captured yet" uncertainty voice
+// linking is bounded against. 10 attempts x 5 minutes = ~50 minutes of
+// retrying before a real, still-failing case is left for a human via the
+// existing 'failed' status (a terminal failure never reaches this cap at
+// all — see reconcile_retryable_failed_inbound_messages).
+const PROCESSING_MAX_ATTEMPTS = Number(process.env.PROCESSING_MAX_ATTEMPTS ?? 10);
+const PROCESSING_RETRY_DELAY_MINUTES = Number(process.env.PROCESSING_RETRY_DELAY_MINUTES ?? 5);
 
 async function findNextPendingPhotoMessage() {
   const { data, error } = await supabase
@@ -287,11 +329,22 @@ async function findNextPendingPhotoMessage() {
 // null here instead of being double-processed. claimed_at lets a startup
 // sweep (reconcileStaleInboundMessages, below) tell a genuinely stuck row
 // (crash mid-run) apart from one still legitimately being worked on.
-async function claimPhotoMessage(id) {
+//
+// Also bumps processing_attempts/last_processing_attempt_at here, on the
+// very first attempt, not just when reconcile_retryable_failed_inbound_messages
+// resurrects a failed row later — so the attempt count this row's eventual
+// error_class='transient' retries get capped against always reflects every
+// attempt made, not just the resurrected ones.
+async function claimPhotoMessage(candidate) {
   const { data, error } = await supabase
     .from('inbound_messages')
-    .update({ status: 'processing', claimed_at: new Date().toISOString() })
-    .eq('id', id)
+    .update({
+      status: 'processing',
+      claimed_at: new Date().toISOString(),
+      processing_attempts: (candidate.processing_attempts ?? 0) + 1,
+      last_processing_attempt_at: new Date().toISOString(),
+    })
+    .eq('id', candidate.id)
     .eq('status', 'pending_ocr')
     .select('*')
     .maybeSingle();
@@ -509,7 +562,9 @@ async function processPhotoMessage(message) {
     );
   } catch (err) {
     const reason = err.message ?? String(err);
-    await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
+    await supabase.from('inbound_messages')
+      .update({ status: 'failed', error: reason, error_class: classifyProcessingError(reason) })
+      .eq('id', message.id);
     log(`photo FAIL: ${message.id} — ${reason}`);
   } finally {
     // Scratch only — the durable copy is Storage, not this directory.
@@ -517,12 +572,35 @@ async function processPhotoMessage(message) {
   }
 }
 
+// Resurrects any photo/audio row stuck at status='failed' with
+// error_class='transient' whose cooldown has elapsed, back to its normal
+// pending_* status — the counterpart to reconcileStaleInboundMessages
+// (which un-sticks a crashed 'processing' row) for a failed one. Runs here,
+// once per photo-loop tick, rather than duplicated in transcriptionTick too
+// — this one sweep covers both kinds since the underlying query isn't
+// kind-specific.
+async function reconcileRetryableFailedMessages() {
+  const { data, error } = await supabase.rpc('reconcile_retryable_failed_inbound_messages', {
+    max_attempts: PROCESSING_MAX_ATTEMPTS,
+    retry_delay_minutes: PROCESSING_RETRY_DELAY_MINUTES,
+  });
+  if (error) {
+    log(`ERROR reconciling retryable failed inbound_messages: ${error.message ?? error}`);
+    return;
+  }
+  if (data && data.length > 0) {
+    log(`resurrected ${data.length} retryable failed inbound_messages row(s) back to pending`);
+  }
+}
+
 async function photoTick() {
+  await reconcileRetryableFailedMessages();
+
   let message;
   try {
     const candidate = await findNextPendingPhotoMessage();
     if (!candidate) return;
-    message = await claimPhotoMessage(candidate.id);
+    message = await claimPhotoMessage(candidate);
   } catch (err) {
     log(`ERROR finding/claiming pending photo message: ${err.message ?? err}`);
     return;
@@ -566,21 +644,21 @@ async function photoLoop() {
 // landed on one contact and the other never got their part. See
 // linkTranscriptToContacts below and the attribute-voice-memo skill.
 const TRANSCRIPTION_POLL_INTERVAL_MS = Number(process.env.TRANSCRIPTION_POLL_INTERVAL_MS ?? 20_000);
-// How long a transcribed memo keeps getting retried against newly-created
-// contacts before we give up. Set comfortably above PHOTO_CLAUDE_TIMEOUT_MS
-// (15 min) — the photo/OCR pipeline that creates the contact a memo
-// correlates against can legitimately take that long for a busy multi-card
-// sheet, and transcription (a single Whisper call) routinely finishes
-// first. Without a retry, that ordering — correct arrival order, "wrong"
-// finish order — permanently orphans the memo: matched_contact_ids stays
-// empty forever with no way to reattach it short of manual SQL.
-const LINK_RETRY_WINDOW_MINUTES = 20;
-// How close a sole candidate's photo must be to this memo's arrival for the
-// single-candidate fast path below to trust it's about that person with no
-// name-matching check at all. Without this, a rep's only card-photo contact
-// at an event would catch *every* later voice memo verbatim, including ones
-// recorded hours afterward about something unrelated.
-const SINGLE_CANDIDATE_WINDOW_MINUTES = 20;
+// 2026-09-22 audit: a fixed received_at-based retry window (previously 20
+// minutes) can't be sized correctly, because the actual blocker — the
+// mentioned person's contact landing — has no bound of its own: a busy
+// multi-card OCR pass, a rep re-texting a photo that failed OCR hours later,
+// a directory-page batch processed after the event, etc. Linking state is
+// now persisted per-message (inbound_messages.link_status/link_attempts/
+// last_link_attempt_at — see claim_unlinked_audio_messages and
+// 20260922110000_voice_memo_link_state_and_ocr_retry.sql) instead of
+// inferred from message age, so a memo stays eligible for LINK_MAX_ATTEMPTS
+// tries regardless of how long ago it arrived. Same reasoning as
+// contacts.match_attempts/MAX_MATCH_ATTEMPTS above (claim_pending_contacts)
+// — reusing that proven shape rather than the old in-memory-cooldown window.
+const LINK_MAX_ATTEMPTS = Number(process.env.LINK_MAX_ATTEMPTS ?? 50);
+const LINK_RETRY_DELAY_MINUTES = Number(process.env.LINK_RETRY_DELAY_MINUTES ?? 20);
+const LINK_CLAIM_LIMIT = Number(process.env.LINK_CLAIM_LIMIT ?? 3);
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
 
 // Shared write path for every branch below — append-not-overwrite, same as
@@ -616,20 +694,38 @@ async function attachExcerpts(items) {
   return matchedContactIds;
 }
 
-// Candidates for a memo are every card_photo contact captured at the same
-// event BY THE SAME REP (joined through source_message_id -> inbound_messages
-// -> from_phone) — not just the one photo immediately preceding this memo,
-// and not every contact at the event regardless of who captured them (a rep
-// can only ever be describing someone whose card *they* took, and pooling
-// every rep's contacts would both be wrong and make the candidate list grow
-// unboundedly over a multi-rep event's life). Forms have no associated
-// audio, so source is always 'card_photo' here.
+// Every intake source a voice memo could plausibly be describing — i.e.
+// every source with a real inbound_messages row carrying from_phone, which
+// is what the join below scopes candidates to. 'form'/'note' contacts have
+// no associated phone-linked inbound_messages row, so they can never appear
+// here regardless of this list.
+//
+// 2026-09-22 audit: this was hardcoded to just 'card_photo' until now.
+// 'directory_photo' shipped 2026-09-21 (contacts extracted from a printed
+// attendee-roster photo instead of an individual business card) and was
+// never added here, so every directory-photo contact was invisible to
+// voice-memo attribution — both as a legitimate attach target (their own
+// memo could never find them) and, worse, it starved the candidate list,
+// which made the old "nothing matched" fallback misattach memos about them
+// onto an unrelated card_photo contact instead (see git history for the
+// removed fallback). Add any future non-voice intake source here
+// deliberately, not by omission.
+const VOICE_CANDIDATE_SOURCES = ['card_photo', 'directory_photo'];
+
+// Candidates for a memo are every eligible-source contact captured at the
+// same event BY THE SAME REP (joined through source_message_id ->
+// inbound_messages -> from_phone) — not just the one photo immediately
+// preceding this memo, and not every contact at the event regardless of who
+// captured them (a rep can only ever be describing someone whose card
+// *they* took or whose name was on a roster page *they* photographed, and
+// pooling every rep's contacts would both be wrong and make the candidate
+// list grow unboundedly over a multi-rep event's life).
 async function findCandidateContacts(eventId, fromPhone) {
   const { data, error } = await supabase
     .from('contacts')
     .select('id, first_name, last_name, email, phone, title, interaction_notes, created_at, source_msg:inbound_messages!contacts_source_message_id_fkey!inner(from_phone)')
     .eq('event_id', eventId)
-    .eq('source', 'card_photo')
+    .in('source', VOICE_CANDIDATE_SOURCES)
     .eq('source_msg.from_phone', fromPhone)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -637,30 +733,39 @@ async function findCandidateContacts(eventId, fromPhone) {
 }
 
 // Used both by the first attempt (right after transcribing) and every retry
-// pass below (retryOrphanedTranscripts) — re-running this against a
+// pass below (relinkUnlinkedAudioMessages) — re-running this against a
 // possibly-grown candidate list is exactly the right retry behavior.
+//
+// Returns { matchedContactIds, ranAttribution }. ranAttribution is false
+// only when there were zero candidates to reason about at all — that's not
+// a real attempt (nothing was evaluated), so callers must not count it
+// against link_attempts, unlike a real invocation that came back empty.
+//
+// 2026-09-22 audit: this used to have two fallbacks that force-attached the
+// FULL transcript to a contact the skill never actually matched — a
+// single-candidate fast path (skipped attribution entirely whenever exactly
+// one card-photo contact existed) and a "nobody matched, so attach to
+// whichever contact was captured most recently" default. Both were meant as
+// "better than losing the memo," but in production they silently glued
+// unrelated conversations onto real people's CRM notes (Bob Eby and Edwin
+// Jarnagin both picked up excerpts about Adam Stone, Katina Simmons, and
+// Charlotte McCoy/Jennifer Field — none of whom they are). Neither fallback
+// remains: when attribution can't confidently place the transcript, the
+// memo is simply left unlinked and retried later via link_status, exactly
+// like the "nothing to attach to yet" case below always has been.
 async function linkTranscriptToContacts(message, transcript, prefetched) {
-  if (!message.event_id) return []; // no event bound — nothing to scope to (should be unreachable in practice)
+  if (!message.event_id) return { matchedContactIds: [], ranAttribution: false }; // no event bound — nothing to scope to (should be unreachable in practice)
 
   // processAudioMessage already fetched this exact set to build the Whisper
   // name prompt; the retry sweep has nothing prefetched and passes none.
   const candidates = prefetched ?? await findCandidateContacts(message.event_id, message.from_phone);
-  if (candidates.length === 0) return []; // nothing to attach to yet; retry sweep will catch it later
+  if (candidates.length === 0) return { matchedContactIds: [], ranAttribution: false }; // nothing to attach to yet; retry sweep will catch it later
 
-  if (candidates.length === 1) {
-    const minutesSincePhoto = (new Date(message.received_at).getTime() - new Date(candidates[0].created_at).getTime()) / 60_000;
-    if (minutesSincePhoto >= 0 && minutesSincePhoto <= SINGLE_CANDIDATE_WINDOW_MINUTES) {
-      // No ambiguity possible and recent enough to trust without a name
-      // check — skip the LLM call and attach the full transcript directly,
-      // same as the old behavior, at zero extra cost.
-      return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
-    }
-    // Only candidate, but well outside the window (a rep's one card-photo
-    // contact all event, memo recorded hours later about something else) —
-    // fall through to attribute-voice-memo below so the transcript actually
-    // has to name this person before it gets attached to them.
-  }
-
+  // Always run attribution, even for a single candidate — the skill's own
+  // ambiguity/no-name-mentioned rules handle that case correctly (see
+  // SKILL.md), and the single-candidate fast path this used to take is
+  // exactly what let an unrelated transcript get glued onto a real contact.
+  // Worth the extra claude -p call given the evidence above.
   const skillInput = {
     transcript,
     candidates: candidates.map((c) => ({
@@ -678,68 +783,74 @@ async function linkTranscriptToContacts(message, transcript, prefetched) {
   const attributed = (results ?? []).filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0);
 
   if (attributed.length === 0) {
-    // Memo names no one explicitly (e.g. "great conversation, really
-    // knowledgeable" with no name spoken) — fall back to the single
-    // most-recently-captured candidate, preserving the old good-case
-    // default instead of regressing to "attach to nobody."
-    return attachExcerpts([{ contact: candidates[0], excerpt: transcript }]);
+    // Memo names no one the skill could confidently place among today's
+    // candidates — leave it unlinked rather than guessing. A new candidate
+    // (a slower OCR pass, a re-sent photo, a directory-page batch) may
+    // still show up and match on a later attempt.
+    return { matchedContactIds: [], ranAttribution: true };
   }
 
   const byId = new Map(candidates.map((c) => [c.id, c]));
   const toAttach = attributed
     .map((r) => ({ contact: byId.get(r.contactId), excerpt: r.excerpt }))
     .filter((x) => x.contact); // defensive: ignore an id the skill echoed that wasn't in the candidate list
-  return attachExcerpts(toAttach);
+  const matchedContactIds = await attachExcerpts(toAttach);
+  return { matchedContactIds, ranAttribution: true };
 }
 
-// Found 2026-09-21: this had no cooldown at all -- every message still
-// orphaned within LINK_RETRY_WINDOW_MINUTES got a fresh attribute-voice-memo
-// call on every single transcription-loop tick (every 20s), forever, with no
-// escalating backoff. During a Claude usage-limit outage this meant the same
-// one contact was retried, and failed, roughly every 29s for over 15 minutes
-// straight -- the exact "amplification" shape flagged elsewhere in this repo
-// (claim_pending_contacts' own cooldown exists for the same reason). In
-// memory only (not persisted) since losing it on a restart just means one
-// message retries a bit sooner than ideal once, not a correctness issue.
-const RETRY_LINK_COOLDOWN_MS = 2 * 60_000;
-const lastRetryLinkAttemptAt = new Map();
+// Applies one linkTranscriptToContacts result to its row: records any new
+// matches, and — only when an attempt was actually spent (ranAttribution) —
+// advances link_status to 'linked' on success or 'no_candidate_found' once
+// link_attempts has hit the cap without ever matching. currentAttempts is
+// the row's link_attempts AFTER this attempt (already incremented, either
+// by claim_unlinked_audio_messages for a retry, or by the +1 this function
+// applies itself for the first attempt).
+async function recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds) {
+  const patch = { matched_contact_ids: matchedContactIds };
+  if (matchedContactIds.length > 0) {
+    patch.link_status = 'linked';
+  } else if (ranAttribution && currentAttempts >= LINK_MAX_ATTEMPTS) {
+    // Exhausted every retry without ever finding a match — likely someone
+    // never captured through any intake path at all (e.g. only ever
+    // mentioned by voice, no card, no roster photo). Surfaced to a human
+    // via Review's unmatched-memos list rather than retried forever.
+    patch.link_status = 'no_candidate_found';
+  }
+  const { error } = await supabase.from('inbound_messages').update(patch).eq('id', message.id);
+  if (error) throw error;
+}
 
-// Sweeps completed memos whose first-attempt link (in processAudioMessage,
-// right after transcribing) came up empty, and retries the same
-// correlation now that more time has passed — the photo/contact side of
-// the race may well have finished since. Runs every transcription poll
-// tick; a memo that never finds a contact within LINK_RETRY_WINDOW_MINUTES
-// ages out of the query and is left alone (a memo with genuinely nothing
-// to attach to is an expected, valid outcome, not a bug).
-async function retryOrphanedTranscripts() {
-  const windowStart = new Date(Date.now() - LINK_RETRY_WINDOW_MINUTES * 60_000).toISOString();
-  const { data, error } = await supabase
-    .from('inbound_messages')
-    .select('id, event_id, from_phone, received_at, transcript, matched_contact_ids, attempts')
-    .eq('kind', 'audio')
-    .eq('status', 'completed')
-    .not('transcript', 'is', null)
-    .gte('received_at', windowStart);
-  if (error) {
-    log(`ERROR finding orphaned transcripts: ${error.message ?? error}`);
+// Companion to matchingLoop's claim_pending_contacts: atomically claims
+// still-unlinked audio messages (bumping link_attempts/last_link_attempt_at
+// server-side in the same statement — see
+// 20260922110000_voice_memo_link_state_and_ocr_retry.sql) and retries
+// attribution against whatever candidates exist now. Replaces the old
+// retryOrphanedTranscripts, which inferred "orphaned" from an empty
+// matched_contact_ids plus a fixed received_at window and tracked its
+// cooldown in an in-memory Map that a restart wiped — link_status/
+// link_attempts/last_link_attempt_at persist the same state
+// claim_pending_contacts already proves out for contact matching.
+async function relinkUnlinkedAudioMessages() {
+  let claimed;
+  try {
+    const { data, error } = await supabase.rpc('claim_unlinked_audio_messages', {
+      max_attempts: LINK_MAX_ATTEMPTS,
+      retry_delay_minutes: LINK_RETRY_DELAY_MINUTES,
+      claim_limit: LINK_CLAIM_LIMIT,
+    });
+    if (error) throw error;
+    claimed = data ?? [];
+  } catch (err) {
+    log(`ERROR claiming unlinked audio messages: ${err.message ?? err}`);
     return;
   }
 
-  const orphaned = (data ?? []).filter((m) => !m.matched_contact_ids || m.matched_contact_ids.length === 0);
-  for (const message of orphaned) {
-    const lastAttempt = lastRetryLinkAttemptAt.get(message.id) ?? 0;
-    if (Date.now() - lastAttempt < RETRY_LINK_COOLDOWN_MS) continue;
-    lastRetryLinkAttemptAt.set(message.id, Date.now());
-
+  for (const message of claimed) {
     try {
-      const matchedContactIds = await linkTranscriptToContacts(message, message.transcript);
-      await supabase
-        .from('inbound_messages')
-        .update({ matched_contact_ids: matchedContactIds, attempts: (message.attempts ?? 0) + 1 })
-        .eq('id', message.id);
+      const { matchedContactIds, ranAttribution } = await linkTranscriptToContacts(message, message.transcript);
+      await recordLinkResult(message, message.link_attempts, ranAttribution, matchedContactIds);
       if (matchedContactIds.length > 0) {
         log(`retry-link OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
-        lastRetryLinkAttemptAt.delete(message.id);
       }
     } catch (err) {
       log(`retry-link ERROR: ${message.id} — ${err.message ?? err}`);
@@ -762,12 +873,18 @@ async function findNextPendingAudioMessage() {
 
 // Same optimistic claim pattern as claimPhotoMessage — the WHERE clause
 // re-asserts status='pending_transcription', so a row already claimed
-// comes back null here instead of being double-processed.
-async function claimAudioMessage(id) {
+// comes back null here instead of being double-processed. Also bumps
+// processing_attempts the same way claimPhotoMessage does — see its comment.
+async function claimAudioMessage(candidate) {
   const { data, error } = await supabase
     .from('inbound_messages')
-    .update({ status: 'processing', claimed_at: new Date().toISOString() })
-    .eq('id', id)
+    .update({
+      status: 'processing',
+      claimed_at: new Date().toISOString(),
+      processing_attempts: (candidate.processing_attempts ?? 0) + 1,
+      last_processing_attempt_at: new Date().toISOString(),
+    })
+    .eq('id', candidate.id)
     .eq('status', 'pending_transcription')
     .select('*')
     .maybeSingle();
@@ -822,10 +939,10 @@ async function processAudioMessage(message) {
   //      immediately, *before* attribution — attribution (attachExcerpts,
   //      which can partially fail per-contact) must never be able to lose a
   //      transcript that already succeeded, or flip a real success back to
-  //      'failed'. A failure here just logs; matched_contact_ids stays
-  //      however far attribution got (possibly empty), which is exactly
-  //      what makes retryOrphanedTranscripts's own query pick the row back
-  //      up on a later tick.
+  //      'failed'. A failure here just logs; matched_contact_ids/link_status
+  //      stay however far attribution got (possibly still 'unlinked'), which
+  //      is exactly what makes relinkUnlinkedAudioMessages's own claim pick
+  //      the row back up on a later tick.
   let localPath;
   try {
     const { data: blob, error: downloadError } = await supabase.storage
@@ -840,7 +957,9 @@ async function processAudioMessage(message) {
     await writeFile(localPath, bytes);
   } catch (err) {
     const reason = err.message ?? String(err);
-    await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
+    await supabase.from('inbound_messages')
+      .update({ status: 'failed', error: reason, error_class: classifyProcessingError(reason) })
+      .eq('id', message.id);
     log(`transcription FAIL: ${message.id} — ${reason}`);
     return;
   }
@@ -855,7 +974,9 @@ async function processAudioMessage(message) {
     transcript = await transcribeAudio(localPath, { prompt });
   } catch (err) {
     const reason = err.message ?? String(err);
-    await supabase.from('inbound_messages').update({ status: 'failed', error: reason }).eq('id', message.id);
+    await supabase.from('inbound_messages')
+      .update({ status: 'failed', error: reason, error_class: classifyProcessingError(reason) })
+      .eq('id', message.id);
     log(`transcription FAIL: ${message.id} — ${reason}`);
     await rm(localPath, { force: true }).catch(() => {});
     return;
@@ -868,8 +989,18 @@ async function processAudioMessage(message) {
   }).eq('id', message.id);
 
   try {
-    const matchedContactIds = await linkTranscriptToContacts(message, transcript, candidates);
-    await supabase.from('inbound_messages').update({ matched_contact_ids: matchedContactIds }).eq('id', message.id);
+    const { matchedContactIds, ranAttribution } = await linkTranscriptToContacts(message, transcript, candidates);
+    // This is the first attribution attempt for this row, so link_attempts
+    // goes from 0 -> 1 here (the retry sweep's own +1 happens server-side,
+    // inside claim_unlinked_audio_messages, for every attempt after this
+    // one).
+    const currentAttempts = ranAttribution ? (message.link_attempts ?? 0) + 1 : (message.link_attempts ?? 0);
+    if (ranAttribution) {
+      await supabase.from('inbound_messages')
+        .update({ link_attempts: currentAttempts, last_link_attempt_at: new Date().toISOString() })
+        .eq('id', message.id);
+    }
+    await recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds);
     log(`transcription OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
   } catch (err) {
     log(`attribution FAIL: ${message.id} — ${err.message ?? err}`);
@@ -883,7 +1014,7 @@ async function transcriptionTick() {
   try {
     const candidate = await findNextPendingAudioMessage();
     if (candidate) {
-      message = await claimAudioMessage(candidate.id);
+      message = await claimAudioMessage(candidate);
     }
   } catch (err) {
     log(`ERROR finding/claiming pending audio message: ${err.message ?? err}`);
@@ -896,8 +1027,8 @@ async function transcriptionTick() {
 
   // Runs every tick regardless of whether a new memo was just processed —
   // this is what catches memos whose contact didn't exist yet the first
-  // time around (see retryOrphanedTranscripts's own comment).
-  await retryOrphanedTranscripts();
+  // time around (see relinkUnlinkedAudioMessages's own comment).
+  await relinkUnlinkedAudioMessages();
 }
 
 async function transcriptionLoop() {

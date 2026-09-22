@@ -1,6 +1,6 @@
 ---
 name: attribute-voice-memo
-description: Given a voice-memo transcript and the list of contacts captured so far by the same rep at the same event, decide which parts of the transcript are about which contact, quoting only the relevant verbatim excerpt per person. Use when invoked headlessly by local-agent's transcription loop whenever a memo has 2+ candidate contacts to attribute against.
+description: Given a voice-memo transcript and the list of contacts captured so far by the same rep at the same event, decide which parts of the transcript are about which contact, quoting only the relevant verbatim excerpt per person. Use when invoked headlessly by local-agent's transcription loop whenever a memo has 1+ candidate contacts to attribute against — always run this rather than assuming a single candidate is safe to blind-attach to (2026-09-22: that assumption caused real misattached notes).
 ---
 
 # Attribute voice memo

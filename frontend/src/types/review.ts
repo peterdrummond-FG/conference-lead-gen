@@ -84,6 +84,32 @@ export interface UpdateContactPayload {
   contactIntent?: 'hot' | 'warm' | 'cold' | null;
 }
 
+// The two "went missing" shapes surfaced by inbound-messages-unresolved-list
+// (2026-09-22 voice-memo audit) — Review previously had no visibility into
+// either, since it only ever lists contacts.
+export interface UnresolvedAudioMemo {
+  id: string;
+  transcript: string | null;
+  receivedAt: string;
+  fromPhone: string;
+  eventId: string | null;
+  eventName: string | null;
+  linkStatus: 'unlinked' | 'no_candidate_found';
+  linkAttempts: number;
+}
+
+export interface FailedIntakeMessage {
+  id: string;
+  kind: 'photo' | 'audio';
+  receivedAt: string;
+  fromPhone: string;
+  eventId: string | null;
+  eventName: string | null;
+  error: string | null;
+  errorClass: 'transient' | 'terminal' | null;
+  processingAttempts: number;
+}
+
 export type Role = 'admin' | 'solutionsSuccess' | 'sales';
 
 export interface Profile {
