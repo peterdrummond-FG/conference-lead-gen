@@ -118,6 +118,8 @@
       </template>
     </div>
 
+    <UnresolvedIntakePanel :view-as-rep-id="sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null" />
+
     <div v-if="loading" class="text-center q-pa-lg">
       <q-spinner size="40px" />
     </div>
@@ -168,6 +170,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import ReviewContactCard from '@/components/ReviewContactCard.vue';
+import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import { useMasonryGrid, type MasonryItem } from '@/composables/useMasonryGrid';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
