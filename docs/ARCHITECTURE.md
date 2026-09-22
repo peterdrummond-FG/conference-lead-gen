@@ -59,6 +59,16 @@ confirm it really answers 410. Both halves matter: `districts-create` and
 `schools-create` were "retired" in everyone's mental model for three months
 while still serving public unauthenticated INSERTs.
 
+A 410 stub isn't the only option — a retired function with nothing still
+referencing its slug (no docs, no monitoring, no client hardcoding the URL)
+can be deleted outright via the Management API's
+`DELETE /v1/projects/{ref}/functions/{slug}` (needs `SUPABASE_ACCESS_TOKEN`;
+no MCP tool covers this, so it's a manual `curl`). Ten such stubs were
+deleted this way 2026-09-22 and dropped from `RETIRED`. Keep the stub
+instead of deleting when the slug is still referenced somewhere worth
+keeping checkable — `transcribe-voice-memo` stays deployed for exactly that
+reason (named in this repo's own history docs).
+
 ### Invoking a skill
 
 Every `claude -p` call goes through `local-agent/skill-runner.mjs`, which
