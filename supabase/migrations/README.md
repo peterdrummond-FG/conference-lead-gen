@@ -52,6 +52,38 @@ been replaced, the replacement is noted here instead of rewriting history.
   short-word budget, simplified to a single word since that's all a slug
   needs to be recognizable).
 
+## n8n migration additions
+
+- **`20260922100000_backfill_undocumented_functions.sql`** — during the n8n
+  migration's research phase, five functions turned up that live code calls
+  in production (`claim_contacts_needing_intent`, `export_reserve`,
+  `export_confirm`, `export_release_stale`, `check_submission_rate`) but had
+  no corresponding file anywhere in this directory — the committed migration
+  history was incomplete relative to the deployed schema. This migration
+  backfills them verbatim (pulled via `pg_get_functiondef` against the live
+  project); it changes nothing about current behavior.
+- **`20260922100100_n8n_circuit_breaker.sql`** — adds `circuit_breaker` (a
+  shared rate-limit cooldown row n8n's skill sub-workflows check/trip, since
+  n8n executions don't share process memory the way `local-agent`'s single
+  Node process did) and a narrowly-scoped `n8n_circuit_breaker` role. Purely
+  additive; does not touch `local-agent`/`watch-cards.command`, which remain
+  the live system until the n8n migration's later phases cut over.
+
+## Voice-memo link-state and OCR-retry (2026-09-22 audit)
+
+- **`20260922110000_voice_memo_link_state_and_ocr_retry.sql`** — adds
+  `inbound_messages.link_status`/`link_attempts`/`last_link_attempt_at`
+  (mirrors `contacts.match_status`/`match_attempts`/`last_match_attempt_at`)
+  and `processing_attempts`/`last_processing_attempt_at`/`error_class`, plus
+  `claim_unlinked_audio_messages` and
+  `reconcile_retryable_failed_inbound_messages`. Fixes voice memos going
+  permanently unattached or attaching to the wrong contact, and photo OCR
+  having no retry at all — see `docs/ARCHITECTURE.md`'s "Claim-based retry"
+  convention and `docs/ENGINEERING-LESSONS.md` #14 for the full incident.
+  Schema-only: `local-agent/agent.mjs` was updated in the same change to
+  actually use the new columns/functions, so there's no gap where the schema
+  exists but nothing reads or writes it.
+
 ## Watch out for
 
 - **`create or replace` with a changed argument list silently drops settings.**

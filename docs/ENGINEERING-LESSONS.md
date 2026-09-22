@@ -312,6 +312,44 @@ nothing about the cause.
 
 ---
 
+## 14. A guessing fallback is worse than a visibly pending state
+
+**What happened.** Voice-memo attribution had two fallbacks, both written
+under the reasoning "better than losing the memo entirely": a single-candidate
+fast path that skipped attribution and attached the *whole* transcript to
+whoever's card was photographed most recently, and a "nobody matched, so
+attach to whichever contact was captured most recently" default when the
+attribution skill came back empty. Both shipped deliberately, both read as
+reasonable in review — a memo that fails to attach at all looks like a worse
+outcome than one that attaches to *someone*.
+
+In production it was the opposite. A 2026-09-22 audit found real contacts'
+CRM notes silently polluted with other people's conversations — one contact's
+notes were entirely made of three different other people's excerpts, none of
+them about him. That's strictly worse than an empty field: an empty field is
+visibly incomplete; a wrong excerpt reads as ground truth to a human reviewer
+and to whatever feeds it into Zoho.
+
+Same root shape as #10 (unbounded retry) from the other direction: instead of
+retrying forever, the code gave up on retrying and substituted a guess. Both
+are a caller papering over "I don't have enough information yet" instead of
+saying so.
+
+**The rule.** When a pipeline step can't confidently resolve its output,
+leave the row in an explicit pending/unresolved state and make that state
+*visible* (a queue, a banner, a chip — see `inbound-messages-unresolved-list`
++ Review's unresolved-intake panel), rather than forcing a plausible-looking
+answer. A human can act correctly on "we don't know yet." A human cannot tell
+a confident-looking wrong answer from a right one without redoing the work
+themselves — which defeats the point of automating it.
+
+Ask, for any "attach the best guess" or "default to the first/most-recent
+candidate" code: what does a human reviewer see when this guess is wrong, and
+how would they ever notice? If the answer is "it looks identical to a correct
+result," that's the finding.
+
+---
+
 ## Checklist before shipping a feature
 
 - [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
@@ -328,3 +366,9 @@ nothing about the cause.
 - [ ] `node scripts/check-skill-profiles.mjs && cd local-agent && npm test`
 - [ ] Ran the real happy path once, not just the unit tests
 - [ ] Grepped for other places the same pattern applies
+- [ ] Any "can't confidently resolve this" path leaves an explicit, visible
+      pending state — never a best-guess default a reviewer can't tell apart
+      from a real result
+- [ ] Any new poll-loop retry uses the claim-based shape
+      (`claim_pending_contacts`/`claim_unlinked_audio_messages`), not a
+      time-window-from-receipt or in-process cooldown state

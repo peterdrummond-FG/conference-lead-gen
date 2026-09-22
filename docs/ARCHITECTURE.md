@@ -85,3 +85,40 @@ Skills never hold credentials. A skill returns JSON; the calling program
 Validated against a Zod schema in `local-agent/schemas.mjs` before anything is
 persisted. A schema failure is a pipeline failure: the row stays pending for a
 human, never half-written.
+
+### Claim-based retry, not a time window
+
+`claim_pending_contacts` (contact matching), `claim_unlinked_audio_messages`
+(voice-memo attribution) and `reconcile_retryable_failed_inbound_messages`
+(photo OCR / transcription) all share one shape: an atomic
+`UPDATE ... WHERE status = 'pending' AND attempts < max AND (cooldown
+elapsed) ... RETURNING *`, with the attempt count and cooldown timestamp
+persisted on the row itself, not tracked in the calling process. Copy this
+shape for any new retry loop rather than inventing a second one — two
+concrete failures came from not doing so:
+
+- Voice-memo linking used to gate retry on `received_at >= now() - 20min`
+  instead of on the row's own state. That's wrong whenever the real blocker
+  (the mentioned person's contact landing) takes longer than 20 minutes for
+  any reason — a busy multi-card OCR pass, a rep re-texting a photo that
+  failed OCR hours later, a directory-page batch processed after the event.
+  A time window can never be sized correctly against a blocker with no bound
+  of its own; only the row's real state can.
+- Its cooldown lived in an in-memory `Map` (`lastRetryLinkAttemptAt` in
+  `agent.mjs`, since removed), which a process restart silently wiped —
+  invisible in code review, since nothing about the shape looks wrong until
+  you ask "what survives a restart?"
+
+The same audit (2026-09-22) also found photo OCR had **no** retry
+mechanism at all — a transient failure (a Claude usage-limit blip, not a
+bad photo) permanently stranded the row at `status='failed'` with nothing
+ever looking at it again. `reconcile_retryable_failed_inbound_messages`
+closes that gap by classifying failures into `error_class`
+(`transient`/`terminal`) and only auto-resurrecting the former; a
+`terminal` one waits for a human's explicit retry
+(`inbound-messages-retry`), same pattern as `contacts-retry-match`.
+
+See `20260922110000_voice_memo_link_state_and_ocr_retry.sql` and
+`docs/ENGINEERING-LESSONS.md`'s entry on this incident for the full story,
+including why the previous code's "attach to *something* rather than lose
+the memo" fallbacks were worse than the problem they tried to solve.
