@@ -132,3 +132,25 @@ See `20260922110000_voice_memo_link_state_and_ocr_retry.sql` and
 `docs/ENGINEERING-LESSONS.md`'s entry on this incident for the full story,
 including why the previous code's "attach to *something* rather than lose
 the memo" fallbacks were worse than the problem they tried to solve.
+
+### Human override for what the automated pass leaves alone
+
+`claim_unlinked_audio_messages` retries a memo up to `LINK_MAX_ATTEMPTS`
+times against whatever candidates exist *at attempt time* — it can never
+close a memo out on its own, because "nobody yet" and "nobody ever" look
+identical from inside the loop. Review's unresolved-intake panel
+(`inbound-messages-unresolved-list`) surfaces exactly those two closing
+moves to a human instead:
+
+- `inbound-messages-assign` — attach the full transcript to a contact the
+  reviewer picks by hand (candidates from `inbound-messages-link-candidates`,
+  scoped to the same rep + event, but not restricted to
+  `VOICE_CANDIDATE_SOURCES` the way the automated pass is — a human has
+  already read the transcript and isn't guessing). Same idempotent
+  append-to-`interaction_notes` shape as `attachExcerpts` in `agent.mjs`.
+- `inbound-messages-delete` — discard a memo nobody will ever be able to
+  place. Scoped server-side to `kind='audio' AND link_status IN
+  ('unlinked','no_candidate_found')`, the same defense
+  `contacts-bulk-delete` uses against a stale client selection: a memo the
+  auto-linker just matched out from under the reviewer can never be
+  deleted through this endpoint.
