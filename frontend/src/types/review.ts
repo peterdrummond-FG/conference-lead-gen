@@ -98,6 +98,16 @@ export interface UnresolvedAudioMemo {
   linkAttempts: number;
 }
 
+// Assignment target for the "Assign to contact" action on an unmatched
+// voice memo — see inbound-messages-link-candidates.
+export interface LinkCandidateContact {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  title: string | null;
+}
+
 export interface FailedIntakeMessage {
   id: string;
   kind: 'photo' | 'audio';
