@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "firstName": { "type": "string" },
+    "lastName": { "type": "string" },
+    "alternateDistrictNames": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 300 }, "default": [] },
+    "alternateNameSpellings": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 }, "default": [] },
+    "nameCorrectionConfidence": { "type": ["string", "null"], "enum": ["high", "medium", "low", null], "default": null },
+    "institutionLevel": { "type": "string", "enum": ["central_office", "specific_campus", "unknown"], "default": "unknown" },
+    "institutionLevelCampusName": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "institutionLevelConfidence": { "type": "string", "enum": ["high", "medium", "low"], "default": "low" },
+    "institutionLevelAsOfDate": { "type": ["string", "null"], "maxLength": 40, "default": null },
+    "titleFinding": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "titleFindingConfidence": { "type": ["string", "null"], "enum": ["high", "medium", "low", null], "default": null },
+    "titleFindingAsOfDate": { "type": ["string", "null"], "maxLength": 40, "default": null },
+    "researchConfidence": { "type": "string", "enum": ["high", "medium", "low"] },
+    "personVerified": { "type": "boolean" },
+    "researchNotes": { "type": ["string", "null"], "maxLength": 4000, "default": null }
+  },
+  "required": ["firstName", "lastName", "researchConfidence", "personVerified"]
+}

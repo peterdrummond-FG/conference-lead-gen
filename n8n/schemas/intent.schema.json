@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "contactIntent": { "type": ["string", "null"], "enum": ["hot", "warm", "cold", null] }
+  },
+  "required": ["contactIntent"]
+}

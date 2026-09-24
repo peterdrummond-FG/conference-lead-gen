@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "no_card_detected"] },
+    "sourceType": { "type": "string", "enum": ["business_card", "directory_listing"], "default": "business_card" },
+    "cards": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "minimum": 1, "maximum": 50 },
+          "firstName": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "lastName": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "email": { "type": "string", "maxLength": 320, "default": "" },
+          "phone": { "type": "string", "maxLength": 40, "default": "" },
+          "title": { "type": "string", "maxLength": 200, "default": "" },
+          "districtName": { "type": "string", "maxLength": 200, "default": "" },
+          "schoolName": { "type": "string", "maxLength": 200, "default": "" },
+          "extractionConfidence": { "type": "string", "enum": ["high", "medium", "low"] },
+          "boundingBox": {
+            "anyOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "properties": {
+                  "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "width": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "height": { "type": "number", "minimum": 0, "maximum": 1 }
+                },
+                "required": ["x", "y", "width", "height"]
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": ["index", "firstName", "lastName", "extractionConfidence"]
+      }
+    }
+  },
+  "required": ["status", "cards"],
+  "allOf": [
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "status": { "enum": ["no_card_detected"] } } },
+        { "type": "object", "properties": { "cards": { "type": "array", "minItems": 1 } } }
+      ]
+    }
+  ]
+}
