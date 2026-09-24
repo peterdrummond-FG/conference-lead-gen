@@ -1,0 +1,98 @@
+{
+  "id": "zfob0XDlmmZY5Val",
+  "name": "sub-post-cards-to-ocr",
+  "active": false,
+  "nodes": [
+    {
+      "id": "dfaedf31-90db-4681-a956-4023f7a24521",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "eventFolderCode", "type": "string" },
+            { "name": "firstName", "type": "string" },
+            { "name": "lastName", "type": "string" },
+            { "name": "email", "type": "string" },
+            { "name": "phone", "type": "string" },
+            { "name": "title", "type": "string" },
+            { "name": "districtName", "type": "string" },
+            { "name": "schoolName", "type": "string" },
+            { "name": "extractionConfidence", "type": "string" },
+            { "name": "sourceImageHash", "type": "string" },
+            { "name": "sourceImagePath", "type": "string" },
+            { "name": "croppedImagePath", "type": "string" },
+            { "name": "inboundMessageId", "type": "string" },
+            { "name": "source", "type": "string" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "723ea349-94c5-4fd9-8aa6-2e10b19984f7",
+      "name": "Post To Contacts From OCR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [480, 300],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://yrvppufkerbjpvrxniot.supabase.co/functions/v1/contacts-from-ocr",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"eventFolderCode\": $json.eventFolderCode, \"firstName\": $json.firstName, \"lastName\": $json.lastName, \"email\": $json.email, \"phone\": $json.phone, \"title\": $json.title, \"districtName\": $json.districtName, \"schoolName\": $json.schoolName, \"extractionConfidence\": $json.extractionConfidence, \"sourceImageHash\": $json.sourceImageHash, \"sourceImagePath\": $json.sourceImagePath, ...($json.croppedImagePath ? { \"croppedImagePath\": $json.croppedImagePath } : {}), ...($json.inboundMessageId ? { \"inboundMessageId\": $json.inboundMessageId } : {}), ...($json.source ? { \"source\": $json.source } : {}) } }}"
+      }
+    },
+    {
+      "id": "3a8283eb-76a5-48e8-93e7-d4103733e7db",
+      "name": "Record Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const label = [$('Sub-workflow Input').item.json.firstName, $('Sub-workflow Input').item.json.lastName].filter(Boolean).join(' ') || 'unnamed card';\nreturn [{ json: { created: true, label: label, contactId: $json.id, alreadyProcessed: $json.alreadyProcessed === true } }];"
+      }
+    },
+    {
+      "id": "080ad87f-4c0a-4c62-b0a7-69ac507c8006",
+      "name": "Record Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const label = [$('Sub-workflow Input').item.json.firstName, $('Sub-workflow Input').item.json.lastName].filter(Boolean).join(' ') || 'unnamed card';\nreturn [{ json: { created: false, label: label, error: $json.error || 'unknown error' } }];"
+      }
+    },
+    {
+      "id": "a7f04d78-c979-4725-b71b-9b3fdb01d282",
+      "name": "Sticky Note 6262d5d6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## sub-post-cards-to-ocr\nThe shared POST-one-card-to-contacts-from-ocr sub-workflow the plan calls for -- \"the SMS-photo loop and watcher's Python heredoc reimplement the same 'upload crops, POST each card, tally created/failures' logic independently\" was the old problem; since watcher/ is retired outright rather than ported, this is really \"build it once, correctly\" for the sole remaining caller (pipeline-process-cards-sms) rather than reconciling two drifted copies -- but the same discipline applies: one clear place this logic lives, reusable if locate-cards (dormant, lowest priority per the plan) ever gets a real caller.\n\nMirrors postExtractedCards' per-card POST body exactly, including the optional-field spreading (croppedImagePath/inboundMessageId/source only included when actually present, matching agent.mjs's own conditional spread) and the alreadyProcessed short-circuit contacts-from-ocr itself provides (a retried photo's already-created card re-derives the same sourceImageHash and no-ops instead of duplicating).\n\nThe \"Supabase Service Role (n8n)\" credential is the same one built in Stage 2 for contacts-from-note (Authorization: Bearer <service-role-key> only) -- contacts-from-ocr uses the identical isServiceRoleCall() auth check, so it is reused as-is here, not a new credential definition.\n\nNot tagged skill-sandboxed -- this sub-workflow never calls Anthropic and holds no AI-facing credential; the credential-scoping concern check-n8n-credential-scopes.mjs audits (a skill session reaching more than its declared Anthropic-only scope) does not apply to a deterministic HTTP-POST helper.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 4). No credential is actually attached -- n8n instance has zero credentials configured, see n8n/README.md.",
+        "color": 6
+      }
+    }
+  ],
+  "connections": {
+    "Sub-workflow Input": { "main": [[{ "node": "Post To Contacts From OCR", "type": "main", "index": 0 }]] },
+    "Post To Contacts From OCR": {
+      "main": [
+        [{ "node": "Record Success", "type": "main", "index": 0 }],
+        [{ "node": "Record Failure", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 30 }
+}

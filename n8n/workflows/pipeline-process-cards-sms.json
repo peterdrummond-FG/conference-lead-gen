@@ -1,0 +1,248 @@
+{
+  "id": "ucpsVt3txOLzJYIL",
+  "name": "pipeline-process-cards-sms",
+  "active": false,
+  "nodes": [
+    {
+      "id": "80773226-3489-4f91-ba4f-f7fc1099d79a",
+      "name": "Every 20 Seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [160, 500],
+      "parameters": { "rule": { "interval": [{ "field": "seconds", "secondsInterval": 20 }] } }
+    },
+    {
+      "id": "4453da68-4c13-495e-9367-57b77b947129",
+      "name": "Find Pending Photo",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [360, 500],
+      "parameters": { "operation": "executeQuery", "query": "select * from public.inbound_messages where kind = 'photo' and status = 'pending_ocr' and storage_path is not null order by received_at limit 1;" }
+    },
+    {
+      "id": "93542c4a-c941-4fee-b9ad-ff726b5029a7",
+      "name": "Claim Photo Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [560, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages\nset status = 'processing', claimed_at = now(), processing_attempts = processing_attempts + 1, last_processing_attempt_at = now()\nwhere id = $1 and status = 'pending_ocr'\nreturning *;",
+        "options": { "queryReplacement": "={{ $json.id }}" }
+      }
+    },
+    {
+      "id": "971926ba-1e42-4a5d-9422-647b43975a5c",
+      "name": "Get Event Folder Code",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [760, 500],
+      "parameters": { "operation": "executeQuery", "query": "select folder_code from public.events where id = $1;", "options": { "queryReplacement": "={{ $json.event_id }}" } }
+    },
+    {
+      "id": "bbbf8b9e-f43c-4dfb-aa9c-97cbc98faddb",
+      "name": "Has Folder Code?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [960, 500],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ !!$json.folder_code }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "248d2387-f117-4b97-b77b-35c43825b550",
+      "name": "Call Process Cards",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1160, 400],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "NpdX3Jgvbr6yUwSd", "cachedResultName": "sub-process-cards" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "storagePath": "={{ $('Claim Photo Message').item.json.storage_path }}" },
+          "matchingColumns": [],
+          "schema": [{ "id": "storagePath", "displayName": "storagePath", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    },
+    {
+      "id": "77a03baf-cdf4-4363-9aa7-5d7a9a300d35",
+      "name": "Process Cards Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1360, 400],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.success === true }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "2850563e-231c-4715-be92-598fd4496d89",
+      "name": "Prepare Cards For Posting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const data = $json.data;\nconst eventFolderCode = $('Get Event Folder Code').item.json.folder_code;\nconst inboundMessageId = $('Claim Photo Message').item.json.id;\nconst source = data.sourceType === 'directory_listing' ? 'directory_photo' : undefined;\nreturn data.cards.map((card) => ({ json: {\n  eventFolderCode: eventFolderCode,\n  firstName: card.firstName, lastName: card.lastName, email: card.email, phone: card.phone,\n  title: card.title, districtName: card.districtName, schoolName: card.schoolName,\n  extractionConfidence: card.extractionConfidence, sourceImageHash: card.sourceImageHash,\n  sourceImagePath: $('Claim Photo Message').item.json.storage_path,\n  croppedImagePath: card.croppedImagePath || null,\n  inboundMessageId: inboundMessageId,\n  source: source || null,\n} }));"
+      }
+    },
+    {
+      "id": "7f50b35e-c561-4e39-8e06-548c031b12ee",
+      "name": "Post Card To OCR",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1760, 300],
+      "parameters": {
+        "mode": "each",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "zfob0XDlmmZY5Val", "cachedResultName": "sub-post-cards-to-ocr" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "eventFolderCode": "={{ $json.eventFolderCode }}",
+            "firstName": "={{ $json.firstName }}",
+            "lastName": "={{ $json.lastName }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "title": "={{ $json.title }}",
+            "districtName": "={{ $json.districtName }}",
+            "schoolName": "={{ $json.schoolName }}",
+            "extractionConfidence": "={{ $json.extractionConfidence }}",
+            "sourceImageHash": "={{ $json.sourceImageHash }}",
+            "sourceImagePath": "={{ $json.sourceImagePath }}",
+            "croppedImagePath": "={{ $json.croppedImagePath }}",
+            "inboundMessageId": "={{ $json.inboundMessageId }}",
+            "source": "={{ $json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "eventFolderCode", "displayName": "eventFolderCode", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "firstName", "displayName": "firstName", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "lastName", "displayName": "lastName", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "email", "displayName": "email", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "phone", "displayName": "phone", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "title", "displayName": "title", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "districtName", "displayName": "districtName", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "schoolName", "displayName": "schoolName", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "extractionConfidence", "displayName": "extractionConfidence", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "sourceImageHash", "displayName": "sourceImageHash", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "sourceImagePath", "displayName": "sourceImagePath", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "croppedImagePath", "displayName": "croppedImagePath", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "inboundMessageId", "displayName": "inboundMessageId", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "source", "displayName": "source", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    },
+    {
+      "id": "13a0f26b-dd81-4769-936d-d7d15e24c3bf",
+      "name": "Aggregate Post Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst created = items.filter((i) => i.json.created).length;\nconst failures = items.filter((i) => !i.json.created).map((i) => i.json.label + ': ' + i.json.error);\nconst allFailed = failures.length > 0 && created === 0;\nreturn [{ json: {\n  status: allFailed ? 'failed' : 'completed',\n  error: failures.length > 0 ? failures.join('; ') : null,\n} }];"
+      }
+    },
+    {
+      "id": "7da15ef9-81bd-4aef-bc73-c77868c76063",
+      "name": "Write Photo Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [2160, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set status = $1, error = $2, processed_at = now() where id = $3 returning id, status;",
+        "options": { "queryReplacement": "={{ [ $json.status, $json.error, $('Claim Photo Message').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "b6bdc282-b413-42ed-9447-c0405e372417",
+      "name": "Classify Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 600],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const TERMINAL_ERROR_PATTERNS = [/no legible business card detected/i, /refusing to (build a prompt|upload)/i];\nconst message = $json.error || 'unknown error';\nconst errorClass = TERMINAL_ERROR_PATTERNS.some((re) => re.test(message)) ? 'terminal' : 'transient';\nreturn [{ json: { errorMessage: message, errorClass: errorClass } }];"
+      }
+    },
+    {
+      "id": "e3056fdf-d4ce-4bea-8247-eeabeff4210c",
+      "name": "Write Processing Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1760, 600],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set status = 'failed', error = $1, error_class = $2 where id = $3 returning id;",
+        "options": { "queryReplacement": "={{ [ $json.errorMessage, $json.errorClass, $('Claim Photo Message').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "2e211fee-9592-40d6-820b-19483af6f97c",
+      "name": "Write No-Folder-Code Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1160, 700],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set status = 'failed', error = $1, error_class = 'terminal' where id = $2 returning id;",
+        "options": { "queryReplacement": "={{ [ 'event ' + $('Claim Photo Message').item.json.event_id + ' has no folder_code', $('Claim Photo Message').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "ee81b415-f894-4406-9d05-09039130f644",
+      "name": "Sticky Note c7c3f041",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## pipeline-process-cards-sms\nThe n8n replacement for local-agent/agent.mjs photoLoop -- the SMS-photo intake path, now the SOLE card-photo intake path since watcher/ is retired outright (per the plan's 'Decisions locked in'). reconcile_retryable_failed_inbound_messages is deliberately NOT called here -- Stage 0's pipeline-retry-failed-inbound-messages already covers it on its own cadence, decoupled from this pipeline's, since that RPC is not kind-specific (covers audio and photo alike).\n\nFind Pending Photo + Claim Photo Message mirror findNextPendingPhotoMessage/claimPhotoMessage exactly (plain SELECT then a single atomic UPDATE ... WHERE status=pending_ocr RETURNING *).\n\nAll the actual vision/crop work lives in sub-process-cards (built alongside this pipeline) -- this workflow's own job is thin: claim, resolve the event's folder_code (required by contacts-from-ocr, absent from the SMS message itself), delegate, then fan the returned cards out to sub-post-cards-to-ocr one at a time and aggregate.\n\nHas Folder Code? is a defensive check for a case processPhotoMessage treats as a thrown error (event has no folder_code) -- kept as an explicit early branch here rather than letting a missing field surface as a confusing failure three nodes later.\n\nClassify Error reuses the exact same TERMINAL_ERROR_PATTERNS classifyProcessingError applies to the photo path today -- notably the literal string 'no legible business card detected in photo' that sub-process-cards's Return No Card Detected node emits on purpose, so a genuinely card-less photo classifies as terminal (never auto-retried, surfaced via the existing Retry OCR action) exactly as it does now.\n\nAggregate Post Results mirrors processPhotoMessage's own allFailed logic: a photo where SOME cards posted successfully stays 'completed' with the failures recorded in error (the contacts that did land are already real and visible in Review) -- only a photo where NOTHING could be created is 'failed'.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 4). No credential of its own -- both Execute Workflow calls delegate to sub-workflows that hold the actual credentials (sub-process-cards: Anthropic + Storage; sub-post-cards-to-ocr: Supabase Service Role). See n8n/README.md.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Every 20 Seconds": { "main": [[{ "node": "Find Pending Photo", "type": "main", "index": 0 }]] },
+    "Find Pending Photo": { "main": [[{ "node": "Claim Photo Message", "type": "main", "index": 0 }]] },
+    "Claim Photo Message": { "main": [[{ "node": "Get Event Folder Code", "type": "main", "index": 0 }]] },
+    "Get Event Folder Code": { "main": [[{ "node": "Has Folder Code?", "type": "main", "index": 0 }]] },
+    "Has Folder Code?": {
+      "main": [
+        [{ "node": "Call Process Cards", "type": "main", "index": 0 }],
+        [{ "node": "Write No-Folder-Code Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Process Cards": { "main": [[{ "node": "Process Cards Succeeded?", "type": "main", "index": 0 }]] },
+    "Process Cards Succeeded?": {
+      "main": [
+        [{ "node": "Prepare Cards For Posting", "type": "main", "index": 0 }],
+        [{ "node": "Classify Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Cards For Posting": { "main": [[{ "node": "Post Card To OCR", "type": "main", "index": 0 }]] },
+    "Post Card To OCR": { "main": [[{ "node": "Aggregate Post Results", "type": "main", "index": 0 }]] },
+    "Aggregate Post Results": { "main": [[{ "node": "Write Photo Result", "type": "main", "index": 0 }]] },
+    "Classify Error": { "main": [[{ "node": "Write Processing Failure", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 1000 }
+}

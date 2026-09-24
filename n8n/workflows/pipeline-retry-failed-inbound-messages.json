@@ -1,0 +1,39 @@
+{
+  "id": "kS38HXIlciQubRH5",
+  "name": "pipeline-retry-failed-inbound-messages",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6f075c3b-d3b5-4e9d-a230-6b4f524ac250",
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 2 }] } }
+    },
+    {
+      "id": "bcacaf8f-22b3-44af-9c9f-b831ba4bfeff",
+      "name": "Reconcile Retryable Failed Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [540, 300],
+      "parameters": { "operation": "executeQuery", "query": "select * from reconcile_retryable_failed_inbound_messages(10, 5);" }
+    },
+    {
+      "id": "5283fbff-61a3-43aa-a47f-7b2d6227b697",
+      "name": "Sticky Note efba65a3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Retry failed inbound messages\nThin Schedule-Trigger -> RPC caller for reconcile_retryable_failed_inbound_messages (added 20260922110000_voice_memo_link_state_and_ocr_retry.sql, the 2026-09-22 voice-memo/OCR-retry audit). Resurrects a status=failed photo/audio row back to pending only when error_class=transient AND storage_path is not null -- a terminal failure (e.g. no legible card) is deliberately never auto-retried, only a human's explicit \"Retry OCR\" action (inbound-messages-retry, unchanged by this migration) brings one of those back.\n\nmax_attempts=10 / retry_delay_minutes=5 mirror local-agent/agent.mjs's PROCESSING_MAX_ATTEMPTS/PROCESSING_RETRY_DELAY_MINUTES defaults exactly -- no behavior change from today, just a different caller.\n\nDeliberately decoupled from the SMS-photo pipeline's own cadence (a trigger should do one job) -- the RPC's own attempt-count/cooldown state is what matters, not which workflow happens to call it.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0). \"Postgres (n8n pipeline)\" is a placeholder credential -- see n8n/README.md.",
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": { "main": [[{ "node": "Reconcile Retryable Failed Messages", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 60 },
+  "tags": []
+}

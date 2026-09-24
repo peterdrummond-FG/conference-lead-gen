@@ -1,0 +1,105 @@
+{
+  "id": "aUDJAvTFF8WPuVse",
+  "name": "pipeline-contact-intent",
+  "active": false,
+  "nodes": [
+    {
+      "id": "32190c05-23c3-47d2-aee4-9166daee8f95",
+      "name": "Every 20 Seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "seconds", "secondsInterval": 20 }] } }
+    },
+    {
+      "id": "e6652820-77f4-4efe-bfeb-7f6acb21c986",
+      "name": "Claim Contacts Needing Intent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [480, 300],
+      "parameters": { "operation": "executeQuery", "query": "select * from claim_contacts_needing_intent(5);" }
+    },
+    {
+      "id": "71101fee-06e6-4f2a-99dd-dd936bb80975",
+      "name": "Classify Contact Intent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [720, 300],
+      "parameters": {
+        "mode": "each",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "rKkN0ntIZqYLiSg5", "cachedResultName": "sub-classify-contact-intent" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "contactId": "={{ $json.id }}", "interactionNotes": "={{ $json.interaction_notes }}" },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "contactId", "displayName": "contactId", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "interactionNotes", "displayName": "interactionNotes", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    },
+    {
+      "id": "ecec42ee-fe01-4710-be42-101655d12bfa",
+      "name": "Classification Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [960, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.success === true }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "55aa03de-c3bc-44be-ab3f-9c087b9be9fd",
+      "name": "Write Contact Intent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1200, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.contacts\nset contact_intent = $1,\n    contact_intent_classified_notes = $2\nwhere id = $3\n  and contact_intent_is_manual = false\n  and interaction_notes = $4\nreturning id, contact_intent;",
+        "options": {
+          "queryReplacement": "={{ [ $json.data.contactIntent, $('Claim Contacts Needing Intent').item.json.interaction_notes, $('Claim Contacts Needing Intent').item.json.id, $('Claim Contacts Needing Intent').item.json.interaction_notes ] }}"
+        }
+      }
+    },
+    {
+      "id": "0c2da70c-cfa8-4b9e-a0ea-7ccd0a47f76d",
+      "name": "No Write (Failure)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1200, 400],
+      "parameters": {}
+    },
+    {
+      "id": "1f2aac11-dc74-4b7c-8626-95e048eb8d2a",
+      "name": "Sticky Note 189ceb79",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## pipeline-contact-intent\nThe n8n replacement for local-agent/agent.mjs intentLoop -- Stage 1 prove-the-pattern pipeline. Simplest skill (pure text, 3-value output), narrow optimistic-concurrency write, low consequence if wrong.\n\nclaim_contacts_needing_intent(5) is a plain STABLE select, not a row-locking claim like claim_pending_contacts -- concurrency safety comes entirely from Write Contact Intent optimistic WHERE (contact_intent_is_manual=false AND interaction_notes=snapshot). Two overlapping ticks picking the same row just means one wasted LLM call, never data corruption.\n\n20s Schedule Trigger matches intentLoop own poll interval exactly -- no behavior change from today, just a different caller.\n\nClassify Contact Intent runs mode=each (one call per claimed row, direct analog of the original small worker pool, sequential here rather than concurrency=2 in this first build).\n\nWrite Contact Intent references the ORIGINAL claim row's id/interaction_notes via the Claim Contacts Needing Intent node's own item, not the immediate predecessor json (which by this point holds sub-classify-contact-intent's success/data shape) -- per the SDK's guidance on reading further-upstream data after an Execute Workflow call.\n\nA comma-joined queryReplacement string breaks the moment interaction_notes contains a comma, which free-text rep notes and voice-memo transcripts routinely do -- a single expression that evaluates to a real array sidesteps string splitting entirely.\n\nOn failure (success=false: a validation failure, an API error, or a tripped circuit breaker), the false branch does nothing -- item dropped, no write, row stays exactly as claim_contacts_needing_intent will see it again next tick. Nothing here retries or backs off explicitly, because this RPC has no attempt-count/cooldown state at all -- same as intentLoop today.\n\nNOT DONE IN THIS PASS, BY DESIGN: no credentials get real values, this workflow is not activated, and it is not run side-by-side against production data yet.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 1). The two Postgres nodes have no credential attached yet -- see n8n/README.md.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Every 20 Seconds": { "main": [[{ "node": "Claim Contacts Needing Intent", "type": "main", "index": 0 }]] },
+    "Claim Contacts Needing Intent": { "main": [[{ "node": "Classify Contact Intent", "type": "main", "index": 0 }]] },
+    "Classify Contact Intent": { "main": [[{ "node": "Classification Succeeded?", "type": "main", "index": 0 }]] },
+    "Classification Succeeded?": {
+      "main": [
+        [{ "node": "Write Contact Intent", "type": "main", "index": 0 }],
+        [{ "node": "No Write (Failure)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 300 }
+}

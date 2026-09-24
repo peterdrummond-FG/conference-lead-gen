@@ -1,0 +1,29 @@
+{
+  "id": "0rDsnqEvmUxXhAkC",
+  "name": "pipeline-twilio-reconciliation",
+  "active": false,
+  "nodes": [
+    {
+      "id": "a453c07f-8f85-438a-bb86-c74c6086df42",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } }
+    },
+    {
+      "id": "7d83f6c2-c8e3-485f-9625-d03c2e5d2a69",
+      "name": "Sticky Note 3f3206b4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Twilio reconciliation (stub)\nNOT BUILT YET -- placeholder only, per the master plan's Stage 0 item 7 (\"stubbed but not fully built\"). No Twilio credential exists anywhere in this project (nothing in local-agent/watcher ever called Twilio's API directly) and this is the one workflow in the whole migration that cannot make ANY real progress without one -- unlike pipeline-failed-media-retry, there is no local-only half to build first.\n\nDesign already confirmed with the user (see the plan, \"Decisions confirmed with the user for this pass\"): list Twilio's Messages API for the last N hours, cross-check against inbound_messages.twilio_message_sid, and for anything Twilio has that the DB doesn't -- BOTH auto-replay the message through the same kind-detection/Storage-upload/contacts-from-ocr-or-note_submissions logic twilio-webhook uses, AND alert a human that this happened. Never a silent auto-fix: a gap gets closed automatically but stays visible.\n\nShould share its actual replay logic with pipeline-failed-media-retry's (also-deferred) redownload step once both are built for real -- both are fundamentally \"re-run twilio-webhook's per-media processing outside the original request,\" worth factoring into one shared sub-workflow.\n\nTwilio credential needed: prefer a scoped Twilio API Key restricted to read-only Messages/Media access over the all-powerful main Auth Token, consistent with the least-privilege posture applied everywhere else in this migration.\n\nAlso a manual TODO for the user, outside any tool available here: configure Twilio's Fallback URL (Console setting, phone-number/Messaging-Service level) before watcher/ is fully retired in practice -- MMS becomes the sole intake path and there is currently no fallback if the Edge Function is down/cold-starting/mid-deploy when a text arrives.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0).",
+        "color": 3
+      }
+    }
+  ],
+  "connections": {},
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

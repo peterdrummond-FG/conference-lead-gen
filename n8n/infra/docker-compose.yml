@@ -1,0 +1,104 @@
+# CKH Connect n8n stack — NOT YET PROVISIONED ANYWHERE.
+#
+# This is the Stage 0 infra scaffold from the migration plan. It describes
+# the target shape (n8n + its own Postgres + a reverse proxy + a self-hosted
+# Whisper service) for whenever a real VPS is provisioned; it has not been
+# run, and nothing in this repo depends on it existing yet.
+#
+# Trust boundaries (see plan "Infra layout"):
+#   - n8n_public: n8n <-> caddy only. This is the only network with any
+#     inbound-from-the-internet exposure.
+#   - n8n_internal: n8n <-> n8n-db, n8n <-> whisper. n8n-db and whisper are
+#     never on n8n_public and are never exposed to the host.
+#   - The SMB/SFTP-share idea from earlier drafts of this plan was dropped
+#     entirely — card-photo intake is Twilio MMS only (see "Decisions locked
+#     in" in the plan) — so there is deliberately no file-share service here.
+
+services:
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY must be set — see .env.example}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=n8n-db
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:?N8N_DB_PASSWORD must be set}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
+      # Five-plus workflows on 10-20s Schedule Triggers generate a high
+      # execution count per day; n8n does not bound this DB's growth by
+      # default (see plan "Infra layout").
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=${N8N_EXECUTIONS_DATA_MAX_AGE:-336} # hours (14 days)
+      - NODE_FUNCTION_ALLOW_EXTERNAL=sharp,zod
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - n8n_public
+      - n8n_internal
+    depends_on:
+      - n8n-db
+      - whisper
+
+  n8n-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${N8N_DB_PASSWORD:?N8N_DB_PASSWORD must be set}
+    volumes:
+      - n8n_db_data:/var/lib/postgresql/data
+    networks:
+      - n8n_internal
+    # Deliberately NOT the Supabase project's Postgres — a separate cluster
+    # so an n8n bug can never reach `contacts`, and n8n's own execution-log
+    # growth never competes with Supabase's storage/IO (see plan).
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - n8n_public
+    depends_on:
+      - n8n
+
+  whisper:
+    # e.g. onerahmet/openai-whisper-asr-webservice — confirm during Stage 3
+    # that whatever image is actually used exposes an `initial_prompt`
+    # parameter over HTTP (see plan, Phase 3 note); local-agent's Whisper
+    # invocation depends on it for name-spelling accuracy.
+    image: ${WHISPER_IMAGE:-onerahmet/openai-whisper-asr-webservice:latest}
+    restart: unless-stopped
+    environment:
+      - ASR_MODEL=${WHISPER_MODEL:-medium}
+    volumes:
+      - whisper_models:/root/.cache/whisper
+    networks:
+      - n8n_internal
+    # No ports published to the host and not on n8n_public — only n8n
+    # (on n8n_internal) can reach this.
+
+networks:
+  n8n_public:
+  n8n_internal:
+    internal: true
+
+volumes:
+  n8n_data:      # holds N8N's own config + encryption-key material; back up frequently
+  n8n_db_data:   # workflows + encrypted credentials + execution history; back up frequently
+  caddy_data:
+  caddy_config:
+  whisper_models: # reproducible cache, no backup needed

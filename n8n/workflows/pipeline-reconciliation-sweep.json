@@ -1,0 +1,52 @@
+{
+  "id": "po6hz35VF8O7VqYX",
+  "name": "pipeline-reconciliation-sweep",
+  "active": false,
+  "nodes": [
+    {
+      "id": "e3231081-2be8-4979-a4c3-94b77d793091",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] } }
+    },
+    {
+      "id": "d3d68ebd-6715-4b60-8d28-2218c9c06b69",
+      "name": "Reconcile Stale Inbound Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [540, 200],
+      "parameters": { "operation": "executeQuery", "query": "select * from reconcile_stale_inbound_messages(30);" }
+    },
+    {
+      "id": "616ea9ec-0db1-416b-92e1-e6c762074ea8",
+      "name": "Reconcile Stale Note Submissions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [540, 400],
+      "parameters": { "operation": "executeQuery", "query": "select * from reconcile_stale_note_submissions(30);" }
+    },
+    {
+      "id": "4fa4b984-a199-48b2-9955-0c0d48f7a3dc",
+      "name": "Sticky Note da6b6c56",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Reconciliation sweep\nn8n replacement for the \"runs once at process start\" reconciliation both poll loops did in local-agent/agent.mjs. No equivalent \"start\" moment exists in an always-on n8n deployment, so this runs on a 5-10 minute Schedule Trigger instead -- strictly safer than once-at-startup (checked far more often) and also covers a new n8n-specific failure mode (a workflow execution erroring mid-item with no process-restart to fall back on).\n\nBoth branches are independent un-stick sweeps (status=processing stuck past a claimed_at window -> back to pending) -- neither depends on the other's output, so they run as two branches off one trigger rather than chained (chaining risks item-multiplication if either RPC ever returns more than one stale row).\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0). The \"Postgres (n8n pipeline)\" credential is a placeholder -- see n8n/README.md. This workflow must never be activated until local-agent/agent.mjs's own reconciliation call is retired alongside it.",
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[
+        { "node": "Reconcile Stale Inbound Messages", "type": "main", "index": 0 },
+        { "node": "Reconcile Stale Note Submissions", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 60 },
+  "tags": []
+}

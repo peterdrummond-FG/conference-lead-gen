@@ -1,0 +1,92 @@
+{
+  "id": "gbgfzYvnwtUpxR1E",
+  "name": "pipeline-purge-expired-media",
+  "active": false,
+  "nodes": [
+    {
+      "id": "5a7a7d11-ed0a-4e26-878b-24a08490e0fd",
+      "name": "Daily at 3am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 3 }] } }
+    },
+    {
+      "id": "b85324fe-3085-4cad-ad4f-0a095c676785",
+      "name": "Get Expired Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [480, 300],
+      "parameters": { "operation": "executeQuery", "query": "select * from expired_media(90, 500);" }
+    },
+    {
+      "id": "f595ca01-f196-4239-9692-5e422a38d975",
+      "name": "Group By Bucket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\n// Same kind -> bucket mapping as supabase/functions/twilio-webhook/index.ts\n// (kind isn't stored as a bucket name on the row itself).\nconst groups = {};\nfor (const item of items) {\n  const bucket = item.json.kind === 'photo' ? 'contact-photos' : 'voice-memos';\n  if (!groups[bucket]) groups[bucket] = { ids: [], paths: [] };\n  groups[bucket].ids.push(item.json.id);\n  groups[bucket].paths.push(item.json.storage_path);\n}\nreturn Object.keys(groups).map((bucket) => ({ json: { bucket: bucket, ids: groups[bucket].ids, paths: groups[bucket].paths } }));"
+      }
+    },
+    {
+      "id": "2de42490-8d12-4646-b32b-f7b84cfc3500",
+      "name": "Delete From Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [960, 300],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://yrvppufkerbjpvrxniot.supabase.co/storage/v1/object/{{ $json.bucket }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"prefixes\": $json.paths } }}"
+      }
+    },
+    {
+      "id": "8c65cbfc-5268-4b84-a52d-0e34aec02a7f",
+      "name": "Build Purge Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Only mark rows purged whose Storage object was actually deleted above --\n// mirrors purge-expired-media.mjs's success-only-marks-purged discipline.\n// ids are our own server-generated uuids (never user input), but validate\n// the shape anyway before splicing into SQL text.\nconst uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst ids = ($input.item.json.ids || []).filter((id) => uuidPattern.test(id));\nconst quotedIds = ids.map((id) => \"'\" + id + \"'\");\nconst arrayLiteral = quotedIds.length > 0 ? quotedIds.join(',') : 'null';\nreturn { json: { query: 'select * from mark_media_purged(ARRAY[' + arrayLiteral + \"]::uuid[]);\" } };"
+      }
+    },
+    {
+      "id": "759ccf89-00fc-4905-8c09-ba28eb2ea224",
+      "name": "Mark Media Purged",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1440, 300],
+      "parameters": { "operation": "executeQuery", "query": "={{ $json.query }}" }
+    },
+    {
+      "id": "430bf538-aded-4a97-9a7c-9c523184dec3",
+      "name": "Sticky Note 852a5570",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Purge expired media\nPorts local-agent/purge-expired-media.mjs (documented but never actually automated -- manual/cron only today) as a real daily Schedule Trigger. expired_media()/mark_media_purged() had no migration file anywhere in the repo -- backfilled in 20260922100000_backfill_undocumented_functions.sql alongside this build.\n\nBucket is derived from kind (photo -> contact-photos, audio -> voice-memos) because it is not stored on the row -- same mapping supabase/functions/twilio-webhook/index.ts uses.\n\nstorage_path is only cleared (mark_media_purged) for rows whose bucket delete actually succeeded -- if Delete From Storage fails for either bucket, the whole run fails and nothing is marked purged (n8n's default stop-on-error, deliberately not overridden): a stale row survives to the next run rather than orphaning bytes on a failed delete, same invariant purge-expired-media.mjs's own success-only-marks-purged logic keeps.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0). \"Postgres (n8n pipeline)\" and \"Supabase Storage (n8n)\" are placeholder credentials -- see n8n/README.md. This closes a real, currently-open retention gap once activated for real, independent of skill-porting sequencing.",
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 3am": { "main": [[{ "node": "Get Expired Media", "type": "main", "index": 0 }]] },
+    "Get Expired Media": { "main": [[{ "node": "Group By Bucket", "type": "main", "index": 0 }]] },
+    "Group By Bucket": { "main": [[{ "node": "Delete From Storage", "type": "main", "index": 0 }]] },
+    "Delete From Storage": { "main": [[{ "node": "Build Purge Query", "type": "main", "index": 0 }]] },
+    "Build Purge Query": { "main": [[{ "node": "Mark Media Purged", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 300 },
+  "tags": []
+}

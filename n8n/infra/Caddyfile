@@ -1,0 +1,9 @@
+# Reverse proxy for the n8n editor/API. Fill in the real domain before use.
+#
+# {$N8N_HOST} must match docker-compose.yml's N8N_HOST and the n8n instance's
+# own N8N_HOST/WEBHOOK_URL config, or Twilio-adjacent webhook URLs and OAuth
+# redirect URLs will be wrong.
+
+{$N8N_HOST} {
+	reverse_proxy n8n:5678
+}

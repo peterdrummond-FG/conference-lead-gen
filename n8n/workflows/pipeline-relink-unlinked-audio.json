@@ -1,0 +1,80 @@
+{
+  "id": "NNoRCVjviFclVAgj",
+  "name": "pipeline-relink-unlinked-audio",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6f8282ee-ba02-4ac9-b4d3-8cd8cdad8cfc",
+      "name": "Every 3 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 3 }] } }
+    },
+    {
+      "id": "360e4ff6-8081-4f8c-94de-4046ff01a2e8",
+      "name": "Claim Unlinked Audio Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [480, 300],
+      "parameters": { "operation": "executeQuery", "query": "select * from claim_unlinked_audio_messages(50, 20, 3);" }
+    },
+    {
+      "id": "c648f366-0751-406d-b17a-1ccb5a15b368",
+      "name": "Fetch Candidate Contacts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [720, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(\n  json_agg(json_build_object(\n    'contactId', c.id,\n    'firstName', c.first_name,\n    'lastName', c.last_name,\n    'email', c.email,\n    'phone', c.phone,\n    'title', c.title,\n    'interactionNotes', c.interaction_notes\n  ) order by c.created_at desc), '[]'::json\n) as candidates\nfrom public.contacts c\njoin public.inbound_messages m on m.id = c.source_message_id\nwhere c.event_id = $1\n  and c.source in ('card_photo', 'directory_photo')\n  and m.from_phone = $2;",
+        "options": { "queryReplacement": "={{ [ $json.event_id, $json.from_phone ] }}" }
+      }
+    },
+    {
+      "id": "69852ec5-001a-4d53-88af-b9dd96921dfa",
+      "name": "Sticky Note 24384e63",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Relink unlinked audio (retry sweep)\nClaim-based replacement for what the master plan originally called the transcription pipeline's \"orphan-sweep\" (a time-windowed design that turned out to be exactly the bug class the 2026-09-22 voice-memo audit fixed -- see the plan's \"Upstream changes\" section). claim_unlinked_audio_messages(50, 20, 3) mirrors agent.mjs's own LINK_MAX_ATTEMPTS/LINK_RETRY_DELAY_MINUTES/LINK_CLAIM_LIMIT defaults exactly.\n\nFetch Candidate Contacts mirrors findCandidateContacts() in agent.mjs: same event, source in (card_photo, directory_photo), joined through source_message_id -> inbound_messages.from_phone as the same-rep proxy -- both sources, never just card_photo. Rebuilt (Stage 3) to use a json_agg(...) aggregate rather than a plain multi-row SELECT: up to 3 messages can be claimed at once, and a plain SELECT's output rows would not stay correctly paired per claimed message once mixed together as flat items -- json_agg guarantees exactly one output row (with candidates as a possibly-empty array) per input item, preserving 1:1 pairing with Claim Unlinked Audio Messages even when a given message has zero candidates.\n\nLink Transcript To Contacts (Stage 3, completing this workflow) calls sub-link-transcript-to-contacts once per claimed message (mode=each) with {messageId, transcript, candidates} -- transcript comes from the ORIGINAL claim row (already transcribed in a prior pass; this sweep only retries linking, never re-transcribes). This is the exact same shared sub-workflow pipeline-voice-transcription's first pass calls, matching agent.mjs's own factoring: linkTranscriptToContacts + recordLinkResult are used by both processAudioMessage and relinkUnlinkedAudioMessages. No fast path, ever -- sub-link-transcript-to-contacts always invokes sub-attribute-voice-memo whenever candidates.length > 0.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0/3). No credential is actually attached -- n8n instance has zero credentials configured, see n8n/README.md.",
+        "color": 3
+      }
+    },
+    {
+      "id": "4efdc16f-4dab-4edc-8f69-9caa95175bfe",
+      "name": "Link Transcript To Contacts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [960, 300],
+      "parameters": {
+        "mode": "each",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "M6OFvzSBsFoRqSNA", "cachedResultName": "sub-link-transcript-to-contacts" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "messageId": "={{ $('Claim Unlinked Audio Messages').item.json.id }}",
+            "transcript": "={{ $('Claim Unlinked Audio Messages').item.json.transcript }}",
+            "candidates": "={{ $json.candidates.map(c => ({ contactId: c.contactId, firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, title: c.title, interactionNotes: c.interactionNotes })) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "messageId", "displayName": "messageId", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "transcript", "displayName": "transcript", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "candidates", "displayName": "candidates", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "array" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 3 Minutes": { "main": [[{ "node": "Claim Unlinked Audio Messages", "type": "main", "index": 0 }]] },
+    "Claim Unlinked Audio Messages": { "main": [[{ "node": "Fetch Candidate Contacts", "type": "main", "index": 0 }]] },
+    "Fetch Candidate Contacts": { "main": [[{ "node": "Link Transcript To Contacts", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 400 }
+}
