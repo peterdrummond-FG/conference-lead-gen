@@ -1,0 +1,78 @@
+{
+  "type": "object",
+  "properties": {
+    "matchStatus": { "type": "string", "enum": ["existing_contact", "new_contact_existing_account", "new_account", "ambiguous"] },
+    "matchConfidence": { "type": ["string", "null"], "enum": ["high", "medium", "low", null], "default": null },
+    "matchedZohoContactId": { "type": ["string", "null"], "pattern": "^[0-9]{15,}$", "default": null },
+    "matchedZohoContactName": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "matchedZohoContactEmail": { "type": ["string", "null"], "maxLength": 320, "default": null },
+    "matchedZohoContactPhone": { "type": ["string", "null"], "maxLength": 64, "default": null },
+    "matchedZohoContactTitle": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "matchedZohoAccountId": { "type": ["string", "null"], "pattern": "^[0-9]{15,}$", "default": null },
+    "matchedZohoAccountName": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "matchedZohoAccountLevel": { "type": ["string", "null"], "enum": ["district", "school", null], "default": null },
+    "hasActiveOpportunity": { "type": ["boolean", "null"], "default": null },
+    "activeOpportunityName": { "type": ["string", "null"], "maxLength": 300, "default": null },
+    "candidateMatches": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["account", "contact"] },
+              "zohoId": { "type": "string", "pattern": "^[0-9]{15,}$" },
+              "name": { "type": "string", "maxLength": 300 },
+              "score": { "type": "number" },
+              "level": { "type": "string", "enum": ["district", "school"] }
+            }
+          }
+        }
+      ],
+      "default": null
+    },
+    "notes": { "type": ["string", "null"], "maxLength": 4000, "default": null },
+    "glanceSummary": { "type": ["string", "null"], "maxLength": 400, "default": null }
+  },
+  "required": ["matchStatus"],
+  "allOf": [
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "null" }, "matchedZohoAccountName": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^\\s*$" }] } } },
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "string" }, "matchedZohoAccountName": { "type": "string", "pattern": "\\S" } }, "required": ["matchedZohoAccountId", "matchedZohoAccountName"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "null" }, "matchedZohoAccountLevel": { "type": "null" } } },
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "string" }, "matchedZohoAccountLevel": { "type": "string" } }, "required": ["matchedZohoAccountId", "matchedZohoAccountLevel"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchedZohoContactId": { "type": "null" }, "matchedZohoContactName": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^\\s*$" }] } } },
+        { "type": "object", "properties": { "matchedZohoContactId": { "type": "string" }, "matchedZohoContactName": { "type": "string", "pattern": "\\S" } }, "required": ["matchedZohoContactId", "matchedZohoContactName"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchStatus": { "enum": ["new_contact_existing_account", "new_account", "ambiguous"] } } },
+        { "type": "object", "properties": { "matchedZohoContactId": { "type": "string" } }, "required": ["matchedZohoContactId"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchStatus": { "enum": ["existing_contact", "new_account", "ambiguous"] } } },
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "string" } }, "required": ["matchedZohoAccountId"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "type": "object", "properties": { "matchConfidence": { "enum": ["medium", "low", null] } } },
+        { "type": "object", "properties": { "matchedZohoAccountId": { "type": "string" } }, "required": ["matchedZohoAccountId"] }
+      ]
+    }
+  ]
+}

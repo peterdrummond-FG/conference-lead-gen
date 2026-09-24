@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "contacts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "firstName": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "lastName": { "type": "string", "maxLength": 100 },
+          "email": { "type": "string", "maxLength": 320, "default": "" },
+          "phone": { "type": "string", "maxLength": 40, "default": "" },
+          "title": { "type": "string", "maxLength": 200, "default": "" },
+          "districtName": { "type": "string", "maxLength": 200, "default": "" },
+          "schoolName": { "type": "string", "maxLength": 200, "default": "" },
+          "interactionNotes": { "type": "string", "maxLength": 4000, "default": "" },
+          "extractionConfidence": { "type": "string", "enum": ["high", "medium", "low"] }
+        },
+        "required": ["firstName", "lastName", "extractionConfidence"]
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "type": "string", "maxLength": 300 },
+      "default": []
+    }
+  },
+  "required": ["contacts"]
+}

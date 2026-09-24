@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "maxItems": 200,
+      "default": [],
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "contactId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+              "excerpt": { "type": "string", "maxLength": 8000 }
+            },
+            "required": ["contactId", "excerpt"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "contactId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+              "notFound": { "type": "boolean", "enum": [true] }
+            },
+            "required": ["contactId", "notFound"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  }
+}
