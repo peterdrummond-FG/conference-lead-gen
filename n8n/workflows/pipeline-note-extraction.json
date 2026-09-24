@@ -1,0 +1,225 @@
+{
+  "id": "n1LaagtlvzhVLZtB",
+  "name": "pipeline-note-extraction",
+  "active": false,
+  "nodes": [
+    {
+      "id": "47634ce9-e8f7-4281-803f-be84b27db774",
+      "name": "Every 10 Seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [200, 400],
+      "parameters": { "rule": { "interval": [{ "field": "seconds", "secondsInterval": 10 }] } }
+    },
+    {
+      "id": "ff047117-7a28-40f5-ae06-e94938c118fb",
+      "name": "Find Pending Note",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [420, 400],
+      "parameters": { "operation": "executeQuery", "query": "select * from public.note_submissions where status = 'pending_extraction' order by created_at limit 1;" }
+    },
+    {
+      "id": "03f696ee-5ddd-4ee6-b008-c1cf427856e3",
+      "name": "Claim Note Submission",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [640, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.note_submissions\nset status = 'processing', claimed_at = now(), attempts = attempts + 1\nwhere id = $1 and status = 'pending_extraction'\nreturning *;",
+        "options": { "queryReplacement": "={{ $json.id }}" }
+      }
+    },
+    {
+      "id": "eb03101b-b682-493d-a5aa-3e9e3d671b44",
+      "name": "Extract Note Contacts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [860, 400],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "1aMTBVEndaVWR3dI", "cachedResultName": "sub-extract-note-contacts" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "noteText": "={{ $json.body }}" },
+          "matchingColumns": [],
+          "schema": [{ "id": "noteText", "displayName": "noteText", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    },
+    {
+      "id": "16d2e6f0-a045-4489-9a2f-792d52d84be5",
+      "name": "Extraction Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1080, 400],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.success === true }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "60b37873-333f-4c6e-846c-6493c4cd2d64",
+      "name": "Has Contacts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1320, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.data.contacts.length > 0 }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "4a7c2b37-922f-434b-b465-1cc64bd764aa",
+      "name": "Prepare Contacts For Posting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const contacts = $json.data.contacts;\nconst skipped = $json.data.skipped || [];\nconst noteSubmissionId = $('Claim Note Submission').item.json.id;\nreturn contacts.map((c) => ({ json: { contact: c, noteSubmissionId: noteSubmissionId, skipped: skipped } }));"
+      }
+    },
+    {
+      "id": "7a83ae0f-a2f9-48f0-91c7-1ee4ca537cc0",
+      "name": "Post To Contacts From Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1800, 200],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://yrvppufkerbjpvrxniot.supabase.co/functions/v1/contacts-from-note",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"noteSubmissionId\": $json.noteSubmissionId, \"firstName\": $json.contact.firstName, \"lastName\": $json.contact.lastName, \"email\": $json.contact.email, \"phone\": $json.contact.phone, \"title\": $json.contact.title, \"districtName\": $json.contact.districtName, \"schoolName\": $json.contact.schoolName, \"interactionNotes\": $json.contact.interactionNotes, \"extractionConfidence\": $json.contact.extractionConfidence } }}"
+      }
+    },
+    {
+      "id": "bb6bda6f-8c1b-4d4c-8878-bf37a565d3cc",
+      "name": "Record Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, 120],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const contact = $('Prepare Contacts For Posting').item.json.contact;\nconst label = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'unnamed contact';\nreturn { json: { created: true, label: label } };"
+      }
+    },
+    {
+      "id": "b513022d-f73e-4342-a61c-7d0bf3131bef",
+      "name": "Record Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const contact = $('Prepare Contacts For Posting').item.json.contact;\nconst label = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'unnamed contact';\nreturn { json: { created: false, label: label, error: $json.error || 'unknown error' } };"
+      }
+    },
+    {
+      "id": "c117c9fc-e643-4b40-83d6-b26857ba6c8e",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2280, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst created = items.filter((i) => i.json.created).length;\nconst failures = items.filter((i) => !i.json.created).map((i) => i.json.label + ': ' + i.json.error);\n// Every item was stamped with the same noteSubmissionId/skipped in\n// Prepare Contacts For Posting (before the fan-out), so any item works.\nconst noteSubmissionId = $('Prepare Contacts For Posting').first().json.noteSubmissionId;\nconst skipped = $('Prepare Contacts For Posting').first().json.skipped;\nconst allFailed = failures.length > 0 && created === 0;\nreturn [{ json: {\n  status: allFailed ? 'failed' : 'completed',\n  error: failures.length > 0 ? failures.join('; ') : null,\n  skipped: skipped,\n  noteSubmissionId: noteSubmissionId,\n} }];"
+      }
+    },
+    {
+      "id": "16568f05-98bb-4fa3-8b21-baad55280f1b",
+      "name": "Write Empty Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1560, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.note_submissions set status = 'completed', skipped = $1, error = null, processed_at = now() where id = $2 returning id;",
+        "options": { "queryReplacement": "={{ [ $json.data.skipped, $('Claim Note Submission').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "92e612e8-3f93-4eca-818f-cbbc2702e3cb",
+      "name": "Write Extraction Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1320, 600],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.note_submissions set status = 'failed', error = $1, processed_at = now() where id = $2 returning id;",
+        "options": { "queryReplacement": "={{ [ $json.error, $('Claim Note Submission').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "2fc92a31-7278-4f44-b14d-4b5ed7941ce0",
+      "name": "Write Aggregate Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [2520, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.note_submissions set status = $1, skipped = $2, error = $3, processed_at = now() where id = $4 returning id, status;",
+        "options": { "queryReplacement": "={{ [ $json.status, $json.skipped, $json.error, $json.noteSubmissionId ] }}" }
+      }
+    },
+    {
+      "id": "cc753da9-c983-4abe-8ee3-09c2b14a3091",
+      "name": "Sticky Note 99d8d9be",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## pipeline-note-extraction\nThe n8n replacement for local-agent/agent.mjs noteLoop. Introduces the 'POST per extracted item to an Edge Function' pattern the plan flags as needed later for photos (pipeline-process-cards, Stage 4).\n\nFind Pending Note + Claim Note Submission mirror findNextPendingNoteSubmission/claimNoteSubmission exactly: a plain SELECT to pick a candidate, then a single UPDATE ... WHERE status=pending_extraction RETURNING * as the actual atomic claim. If Claim returns 0 rows (another overlapping execution claimed it first between the SELECT and the UPDATE), the chain simply stops here -- zero-item safety, no explicit IF needed -- exactly the same safe race local-agent already tolerates.\n\nHas Contacts? branches BEFORE the posting loop rather than relying on zero-item behavior after it, on purpose: a note with zero extracted contacts is 'a valid, expected result, not a failure' per the skill's own docs, and it must still write a completed row with the skipped list -- deriving that from an empty-input aggregate step risked the aggregate never running at all (n8n skips downstream nodes when a node returns 0 items). Branching upfront sidesteps the ambiguity entirely.\n\nPrepare Contacts For Posting reads noteSubmissionId/skipped from upstream ONCE, while it still has exactly one input item, and stamps them onto every fanned-out per-contact item -- deliberately not re-read via $('Claim Note Submission').item after the fan-out, since a Code node emitting multiple new items does not preserve n8n's pairedItem linking back to a single upstream item unambiguously.\n\nPost To Contacts From Note posts one at a time (not batched), same reasoning as postExtractedContact: a single unusable entry costs only itself. onError continueErrorOutput + Record Success/Record Failure normalize both outcomes into one shape before Aggregate Results (a Code node in runOnceForAllItems mode) computes created/failures -- since Has Contacts? already guarantees at least one item reaches this branch, no splitInBatches/onDone machinery is needed to guarantee the aggregate step runs.\n\nPartial success stays 'completed' with failures recorded in error -- only a note where NOTHING could be created is 'failed'. Matches processNoteSubmission's allFailed logic exactly: the contacts that did land are already real and visible in Review.\n\nThe Supabase Service Role (n8n) credential here is a genuinely new one (Authorization: Bearer <service-role-key> only, per supabase/functions/_shared/auth.ts isServiceRoleCall) -- distinct from Stage 0's Supabase Storage (n8n) credential, which needs a different header template (apikey + Authorization together) for the Storage REST API. Same underlying secret value, two different httpTemplatedCustomAuth credential definitions, since the header template is baked into the credential type itself. Reusable as-is for contacts-from-ocr in Stage 4.\n\nThis is the parent orchestrating workflow, not a skill sub-workflow -- holding the Supabase write credential here (after schema-validation success, never inside a skill sub-workflow) is exactly the credential model the plan specifies.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 2). No credential is actually attached yet -- see n8n/README.md.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 Seconds": { "main": [[{ "node": "Find Pending Note", "type": "main", "index": 0 }]] },
+    "Find Pending Note": { "main": [[{ "node": "Claim Note Submission", "type": "main", "index": 0 }]] },
+    "Claim Note Submission": { "main": [[{ "node": "Extract Note Contacts", "type": "main", "index": 0 }]] },
+    "Extract Note Contacts": { "main": [[{ "node": "Extraction Succeeded?", "type": "main", "index": 0 }]] },
+    "Extraction Succeeded?": {
+      "main": [
+        [{ "node": "Has Contacts?", "type": "main", "index": 0 }],
+        [{ "node": "Write Extraction Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Contacts?": {
+      "main": [
+        [{ "node": "Prepare Contacts For Posting", "type": "main", "index": 0 }],
+        [{ "node": "Write Empty Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Contacts For Posting": { "main": [[{ "node": "Post To Contacts From Note", "type": "main", "index": 0 }]] },
+    "Post To Contacts From Note": {
+      "main": [
+        [{ "node": "Record Success", "type": "main", "index": 0 }],
+        [{ "node": "Record Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Record Success": { "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]] },
+    "Record Failure": { "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]] },
+    "Aggregate Results": { "main": [[{ "node": "Write Aggregate Result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 400 }
+}

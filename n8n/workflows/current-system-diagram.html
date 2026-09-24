@@ -1,0 +1,201 @@
+<title>CKH Connect today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --page-bg:#FBFAF6;
+  --card-bg:#FFFFFF;
+  --border:#DBD8CB;
+  --border-strong:#C7C3B3;
+  --text-primary:#232219;
+  --text-secondary:#5B5A4F;
+  --text-muted:#918F80;
+  --wire:#BDBAAC;
+  --cloud:#2E62A6;
+  --cloud-bg:#E8EFF9;
+  --skill:#6E4FAE;
+  --skill-bg:#EFEAF8;
+  --mac:#C1571F;
+  --mac-bg:#FBEDE3;
+  --mac-wash:#FCF3EA;
+  --zoho:#1F8F5E;
+  --zoho-bg:#E7F4EC;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page-bg:#18170F;
+    --card-bg:#211F16;
+    --border:#3A382A;
+    --border-strong:#4C4936;
+    --text-primary:#EFEDE0;
+    --text-secondary:#B4B19E;
+    --text-muted:#8A876F;
+    --wire:#4C4936;
+    --cloud:#6DA0E0;
+    --cloud-bg:#1F2F45;
+    --skill:#AB8DE0;
+    --skill-bg:#2C2440;
+    --mac:#E88A4C;
+    --mac-bg:#3A2818;
+    --mac-wash:#2C2013;
+    --zoho:#4CC08A;
+    --zoho-bg:#20362A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page-bg:#18170F;
+  --card-bg:#211F16;
+  --border:#3A382A;
+  --border-strong:#4C4936;
+  --text-primary:#EFEDE0;
+  --text-secondary:#B4B19E;
+  --text-muted:#8A876F;
+  --wire:#4C4936;
+  --cloud:#6DA0E0;
+  --cloud-bg:#1F2F45;
+  --skill:#AB8DE0;
+  --skill-bg:#2C2440;
+  --mac:#E88A4C;
+  --mac-bg:#3A2818;
+  --mac-wash:#2C2013;
+  --zoho:#4CC08A;
+  --zoho-bg:#20362A;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--page-bg);color:var(--text-primary);font-family:"IBM Plex Sans",system-ui,sans-serif;padding:2.5rem 20px 3rem;}
+.wrap{max-width:760px;margin:0 auto;}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--mac);margin:0 0 10px;}
+h1{font-size:22px;font-weight:500;margin:0 0 8px;text-wrap:balance;}
+.dek{font-size:14px;color:var(--text-secondary);margin:0 0 2rem;line-height:1.6;}
+
+.flow{display:flex;flex-direction:column;align-items:center;}
+.tier-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;width:100%;}
+.box{
+  background:var(--card-bg);border:0.5px solid var(--border);border-radius:10px;
+  padding:12px 16px;min-width:170px;flex:1 1 170px;max-width:260px;
+}
+.box.cloud{border-color:var(--cloud);}
+.box.zoho{border-color:var(--zoho);}
+.box-title{font-size:13.5px;font-weight:600;margin:0 0 3px;}
+.box-sub{font-size:11.5px;color:var(--text-secondary);line-height:1.4;margin:0;}
+.box-sub code{font-family:"IBM Plex Mono",monospace;font-size:11px;}
+.tag{display:inline-block;font-size:10px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:var(--cloud);background:var(--cloud-bg);border-radius:5px;padding:2px 7px;margin-bottom:5px;}
+.tag.zoho{color:var(--zoho);background:var(--zoho-bg);}
+
+.arrow{display:flex;flex-direction:column;align-items:center;color:var(--text-muted);margin:6px 0;}
+.arrow svg{display:block;}
+.arrow-label{font-size:11px;font-style:italic;margin-top:2px;text-align:center;max-width:260px;}
+
+.mac{
+  width:100%;position:relative;margin-top:8px;
+  background:var(--mac-wash);border:1.5px dashed var(--mac);border-radius:14px;
+  padding:34px 20px 22px;
+}
+.mac-tab{
+  position:absolute;top:-14px;left:20px;
+  background:var(--mac);color:var(--mac-bg);
+  font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:7px;
+}
+.mac-note{font-size:12px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6;max-width:520px;}
+.mac .tier-row{margin-bottom:14px;}
+.mac .box{background:var(--card-bg);border-color:var(--border-strong);}
+
+.skills-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:6px 0 4px;}
+.chip{
+  font-size:11.5px;font-family:"IBM Plex Mono",monospace;color:var(--skill);
+  background:var(--skill-bg);border-radius:6px;padding:5px 10px;
+}
+.chip.wide{font-family:"IBM Plex Sans",sans-serif;font-weight:500;color:var(--text-secondary);background:transparent;border:0.5px dashed var(--border-strong);}
+
+.callout{
+  font-size:12.5px;color:var(--text-secondary);line-height:1.6;margin:14px 0 0;
+  border-top:0.5px solid var(--border);padding-top:12px;
+}
+.callout b{color:var(--text-primary);font-weight:600;}
+
+.legend{display:flex;flex-wrap:wrap;gap:16px 20px;margin-top:2rem;font-size:12px;color:var(--text-secondary);}
+.legend-item{display:flex;align-items:center;gap:7px;}
+.sw{width:11px;height:11px;border-radius:3px;flex:none;}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">CKH Connect &middot; before the n8n migration</p>
+  <h1>How the current system actually works</h1>
+  <p class="dek">Everything except one box already runs in the cloud. That one box is what the n8n migration replaces.</p>
+
+  <div class="flow">
+    <div class="tier-row">
+      <div class="box"><div class="box-title">Rep&rsquo;s phone</div><p class="box-sub">Texts/MMS card photos and voice memos</p></div>
+      <div class="box"><div class="box-title">Staff browser</div><p class="box-sub">Kiosk form, review page, notes page</p></div>
+    </div>
+
+    <div class="arrow"><svg width="16" height="20"><path d="M8,0 L8,14 M2,8 L8,14 L14,8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+    <div class="tier-row">
+      <div class="box cloud"><span class="tag">cloud</span><div class="box-title">Twilio</div><p class="box-sub">SMS / MMS, already server-side</p></div>
+      <div class="box cloud"><span class="tag">cloud</span><div class="box-title">Frontend</div><p class="box-sub">Vercel, Quasar SPA</p></div>
+    </div>
+
+    <div class="arrow"><svg width="16" height="20"><path d="M8,0 L8,14 M2,8 L8,14 L14,8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+    <div class="tier-row">
+      <div class="box cloud" style="max-width:520px;">
+        <span class="tag">cloud</span>
+        <div class="box-title">Supabase</div>
+        <p class="box-sub">Postgres + Storage + ~30 Edge Functions &mdash; the only server-side API. <code>twilio-webhook</code> authenticates itself; every table has RLS enabled with zero policies, gated at the application layer instead.</p>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="16" height="26"><path d="M8,0 L8,20 M2,14 L8,20 L14,14" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span class="arrow-label">polls every 10&ndash;20s and writes back, using the service-role key</span>
+    </div>
+
+    <div class="mac">
+      <span class="mac-tab">Your Mac &mdash; the only thing not already in the cloud</span>
+      <p class="mac-note">Two Node/bash processes, started as macOS Login Items. This is the entire reason a Mac has to stay on for the pipeline to run at all.</p>
+
+      <div class="tier-row">
+        <div class="box"><div class="box-title">local-agent</div><p class="box-sub">5 concurrent poll loops: matching, SMS photo, voice transcription, contact intent, note extraction</p></div>
+        <div class="box"><div class="box-title">watcher</div><p class="box-sub">Watches a local folder for card photos dropped there manually</p></div>
+      </div>
+
+      <div class="arrow"><svg width="16" height="20"><path d="M8,0 L8,14 M2,8 L8,14 L14,8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+      <div class="tier-row">
+        <div class="box" style="max-width:420px;"><div class="box-title">Claude Code CLI</div><p class="box-sub"><code>claude -p</code>, sandboxed per skill (<code>skill-profiles.mjs</code>): <code>--strict-mcp-config</code> + a computed <code>--disallowedTools</code> deny list, so a hostile business card can&rsquo;t reach Gmail, Drive, Supabase admin, or a write-capable Zoho connector.</p></div>
+      </div>
+
+      <div class="skills-row">
+        <span class="chip">research-contact</span>
+        <span class="chip">match-contact</span>
+        <span class="chip">process-cards</span>
+        <span class="chip">locate-cards</span>
+        <span class="chip">attribute-voice-memo</span>
+        <span class="chip">classify-contact-intent</span>
+        <span class="chip">extract-note-contacts</span>
+      </div>
+      <p class="mac-note" style="margin:8px 0 0;">process-cards / locate-cards also shell out to macOS&rsquo;s <code style="font-family:'IBM Plex Mono',monospace">sips</code> to crop images &mdash; the reason this pipeline can&rsquo;t just move to a Linux server as-is. Voice transcription itself skips the CLI entirely: local-agent calls a local <b>Whisper</b> CLI directly, not a skill.</p>
+
+      <div class="callout">
+        Every skill prints one JSON object; <b>local-agent validates it (Zod) before writing anything</b> &mdash; a failed validation leaves the row pending for a human, never a partial write. Only <b>match-contact</b> ever reaches Zoho, and only through a read-only connector.
+      </div>
+    </div>
+
+    <div class="arrow"><svg width="16" height="20"><path d="M8,0 L8,14 M2,8 L8,14 L14,8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+    <div class="tier-row">
+      <div class="box zoho"><span class="tag zoho">read-only</span><div class="box-title">Zoho CRM</div><p class="box-sub">Reached only by match-contact, via a hosted read-only connector</p></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="sw" style="background:var(--cloud)"></span>Already cloud &mdash; unaffected by the migration</div>
+    <div class="legend-item"><span class="sw" style="background:var(--mac)"></span>The only local piece &mdash; what n8n replaces</div>
+    <div class="legend-item"><span class="sw" style="background:var(--zoho)"></span>External, read-only</div>
+  </div>
+</div>

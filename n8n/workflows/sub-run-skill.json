@@ -1,0 +1,173 @@
+{
+  "id": "mdWc5o0GtIJMk1P3",
+  "name": "sub-run-skill",
+  "active": false,
+  "tags": ["skill-sandboxed"],
+  "nodes": [
+    {
+      "id": "3cfc0fea-5d4c-4c84-a0cf-216e1424f976",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "systemPrompt", "type": "string" },
+            { "name": "userInput", "type": "string" },
+            { "name": "schemaName", "type": "string" },
+            { "name": "webSearch", "type": "boolean" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a6f9671-1007-449a-92dc-324935406209",
+      "name": "Check Circuit Breaker",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [480, 300],
+      "parameters": { "operation": "executeQuery", "query": "select blocked_until from public.circuit_breaker where id = true;" }
+    },
+    {
+      "id": "f0481052-12cf-4720-8afb-d7b61e6e9e74",
+      "name": "Circuit Breaker Tripped?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [720, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "leftValue": "={{ $json.blocked_until !== null && new Date($json.blocked_until) > new Date() }}",
+            "operator": { "type": "boolean", "operation": "true" },
+            "rightValue": ""
+          }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ac277da0-6a5d-44a2-b8db-406acaed80cc",
+      "name": "Return Blocked",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const blockedUntil = $input.first().json.blocked_until;\nreturn [{ json: { success: false, error: 'circuit breaker: blocked until ' + blockedUntil } }];"
+      }
+    },
+    {
+      "id": "5471ff60-909c-4da2-ae05-540ed4cf648b",
+      "name": "Call Anthropic",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [720, 380],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": { "__rl": true, "mode": "id", "value": "claude-sonnet-5" },
+        "messages": { "values": [{ "role": "user", "content": "={{ $json.userInput }}" }] },
+        "options": {
+          "system": "={{ $json.systemPrompt }}",
+          "includeMergedResponse": true,
+          "maxTokens": 4096,
+          "temperature": 0,
+          "webSearch": "={{ $json.webSearch === true }}"
+        }
+      }
+    },
+    {
+      "id": "2578cb51-36e5-425d-99ab-15715dc8f029",
+      "name": "Validate & Return",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const { z } = require('zod');\n\n// --- extractJson (ported from n8n/schemas/extractJson.mjs) ---\nfunction parseBalancedFrom(text, start) {\n  let depth = 0;\n  let inString = false;\n  let escape = false;\n  for (let i = start; i < text.length; i++) {\n    const ch = text[i];\n    if (inString) {\n      if (escape) escape = false;\n      else if (ch === '\\\\') escape = true;\n      else if (ch === '\"') inString = false;\n      continue;\n    }\n    if (ch === '\"') inString = true;\n    else if (ch === '{') depth++;\n    else if (ch === '}') {\n      depth--;\n      if (depth === 0) {\n        try { return { value: JSON.parse(text.slice(start, i + 1)), end: i }; }\n        catch (e) { return null; }\n      }\n    }\n  }\n  return null;\n}\nfunction extractJson(text) {\n  const objects = [];\n  let cursor = text.indexOf('{');\n  while (cursor !== -1) {\n    const parsed = parseBalancedFrom(text, cursor);\n    if (parsed) { objects.push(parsed.value); cursor = text.indexOf('{', parsed.end + 1); }\n    else { cursor = text.indexOf('{', cursor + 1); }\n  }\n  if (objects.length === 0) throw new Error('No JSON object found in skill output');\n  return objects[objects.length - 1];\n}\n\n// --- schemas (ported from n8n/schemas/schemas.mjs) ---\nconst confidence = z.enum(['high', 'medium', 'low']);\nconst zohoId = z.string().regex(/^\\d{15,}$/, 'must be a Zoho record id (15+ digits)');\nconst blankToNull = (max) => z.union([z.string().max(max), z.null()]).transform((v) => (v === null || v.trim() === '' ? null : v.trim())).nullable();\n\nconst MatchOutput = z.object({\n  matchStatus: z.enum(['existing_contact', 'new_contact_existing_account', 'new_account', 'ambiguous']),\n  matchConfidence: confidence.nullable().default(null),\n  matchedZohoContactId: zohoId.nullable().default(null),\n  matchedZohoContactName: blankToNull(300).default(null),\n  matchedZohoContactEmail: blankToNull(320).default(null),\n  matchedZohoContactPhone: blankToNull(64).default(null),\n  matchedZohoContactTitle: blankToNull(300).default(null),\n  matchedZohoAccountId: zohoId.nullable().default(null),\n  matchedZohoAccountName: blankToNull(300).default(null),\n  matchedZohoAccountLevel: z.enum(['district', 'school']).nullable().default(null),\n  hasActiveOpportunity: z.boolean().nullable().default(null),\n  activeOpportunityName: blankToNull(300).default(null),\n  candidateMatches: z.array(z.object({\n    type: z.enum(['account', 'contact']).optional(),\n    zohoId: zohoId.optional(),\n    name: z.string().max(300).optional(),\n    score: z.number().optional(),\n    level: z.enum(['district', 'school']).optional(),\n  }).passthrough()).max(50).nullable().default(null),\n  notes: blankToNull(4000).default(null),\n  glanceSummary: blankToNull(400).default(null),\n})\n  .passthrough()\n  .refine((o) => (o.matchedZohoAccountId === null) === (o.matchedZohoAccountName === null), { message: 'matchedZohoAccountId and matchedZohoAccountName must be set together or null together' })\n  .refine((o) => (o.matchedZohoAccountId === null) === (o.matchedZohoAccountLevel === null), { message: 'matchedZohoAccountLevel must be set/null together with matchedZohoAccountId' })\n  .refine((o) => (o.matchedZohoContactId === null) === (o.matchedZohoContactName === null), { message: 'matchedZohoContactId and matchedZohoContactName must be set together or null together' })\n  .refine((o) => o.matchStatus !== 'existing_contact' || o.matchedZohoContactId !== null, { message: 'matchStatus=existing_contact requires a matchedZohoContactId' })\n  .refine((o) => o.matchStatus !== 'new_contact_existing_account' || o.matchedZohoAccountId !== null, { message: 'matchStatus=new_contact_existing_account requires a matchedZohoAccountId' })\n  .refine((o) => o.matchConfidence !== 'high' || o.matchedZohoAccountId !== null, { message: 'matchConfidence=high requires a matched account -- refusing to auto-approve an unmatched contact' });\n\nconst ResearchOutput = z.object({\n  firstName: z.string(),\n  lastName: z.string(),\n  alternateDistrictNames: z.array(z.string().max(300)).max(20).default([]),\n  alternateNameSpellings: z.array(z.string().max(200)).max(20).default([]),\n  nameCorrectionConfidence: confidence.nullable().default(null),\n  institutionLevel: z.enum(['central_office', 'specific_campus', 'unknown']).default('unknown'),\n  institutionLevelCampusName: blankToNull(300).default(null),\n  institutionLevelConfidence: confidence.default('low'),\n  institutionLevelAsOfDate: blankToNull(40).default(null),\n  titleFinding: blankToNull(300).default(null),\n  titleFindingConfidence: confidence.nullable().default(null),\n  titleFindingAsOfDate: blankToNull(40).default(null),\n  researchConfidence: confidence,\n  personVerified: z.boolean(),\n  researchNotes: blankToNull(4000).default(null),\n}).passthrough();\n\nconst IntentOutput = z.object({ contactIntent: z.enum(['hot', 'warm', 'cold']).nullable() });\n\nconst AttributionOutput = z.object({\n  results: z.array(z.object({\n    contactId: z.string().uuid(),\n    excerpt: z.string().max(8000).optional(),\n    notFound: z.literal(true).optional(),\n  }).refine((r) => (r.excerpt === undefined) !== (r.notFound === undefined), { message: 'each result needs exactly one of excerpt or notFound' })).max(200).default([]),\n});\n\nconst MAX_CONTACTS_PER_NOTE = 50;\nconst NoteExtractionOutput = z.object({\n  contacts: z.array(z.object({\n    firstName: z.string().min(1).max(100),\n    lastName: z.string().max(100),\n    email: z.string().max(320).default(''),\n    phone: z.string().max(40).default(''),\n    title: z.string().max(200).default(''),\n    districtName: z.string().max(200).default(''),\n    schoolName: z.string().max(200).default(''),\n    interactionNotes: z.string().max(4000).default(''),\n    extractionConfidence: confidence,\n  })).max(MAX_CONTACTS_PER_NOTE, 'a single note may not produce more than ' + MAX_CONTACTS_PER_NOTE + ' contacts -- split it into smaller pieces'),\n  skipped: z.array(z.string().max(300)).max(50).default([]),\n});\n\nconst CardExtractionSourceType = z.enum(['business_card', 'directory_listing']);\nconst CardExtractionOutput = z.object({\n  status: z.enum(['ok', 'no_card_detected']),\n  sourceImageHash: z.string().max(200).optional(),\n  sourceType: CardExtractionSourceType.default('business_card'),\n  cards: z.array(z.object({\n    index: z.number().int().min(1).max(50),\n    firstName: z.string().min(1).max(100),\n    lastName: z.string().min(1).max(100),\n    email: z.string().max(320).default(''),\n    phone: z.string().max(40).default(''),\n    title: z.string().max(200).default(''),\n    districtName: z.string().max(200).default(''),\n    schoolName: z.string().max(200).default(''),\n    extractionConfidence: confidence,\n    cropFileName: z.string().max(200).regex(/^[A-Za-z0-9._-]+$/, 'must be a bare filename, no path separators').nullable().default(null),\n  })).max(50),\n}).refine((o) => o.status === 'no_card_detected' || o.cards.length > 0, { message: 'status=ok requires at least one card' });\n\nconst SCHEMAS = { MatchOutput: MatchOutput, ResearchOutput: ResearchOutput, IntentOutput: IntentOutput, AttributionOutput: AttributionOutput, NoteExtractionOutput: NoteExtractionOutput, CardExtractionOutput: CardExtractionOutput };\n\nconst schemaName = $('Sub-workflow Input').item.json.schemaName;\nconst schema = SCHEMAS[schemaName];\nif (!schema) {\n  return [{ json: { success: false, error: 'unknown schemaName: ' + schemaName } }];\n}\n\nconst anthropicItem = $input.first().json;\n// n8n's Anthropic node output field name for the merged response text\n// hasn't been confirmed against a live run yet (see the sticky note on\n// this workflow) -- defensively try every shape it's plausibly under.\nconst rawText = typeof anthropicItem.content === 'string' ? anthropicItem.content\n  : Array.isArray(anthropicItem.content) ? anthropicItem.content.map((b) => (b && b.text) || '').join('')\n  : typeof anthropicItem.text === 'string' ? anthropicItem.text\n  : typeof anthropicItem.output === 'string' ? anthropicItem.output\n  : JSON.stringify(anthropicItem);\n\nlet parsed;\ntry { parsed = extractJson(rawText); }\ncatch (err) { return [{ json: { success: false, error: 'no JSON object found in model output: ' + err.message } }]; }\n\nconst result = schema.safeParse(parsed);\nif (!result.success) {\n  const issues = result.error.issues.map((i) => i.path.join('.') + ': ' + i.message).join('; ');\n  return [{ json: { success: false, error: issues } }];\n}\nreturn [{ json: { success: true, data: result.data } }];"
+      }
+    },
+    {
+      "id": "27ee291e-d0de-490e-84be-b9d58e6d0e54",
+      "name": "Is Rate Limited?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [960, 500],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{
+            "leftValue": "={{ $('Call Anthropic').item.json.error }}",
+            "operator": { "type": "string", "operation": "regex" },
+            "rightValue": "(429|rate.?limit|overloaded)"
+          }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "3cf6e5c0-4865-45e7-9e99-f5a4a738a122",
+      "name": "Trip Circuit Breaker",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1200, 420],
+      "parameters": { "operation": "executeQuery", "query": "update public.circuit_breaker set blocked_until = now() + interval '5 minutes', updated_at = now() where id = true returning *;" }
+    },
+    {
+      "id": "dafb4668-4800-4c15-8e5b-bff6274c297d",
+      "name": "Format API Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 500],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const errorMessage = $('Call Anthropic').item.json.error || 'unknown error';\nreturn [{ json: { success: false, error: 'Anthropic call failed: ' + errorMessage } }];"
+      }
+    },
+    {
+      "id": "6078fc03-6506-4151-8f0d-6643be81f8bf",
+      "name": "Sticky Note 8d682722",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## sub-run-skill\nGeneric, reusable \"call a skill\" sub-workflow -- the direct replacement for skill-runner.mjs's invokeOnce. Called via Execute Workflow with {systemPrompt, userInput, schemaName, webSearch?}. Five of the seven skills (research-contact, attribute-voice-memo, classify-contact-intent, extract-note-contacts, and process-cards's field-extraction half) share this contract -- match-contact and process-cards's crop step get their own carved-out sub-workflows per the plan (multi-turn Zoho tool use, interleaved vision + deterministic file ops).\n\nwebSearch (added Stage 2, for research-contact) maps to the Anthropic node's own options.webSearch -- the native server-side web_search tool the plan confirmed this node supports directly, no HTTP Request workaround. Defaults to false for every existing caller (an unmapped Execute Workflow input resolves to undefined, and undefined === true is false), so this is backward compatible with sub-classify-contact-intent as-is.\n\nCircuit breaker check/trip lives here, in exactly one place, so every future caller gets it for free -- the n8n-side replacement for skill-runner.mjs's single in-process claudeBlockedUntil variable, which can't work across n8n's separate-process executions.\n\nRetry uses the Anthropic node's own Retry On Fail setting (3 tries, 3s apart) instead of a hand-rolled loop -- replaces invokeOnce's retry, not the circuit breaker (a 429 also trips the breaker via the error branch, checked by regex against the error message since the plain Anthropic node has no structured error-code field to branch on directly).\n\nVERIFY BEFORE THIS LEAVES DRAFT: the exact output field name the Anthropic node puts the merged response text under (content vs text vs output) hasn't been confirmed against a live execution -- Validate & Return defensively checks all three shapes, but this needs a real test run to pin down and simplify. Same for whether options.includeMergedResponse actually produces the field name assumed here, and (new with webSearch) whether a web-search-augmented response still lands in the same field or wraps citations differently.\n\nSchema validation inlines the full n8n/schemas/schemas.mjs (zod, via NODE_FUNCTION_ALLOW_EXTERNAL) rather than reimplementing as canvas branching -- see the plan, \"Output validation\": a Code node keeps MatchOutput's five .refine() invariants as one diffable, testable unit instead of risking drift between what the rule says and what the canvas checks.\n\nFailure (blocked / API error / validation failure) always returns {success: false, error} rather than throwing -- callers (e.g. pipeline-contact-intent) branch on success and do nothing on failure, leaving the row pending for the next claim, same as skill-runner.mjs throwing does today.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 1/2). \"Postgres (n8n pipeline)\" and \"Anthropic API\" are placeholder names -- no credential is actually attached (n8n instance has zero credentials configured) -- see n8n/README.md.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Sub-workflow Input": { "main": [[{ "node": "Check Circuit Breaker", "type": "main", "index": 0 }]] },
+    "Check Circuit Breaker": { "main": [[{ "node": "Circuit Breaker Tripped?", "type": "main", "index": 0 }]] },
+    "Circuit Breaker Tripped?": {
+      "main": [
+        [{ "node": "Return Blocked", "type": "main", "index": 0 }],
+        [{ "node": "Call Anthropic", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Anthropic": {
+      "main": [
+        [{ "node": "Validate & Return", "type": "main", "index": 0 }],
+        [{ "node": "Is Rate Limited?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Rate Limited?": {
+      "main": [
+        [{ "node": "Trip Circuit Breaker", "type": "main", "index": 0 }],
+        [{ "node": "Format API Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Trip Circuit Breaker": { "main": [[{ "node": "Format API Error", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 180 }
+}

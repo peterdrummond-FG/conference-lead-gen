@@ -1,0 +1,48 @@
+{
+  "id": "26CFAAXoWnMw9omo",
+  "name": "pipeline-failed-media-retry",
+  "active": false,
+  "nodes": [
+    {
+      "id": "a8888962-bd0d-4350-b8ad-600ecb35d1b2",
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [240, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 2 }] } }
+    },
+    {
+      "id": "ecae9bce-da9f-44e1-bcf9-0a9fdb75af40",
+      "name": "Claim Undownloaded Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [480, 300],
+      "parameters": { "operation": "executeQuery", "query": "select * from claim_undownloaded_media(10, 5, 5);" }
+    },
+    {
+      "id": "c3823ce7-ad13-43bf-824a-119609276ca0",
+      "name": "TODO Needs Twilio Credential - Redownload Media",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [720, 300],
+      "parameters": {}
+    },
+    {
+      "id": "094b53d4-5a6b-489d-a968-7d58a574266b",
+      "name": "Sticky Note ffc44ce8",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Failed media retry (stub)\nCalls the new claim_undownloaded_media(10, 5, 5) RPC (20260922210000_claim_undownloaded_media.sql, drafted alongside this build -- repo-only, not yet applied to the live project) -- the retry mechanism for the one gap the 2026-09-22 voice-memo/OCR-retry audit left open: reconcile_retryable_failed_inbound_messages requires storage_path is not null, so a failed *download* (twilio-webhook never even got the bytes) was invisible to every retry mechanism until now.\n\nSTOPS HERE ON PURPOSE -- this is the \"stubbed but not fully built\" half the master plan calls out explicitly (Stage 0 item 7): no Twilio credential exists anywhere in this project yet (nothing in local-agent/watcher ever called Twilio's API directly). Once provisioned (prefer a scoped Twilio API Key restricted to read-only Messages/Media access over the all-powerful main Auth Token), the missing half re-fetches media via Twilio's GET /Messages/{MessageSid}/Media.json using the claimed row's twilio_message_sid (twilio-webhook never persists the raw per-media MediaUrl, so this is the only way back to the bytes), re-uploads to the same bucket/key convention, and sets storage_path + status on success -- a repeat failure just leaves it failed with download_attempts already bumped by the claim above, no separate write needed.\n\nPer the plan, this should probably share its actual re-fetch/upload logic with pipeline-twilio-reconciliation's auto-replay path once both are built for real -- both are fundamentally \"re-run twilio-webhook's per-media processing outside the original request.\"\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 0). \"Postgres (n8n pipeline)\" is a placeholder credential -- see n8n/README.md.",
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": { "main": [[{ "node": "Claim Undownloaded Media", "type": "main", "index": 0 }]] },
+    "Claim Undownloaded Media": { "main": [[{ "node": "TODO Needs Twilio Credential - Redownload Media", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 60 },
+  "tags": []
+}

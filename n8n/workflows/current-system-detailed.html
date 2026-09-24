@@ -1,0 +1,476 @@
+<title>Current system, step by step</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --page-bg:#FBFAF6;
+  --canvas-bg:#F4F2EA;
+  --dot-color:#DFDCCF;
+  --node-bg:#FFFFFF;
+  --node-border:#DBD8CB;
+  --text-primary:#232219;
+  --text-secondary:#5B5A4F;
+  --text-muted:#918F80;
+  --wire:#BDBAAC;
+  --panel-border:#E4E1D3;
+  --trigger:#1F8F5E;
+  --trigger-bg:#E7F4EC;
+  --data:#2E62A6;
+  --data-bg:#E8EFF9;
+  --skill:#6E4FAE;
+  --skill-bg:#EFEAF8;
+  --ext:#A6407F;
+  --ext-bg:#F7E9F1;
+  --logic:#A6741C;
+  --logic-bg:#F6EEDD;
+  --muted-bg:#EFEDE4;
+  --muted-border:#D2CFC0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page-bg:#18170F; --canvas-bg:#1F1E15; --dot-color:#2C2A1E;
+    --node-bg:#26251A; --node-border:#3A382A;
+    --text-primary:#EFEDE0; --text-secondary:#B4B19E; --text-muted:#8A876F;
+    --wire:#4C4936; --panel-border:#332F20;
+    --trigger:#4CC08A; --trigger-bg:#20362A;
+    --data:#6DA0E0; --data-bg:#1F2F45;
+    --skill:#AB8DE0; --skill-bg:#2C2440;
+    --ext:#DD84B4; --ext-bg:#3A2432;
+    --logic:#E0B15C; --logic-bg:#3A2F16;
+    --muted-bg:#232115; --muted-border:#3A3726;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page-bg:#18170F; --canvas-bg:#1F1E15; --dot-color:#2C2A1E;
+  --node-bg:#26251A; --node-border:#3A382A;
+  --text-primary:#EFEDE0; --text-secondary:#B4B19E; --text-muted:#8A876F;
+  --wire:#4C4936; --panel-border:#332F20;
+  --trigger:#4CC08A; --trigger-bg:#20362A;
+  --data:#6DA0E0; --data-bg:#1F2F45;
+  --skill:#AB8DE0; --skill-bg:#2C2440;
+  --ext:#DD84B4; --ext-bg:#3A2432;
+  --logic:#E0B15C; --logic-bg:#3A2F16;
+  --muted-bg:#232115; --muted-border:#3A3726;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--page-bg);color:var(--text-primary);font-family:"IBM Plex Sans",system-ui,sans-serif;padding:2.5rem 20px 3rem;}
+.wrap{max-width:1160px;margin:0 auto;}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--skill);margin:0 0 10px;}
+h1{font-size:22px;font-weight:500;margin:0 0 8px;text-wrap:balance;}
+.dek{font-size:14px;color:var(--text-secondary);margin:0 0 1.25rem;max-width:680px;line-height:1.6;}
+
+.panel{background:var(--node-bg);border:0.5px solid var(--panel-border);border-radius:12px;overflow:hidden;margin-bottom:1.75rem;}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:0.5px solid var(--panel-border);flex-wrap:wrap;}
+.wf-name{font-size:13px;font-weight:500;font-family:"IBM Plex Mono",monospace;}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);border:0.5px solid var(--panel-border);border-radius:999px;padding:3px 10px;}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--trigger);}
+.panel-note{font-size:11px;color:var(--text-muted);margin-left:auto;}
+
+.canvas-scroll{overflow-x:auto;background:var(--canvas-bg);}
+.canvas{position:relative;background-image:radial-gradient(var(--dot-color) 1.3px, transparent 1.3px);background-size:18px 18px;}
+
+.node{position:absolute;background:var(--node-bg);border:0.5px solid var(--node-border);border-radius:8px;display:flex;align-items:center;gap:9px;padding:0 11px;box-shadow:0 1px 2px rgba(0,0,0,0.04);cursor:pointer;transition:border-color .12s ease, box-shadow .12s ease;}
+.node:hover{border-color:var(--skill);}
+.node:focus-visible{outline:2px solid var(--skill);outline-offset:2px;}
+.node.active{border-color:var(--skill);box-shadow:0 0 0 3px var(--skill-bg);}
+.node.trigger{border-radius:26px 8px 8px 26px;}
+.node.muted{background:var(--muted-bg);border-style:dashed;border-color:var(--muted-border);box-shadow:none;}
+.node.muted.active{box-shadow:0 0 0 3px var(--skill-bg);}
+.chip{width:26px;height:26px;border-radius:6px;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;}
+.chip.c-trigger{background:var(--trigger-bg);color:var(--trigger);}
+.chip.c-data{background:var(--data-bg);color:var(--data);}
+.chip.c-skill{background:var(--skill-bg);color:var(--skill);}
+.chip.c-ext{background:var(--ext-bg);color:var(--ext);}
+.chip.c-logic{background:var(--logic-bg);color:var(--logic);}
+.chip.c-muted{background:transparent;color:var(--text-muted);border:0.5px solid var(--muted-border);}
+.node-text{min-width:0;flex:1 1 auto;}
+.node-title{font-size:12.5px;font-weight:600;line-height:1.25;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.node.muted .node-title{color:var(--text-secondary);font-weight:500;}
+.node-sub{font-size:10.5px;color:var(--text-muted);line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;}
+.node-sub.mono{font-family:"IBM Plex Mono",monospace;}
+
+.wire-label{font-size:10px;fill:var(--text-muted);font-style:italic;}
+
+.legend{display:flex;flex-wrap:wrap;gap:16px 22px;padding:14px 4px 0;font-size:12px;color:var(--text-secondary);}
+.legend-item{display:flex;align-items:center;gap:7px;}
+.swatch{width:11px;height:11px;border-radius:3px;flex:none;}
+.swatch.dash{background:none;border:1.5px dashed var(--muted-border);}
+
+.section-label{font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin:2.5rem 0 0.75rem;padding-top:1.5rem;border-top:0.5px solid var(--panel-border);}
+.section-label:first-of-type{border-top:none;padding-top:0;}
+.note{font-size:12.5px;color:var(--text-secondary);padding:12px 16px 16px;line-height:1.7;}
+.note code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--muted-bg);padding:1px 5px;border-radius:4px;}
+
+.detail-panel{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:5;background:var(--node-bg);border:0.5px solid var(--panel-border);border-radius:12px;padding:14px 18px;margin-bottom:1.75rem;box-shadow:0 4px 16px rgba(0,0,0,0.08);}
+.detail-empty{font-size:13px;color:var(--text-muted);}
+.detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.detail-wf{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--skill);}
+.detail-close{background:none;border:none;color:var(--text-muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 8px;border-radius:6px;}
+.detail-close:hover{background:var(--muted-bg);color:var(--text-primary);}
+.detail-title{font-size:15px;font-weight:600;margin:6px 0 10px;}
+.detail-rows{margin:0;display:flex;flex-direction:column;gap:8px;}
+.detail-row{display:grid;grid-template-columns:112px 1fr;gap:10px;}
+.detail-row dt{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.03em;margin:0;padding-top:1px;}
+.detail-row dd{font-size:13px;margin:0;line-height:1.5;color:var(--text-primary);}
+.detail-row dd.mono{font-family:"IBM Plex Mono",monospace;font-size:12px;}
+@media (max-width:480px){.detail-row{grid-template-columns:1fr;gap:2px;}}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">CKH Connect &middot; the system running today</p>
+  <h1>local-agent and watcher, step by step</h1>
+  <p class="dek">The same level of detail as the n8n design, for what's actually live right now: all five <code style="font-family:'IBM Plex Mono',monospace">local-agent</code> poll loops, <code style="font-family:'IBM Plex Mono',monospace">watcher</code>'s folder-drop loop, and the three supporting mechanisms that hold the whole thing together. Click any step for its breakdown.</p>
+
+  <div class="detail-panel" id="detailPanel"><div class="detail-empty">Click any step below to see its breakdown.</div></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="wf-name">matchingLoop()</span>
+      <span class="status-pill"><span class="status-dot"></span>Live</span>
+      <span class="panel-note">local-agent &middot; poll every 20s</span>
+    </div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1210" height="262" viewBox="0 0 1210 262">
+        <rect width="1210" height="262" fill="var(--canvas-bg)"/><rect width="1210" height="262" fill="url(#d1)"/>
+        <defs><pattern id="d1" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M400,55 C415,55 425,55 440,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M620,55 C635,55 645,55 660,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M840,55 C855,55 865,55 880,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M990,45 C1020,45 1010,110 895,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M990,70 C1020,95 1085,140 1125,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="920" y="112">valid</text><text class="wire-label" x="1040" y="128">failed twice</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="400" cy="55" r="3" fill="var(--wire)"/><circle cx="440" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="620" cy="55" r="3" fill="var(--wire)"/><circle cx="660" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="840" cy="55" r="3" fill="var(--wire)"/><circle cx="880" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="990" cy="45" r="3" fill="var(--wire)"/><circle cx="895" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="990" cy="70" r="3" fill="var(--wire)"/><circle cx="1125" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="ml1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 20s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="ml2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Claim (RPC)</div><div class="node-sub mono">claim_pending_contacts()</div></div></div></foreignObject>
+        <foreignObject x="440" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="ml3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">research-contact</div></div></div></foreignObject>
+        <foreignObject x="660" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="ml4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">match-contact</div></div></div></foreignObject>
+        <foreignObject x="880" y="24" width="110" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="ml5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">Zod</div><div class="node-text"><div class="node-title">Validate</div><div class="node-sub">MatchOutput</div></div></div></foreignObject>
+        <foreignObject x="810" y="170" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="ml6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Write (RPC)</div><div class="node-sub mono">finalize_contact_match()</div></div></div></foreignObject>
+        <foreignObject x="1040" y="170" width="150" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="ml7" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">Left pending</div><div class="node-sub">retried next tick</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">photoTick()</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">local-agent &middot; SMS photo loop &middot; poll every 20s</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1290" height="262" viewBox="0 0 1290 262">
+        <rect width="1290" height="262" fill="var(--canvas-bg)"/><rect width="1290" height="262" fill="url(#d2)"/>
+        <defs><pattern id="d2" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M410,55 C425,55 435,55 450,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M630,55 C645,55 655,55 670,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M860,55 C875,55 885,55 900,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1030,45 C1060,45 1050,110 915,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1030,70 C1060,95 1130,140 1170,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="950" y="112">ok</text><text class="wire-label" x="1080" y="128">bad / timeout</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="410" cy="55" r="3" fill="var(--wire)"/><circle cx="450" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="630" cy="55" r="3" fill="var(--wire)"/><circle cx="670" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="860" cy="55" r="3" fill="var(--wire)"/><circle cx="900" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="1030" cy="45" r="3" fill="var(--wire)"/><circle cx="915" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="1030" cy="70" r="3" fill="var(--wire)"/><circle cx="1170" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="pl1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 20s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="200" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pl2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Claim (optimistic)</div><div class="node-sub">pending_ocr &#8594; processing</div></div></div></foreignObject>
+        <foreignObject x="450" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pl3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-ext">sips</div><div class="node-text"><div class="node-title">Download + convert</div><div class="node-sub">HEIC &#8594; JPEG if needed</div></div></div></foreignObject>
+        <foreignObject x="670" y="24" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pl4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">process-cards</div></div></div></foreignObject>
+        <foreignObject x="900" y="24" width="130" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pl5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">Zod</div><div class="node-text"><div class="node-title">Validate</div><div class="node-sub">CardExtractionOutput</div></div></div></foreignObject>
+        <foreignObject x="825" y="170" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pl6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">IO</div><div class="node-text"><div class="node-title">Upload + POST</div><div class="node-sub mono">contacts-from-ocr</div></div></div></foreignObject>
+        <foreignObject x="1065" y="170" width="200" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="pl7" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">Mark failed</div><div class="node-sub mono">error_class + status</div></div></div></foreignObject>
+      </svg>
+    </div>
+    <div class="note">Every tick also runs <code>reconcileRetryableFailedMessages()</code> first (2026-09-22 addition) &mdash; see the supporting-mechanisms section below.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">transcriptionTick()</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">local-agent &middot; voice-memo loop &middot; poll every 20s</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1300" height="262" viewBox="0 0 1300 262">
+        <rect width="1300" height="262" fill="var(--canvas-bg)"/><rect width="1300" height="262" fill="url(#d3)"/>
+        <defs><pattern id="d3" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M420,55 C435,55 445,55 460,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M620,55 C635,55 645,55 660,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M850,55 C865,55 875,55 890,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1000,45 C1030,45 1020,110 905,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1000,70 C1030,95 1095,140 1135,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="930" y="112">matched</text><text class="wire-label" x="1050" y="128">nothing yet</text>
+        <text class="wire-label" x="665" y="16">always runs on 1+ candidates &mdash; fixed 2026-09-22</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="420" cy="55" r="3" fill="var(--wire)"/><circle cx="460" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="620" cy="55" r="3" fill="var(--wire)"/><circle cx="660" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="850" cy="55" r="3" fill="var(--wire)"/><circle cx="890" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="1000" cy="45" r="3" fill="var(--wire)"/><circle cx="905" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="1000" cy="70" r="3" fill="var(--wire)"/><circle cx="1135" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="vl1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 20s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="210" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="vl2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Claim (optimistic)</div><div class="node-sub">pending_transcription &#8594; processing</div></div></div></foreignObject>
+        <foreignObject x="460" y="24" width="160" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="vl3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-ext">&#127908;</div><div class="node-text"><div class="node-title">Whisper CLI</div><div class="node-sub">local, not a skill</div></div></div></foreignObject>
+        <foreignObject x="660" y="24" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="vl4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">attribute-voice-memo</div></div></div></foreignObject>
+        <foreignObject x="890" y="24" width="110" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="vl5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">Zod</div><div class="node-text"><div class="node-title">Validate</div><div class="node-sub">AttributionOutput</div></div></div></foreignObject>
+        <foreignObject x="815" y="170" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="vl6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Write</div><div class="node-sub mono">interaction_notes, link_status</div></div></div></foreignObject>
+        <foreignObject x="1050" y="170" width="200" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="vl7" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">Left unlinked</div><div class="node-sub">retried by the sweep below</div></div></div></foreignObject>
+      </svg>
+    </div>
+    <div class="note">Every tick also runs <code>relinkUnlinkedAudioMessages()</code> &mdash; a separate retry pass, see the supporting-mechanisms section below.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">intentTick()</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">local-agent &middot; contact-intent loop &middot; poll every 20s, batch 5, concurrency 2</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1050" height="262" viewBox="0 0 1050 262">
+        <rect width="1050" height="262" fill="var(--canvas-bg)"/><rect width="1050" height="262" fill="url(#d4)"/>
+        <defs><pattern id="d4" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M420,55 C440,55 450,55 470,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M650,55 C665,55 675,55 690,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M800,45 C830,45 820,110 705,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M800,70 C830,90 880,140 925,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="740" y="112">valid</text><text class="wire-label" x="855" y="128">invalid</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="420" cy="55" r="3" fill="var(--wire)"/><circle cx="470" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="650" cy="55" r="3" fill="var(--wire)"/><circle cx="690" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="800" cy="45" r="3" fill="var(--wire)"/><circle cx="705" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="800" cy="70" r="3" fill="var(--wire)"/><circle cx="925" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="il1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 20s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="210" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="il2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Claim (RPC)</div><div class="node-sub mono">claim_contacts_needing_intent()</div></div></div></foreignObject>
+        <foreignObject x="470" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="il3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p &times;5</div><div class="node-sub mono">classify-contact-intent</div></div></div></foreignObject>
+        <foreignObject x="690" y="24" width="110" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="il4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">Zod</div><div class="node-text"><div class="node-title">Validate</div><div class="node-sub">IntentOutput</div></div></div></foreignObject>
+        <foreignObject x="610" y="170" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="il5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Write (optimistic)</div><div class="node-sub">contact_intent</div></div></div></foreignObject>
+        <foreignObject x="830" y="170" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="il6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">Skip</div><div class="node-sub">logged, left as-is</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">noteTick()</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">local-agent &middot; note-extraction loop &middot; poll every 10s</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1080" height="262" viewBox="0 0 1080 262">
+        <rect width="1080" height="262" fill="var(--canvas-bg)"/><rect width="1080" height="262" fill="url(#d5)"/>
+        <defs><pattern id="d5" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M400,55 C420,55 430,55 450,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M660,55 C675,55 685,55 700,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M810,45 C840,45 830,110 725,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M810,70 C840,90 890,140 950,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="760" y="112">valid</text><text class="wire-label" x="880" y="128">invalid</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="400" cy="55" r="3" fill="var(--wire)"/><circle cx="450" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="660" cy="55" r="3" fill="var(--wire)"/><circle cx="700" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="810" cy="45" r="3" fill="var(--wire)"/><circle cx="725" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="810" cy="70" r="3" fill="var(--wire)"/><circle cx="950" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="nl1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 10s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="nl2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Claim (optimistic)</div><div class="node-sub">pending_extraction &#8594; processing</div></div></div></foreignObject>
+        <foreignObject x="450" y="24" width="210" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="nl3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">extract-note-contacts</div></div></div></foreignObject>
+        <foreignObject x="700" y="24" width="110" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="nl4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">Zod</div><div class="node-text"><div class="node-title">Validate</div><div class="node-sub">NoteExtractionOutput</div></div></div></foreignObject>
+        <foreignObject x="620" y="170" width="210" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="nl5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">IO</div><div class="node-text"><div class="node-title">POST + write</div><div class="node-sub mono">contacts-from-note, per contact</div></div></div></foreignObject>
+        <foreignObject x="850" y="170" width="200" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="nl6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">Mark failed</div><div class="node-sub">note stays for review</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <p class="section-label">watcher &mdash; a separate bash process, not part of local-agent</p>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">watch-cards.command</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">folder-drop loop &middot; poll every 45s</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="1330" height="262" viewBox="0 0 1330 262">
+        <rect width="1330" height="262" fill="var(--canvas-bg)"/><rect width="1330" height="262" fill="url(#d6)"/>
+        <defs><pattern id="d6" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M410,55 C425,55 435,55 450,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M640,55 C655,55 665,55 680,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M860,55 C875,55 885,55 900,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1130,45 C1160,45 1150,110 1015,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M1130,70 C1160,95 1195,140 1215,170" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <text class="wire-label" x="1050" y="112">ok</text><text class="wire-label" x="1190" y="128">bad</text>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="410" cy="55" r="3" fill="var(--wire)"/><circle cx="450" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="640" cy="55" r="3" fill="var(--wire)"/><circle cx="680" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="860" cy="55" r="3" fill="var(--wire)"/><circle cx="900" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="1130" cy="45" r="3" fill="var(--wire)"/><circle cx="1015" cy="170" r="3" fill="var(--wire)"/>
+        <circle cx="1130" cy="70" r="3" fill="var(--wire)"/><circle cx="1215" cy="170" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="wl1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Poll tick</div><div class="node-sub">every 45s</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="200" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="wl2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">sha256</div><div class="node-text"><div class="node-title">Hash + dedupe</div><div class="node-sub">skip if already processed</div></div></div></foreignObject>
+        <foreignObject x="450" y="24" width="190" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="wl3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-ext">sips</div><div class="node-text"><div class="node-title">Convert + stage</div><div class="node-sub">HEIC &#8594; JPEG, .processing/</div></div></div></foreignObject>
+        <foreignObject x="680" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="wl4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-skill">CLI</div><div class="node-text"><div class="node-title">claude -p</div><div class="node-sub mono">process-cards</div></div></div></foreignObject>
+        <foreignObject x="900" y="24" width="230" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="wl5" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">py</div><div class="node-text"><div class="node-title">Extract JSON</div><div class="node-sub">separate Python re-implementation</div></div></div></foreignObject>
+        <foreignObject x="935" y="170" width="220" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="wl6" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">IO</div><div class="node-text"><div class="node-title">Upload + POST</div><div class="node-sub mono">curl, then contacts-from-ocr</div></div></div></foreignObject>
+        <foreignObject x="1180" y="170" width="130" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="wl7" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#8709;</div><div class="node-text"><div class="node-title">failed/&lt;code&gt;/</div><div class="node-sub">+ error.txt</div></div></div></foreignObject>
+      </svg>
+    </div>
+    <div class="note">This is the path the n8n migration retires outright &mdash; the plan replaces it with Twilio MMS only, since <code>watch-cards.command</code> duplicates <code>photoTick()</code>'s logic in a second language (bash + an embedded Python heredoc) that has already drifted from the JS version once.</div>
+  </div>
+
+  <p class="section-label">Supporting mechanisms</p>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">reconcileStaleInboundMessages / reconcileStaleNoteSubmissions</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">runs once, at process start only</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="560" height="106" viewBox="0 0 560 106">
+        <rect width="560" height="106" fill="var(--canvas-bg)"/><rect width="560" height="106" fill="url(#d7)"/>
+        <defs><pattern id="d7" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M160,55 C180,55 190,55 210,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <circle cx="160" cy="55" r="3" fill="var(--wire)"/><circle cx="210" cy="55" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="140" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="sr1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9654;</div><div class="node-text"><div class="node-title">agent.mjs starts</div><div class="node-sub">Login Item or manual relaunch</div></div></div></foreignObject>
+        <foreignObject x="210" y="24" width="330" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="sr2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Postgres (2 RPCs)</div><div class="node-sub mono">reconcile_stale_inbound_messages/note_submissions(30)</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">heartbeatWatchdog()</span><span class="status-pill"><span class="status-dot"></span>Live</span><span class="panel-note">the reason a crashed loop self-heals</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="900" height="106" viewBox="0 0 900 106">
+        <rect width="900" height="106" fill="var(--canvas-bg)"/><rect width="900" height="106" fill="url(#d8)"/>
+        <defs><pattern id="d8" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M180,55 C200,55 210,55 230,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M480,55 C500,55 510,55 530,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M690,55 C705,55 715,55 730,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <circle cx="180" cy="55" r="3" fill="var(--wire)"/><circle cx="230" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="480" cy="55" r="3" fill="var(--wire)"/><circle cx="530" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="690" cy="55" r="3" fill="var(--wire)"/><circle cx="730" cy="55" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="160" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node trigger" data-id="hw1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-trigger">&#9201;</div><div class="node-text"><div class="node-title">Check tick</div><div class="node-sub">periodic, in-process</div></div></div></foreignObject>
+        <foreignObject x="230" y="24" width="250" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="hw2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-logic">JS</div><div class="node-text"><div class="node-title">Compare heartbeats</div><div class="node-sub">all 5 loops vs. 20min threshold</div></div></div></foreignObject>
+        <foreignObject x="530" y="24" width="160" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="hw3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#9888;</div><div class="node-text"><div class="node-title">process.exit(1)</div><div class="node-sub">on any stale loop</div></div></div></foreignObject>
+        <foreignObject x="730" y="24" width="150" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="hw4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-ext">bash</div><div class="node-text"><div class="node-title">start-agent.command</div><div class="node-sub">restarts everything</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="wf-name">purge-expired-media.mjs</span><span class="status-pill" style="border-style:dashed;"><span class="status-dot" style="background:var(--text-muted);"></span>Manual only</span><span class="panel-note">documented, not actually automated today</span></div>
+    <div class="canvas-scroll">
+      <svg class="canvas" width="890" height="106" viewBox="0 0 890 106">
+        <rect width="890" height="106" fill="var(--canvas-bg)"/><rect width="890" height="106" fill="url(#d9)"/>
+        <defs><pattern id="d9" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.3" cy="1.3" r="1.3" fill="var(--dot-color)"/></pattern></defs>
+        <path d="M180,55 C200,55 210,55 230,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M410,55 C425,55 435,55 450,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <path d="M620,55 C635,55 645,55 660,55" fill="none" stroke="var(--wire)" stroke-width="1.5"/>
+        <circle cx="180" cy="55" r="3" fill="var(--wire)"/><circle cx="230" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="410" cy="55" r="3" fill="var(--wire)"/><circle cx="450" cy="55" r="3" fill="var(--wire)"/>
+        <circle cx="620" cy="55" r="3" fill="var(--wire)"/><circle cx="660" cy="55" r="3" fill="var(--wire)"/>
+        <foreignObject x="20" y="24" width="160" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node muted" data-id="pu1" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-muted">&#9000;</div><div class="node-text"><div class="node-title">Run by hand</div><div class="node-sub">no cron entry exists</div></div></div></foreignObject>
+        <foreignObject x="230" y="24" width="180" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pu2" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Postgres</div><div class="node-sub mono">expired_media()</div></div></div></foreignObject>
+        <foreignObject x="450" y="24" width="170" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pu3" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">IO</div><div class="node-text"><div class="node-title">Storage</div><div class="node-sub">delete by bucket</div></div></div></foreignObject>
+        <foreignObject x="660" y="24" width="210" height="62"><div xmlns="http://www.w3.org/1999/xhtml" class="node" data-id="pu4" tabindex="0" role="button" onclick="showDetail(this)"><div class="chip c-data">DB</div><div class="node-text"><div class="node-title">Postgres</div><div class="node-sub mono">mark_media_purged()</div></div></div></foreignObject>
+      </svg>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="swatch" style="background:var(--trigger)"></span>Poll tick / process start</div>
+    <div class="legend-item"><span class="swatch" style="background:var(--data)"></span>Postgres / Storage / HTTP</div>
+    <div class="legend-item"><span class="swatch" style="background:var(--skill)"></span><code style="font-family:inherit">claude -p</code> (sandboxed skill call)</div>
+    <div class="legend-item"><span class="swatch" style="background:var(--ext)"></span>Local binary (Whisper, sips)</div>
+    <div class="legend-item"><span class="swatch" style="background:var(--logic)"></span>Validation / branch logic</div>
+    <div class="legend-item"><span class="swatch dash"></span>Failure / no-op path</div>
+  </div>
+</div>
+
+<script>
+var NODE_DETAILS = {
+  ml1:{workflow:"matchingLoop()",title:"Poll tick",dependsOn:"Nothing — the while(true) loop's own setInterval-style sleep.",does:"Fires every 20s inside the single Node process; heartbeat.match is stamped here for the watchdog."},
+  ml2:{workflow:"matchingLoop()",title:"Claim (RPC)",dependsOn:"ml1 firing.",does:"Atomically claims one pending contact (FOR UPDATE SKIP LOCKED), bumping match_attempts and last_match_attempt_at.",extra:[["Claims via","claim_pending_contacts(max=3, delay=10min)"]]},
+  ml3:{workflow:"matchingLoop()",title:"claude -p — research-contact",dependsOn:"A contact claimed in ml2.",does:"Spawns a sandboxed CLI subprocess (Read, WebSearch, WebFetch only) to verify identity and district via live web search.",extra:[["Sandboxed by","skill-profiles.mjs → --strict-mcp-config, --disallowedTools"]]},
+  ml4:{workflow:"matchingLoop()",title:"claude -p — match-contact",dependsOn:"ml3's full output, passed through unchanged.",does:"Spawns a second sandboxed subprocess with a read-only Zoho MCP connector to classify against real CRM data.",extra:[["Sandboxed by","Read + 9 Zoho read-only MCP tools only"]]},
+  ml5:{workflow:"matchingLoop()",title:"Validate — MatchOutput",dependsOn:"ml4's stdout.",does:"extractJson pulls the last balanced JSON object from stdout; Zod then checks it, including the 5 cross-field refine() invariants (the fabricated-match guard)."},
+  ml6:{workflow:"matchingLoop()",title:"Write (RPC)",dependsOn:"ml5 passing.",does:"Writes match results back; auto-approves only if confidence is high, extraction was clean, and a real account matched.",extra:[["Writes via","finalize_contact_match() — 19 named params"]]},
+  ml7:{workflow:"matchingLoop()",title:"Left pending",dependsOn:"ml5 failing after 2 attempts (180s timeout each, 5s backoff).",does:"Nothing is written — the row stays match_status='pending', picked up again once match_attempts/cooldown allow it."},
+
+  pl1:{workflow:"photoTick()",title:"Poll tick",dependsOn:"Nothing — the loop's own sleep.",does:"Fires every 20s; also runs reconcileRetryableFailedMessages() first on every tick (2026-09-22 addition)."},
+  pl2:{workflow:"photoTick()",title:"Claim (optimistic)",dependsOn:"pl1 firing.",does:"UPDATE ... WHERE status='pending_ocr' re-asserted — a row already claimed by a concurrent tick comes back null instead of double-processing.",extra:[["Claims via","status='pending_ocr' → 'processing', processing_attempts+1"]]},
+  pl3:{workflow:"photoTick()",title:"Download + convert",dependsOn:"pl2's claimed row.",does:"Downloads the photo from Supabase Storage to a local scratch file; converts HEIC to JPEG via sips if needed."},
+  pl4:{workflow:"photoTick()",title:"claude -p — process-cards",dependsOn:"pl3's local file.",does:"Sandboxed subprocess (Read, Write, Bash(sips:*), Bash(bc:*)) reads the photo, classifies single/multi-card/directory-listing, crops each person via sips + bc math.",extra:[["Known gap","Bash(sips:*) doesn't actually confine Bash under --dangerously-skip-permissions — bounded instead by holding no credential"]]},
+  pl5:{workflow:"photoTick()",title:"Validate — CardExtractionOutput",dependsOn:"pl4's stdout.",does:"Checks cropFileName is a bare filename (no path traversal), status='ok' implies at least one card, per-field caps."},
+  pl6:{workflow:"photoTick()",title:"Upload + POST",dependsOn:"pl5 passing.",does:"Uploads crop files to Storage before any contact exists, then POSTs each card individually so one card's failure can't cost the others.",extra:[["Calls","contacts-from-ocr, per card"]]},
+  pl7:{workflow:"photoTick()",title:"Mark failed",dependsOn:"pl5 failing or the CLI call timing out (900s cap).",does:"Classifies the error into error_class (transient auto-retries via the sweep, terminal waits for a human) and marks the row failed."},
+
+  vl1:{workflow:"transcriptionTick()",title:"Poll tick",dependsOn:"Nothing — the loop's own sleep.",does:"Fires every 20s."},
+  vl2:{workflow:"transcriptionTick()",title:"Claim (optimistic)",dependsOn:"vl1 firing.",does:"UPDATE ... WHERE status='pending_transcription' re-asserted, bumping processing_attempts."},
+  vl3:{workflow:"transcriptionTick()",title:"Whisper CLI",dependsOn:"vl2's claimed audio, plus a name prompt built from current candidate contacts.",does:"Transcribes locally — this is a direct binary call, not a claude -p skill invocation at all."},
+  vl4:{workflow:"transcriptionTick()",title:"claude -p — attribute-voice-memo",dependsOn:"vl3's transcript and the candidate list.",does:"Always runs whenever there's 1+ candidate — the old single-candidate fast path was removed 2026-09-22 after it caused real misattached notes.",extra:[["Sandboxed by","Read only — pure text skill"]]},
+  vl5:{workflow:"transcriptionTick()",title:"Validate — AttributionOutput",dependsOn:"vl4's stdout.",does:"Checks every candidate got exactly one of excerpt or notFound — never both, never neither."},
+  vl6:{workflow:"transcriptionTick()",title:"Write",dependsOn:"vl5 passing with at least one match.",does:"Appends each excerpt to the matched contact's notes idempotently (skips if already present) and sets link_status='linked'."},
+  vl7:{workflow:"transcriptionTick()",title:"Left unlinked",dependsOn:"vl5 passing with zero matches.",does:"Never guesses a recipient — link_status stays 'unlinked', picked up by the separate retry sweep below."},
+
+  il1:{workflow:"intentTick()",title:"Poll tick",dependsOn:"Nothing — the loop's own sleep.",does:"Fires every 20s."},
+  il2:{workflow:"intentTick()",title:"Claim (RPC)",dependsOn:"il1 firing.",does:"A plain read-only SELECT (not a locking claim) of up to 5 contacts whose notes changed since last classified.",extra:[["Claims via","claim_contacts_needing_intent(limit=5)"]]},
+  il3:{workflow:"intentTick()",title:"claude -p ×5 — classify-contact-intent",dependsOn:"il2's rows.",does:"A small worker pool (concurrency 2) runs the sandboxed classifier (Read only) on up to 5 contacts in parallel."},
+  il4:{workflow:"intentTick()",title:"Validate — IntentOutput",dependsOn:"Each subprocess's stdout.",does:"Checks the result is exactly hot, warm, cold, or null."},
+  il5:{workflow:"intentTick()",title:"Write (optimistic)",dependsOn:"il4 passing.",does:"WHERE clause re-asserts contact_intent_is_manual=false AND interaction_notes=<snapshot> — a reviewer's manual pick or a newer note is never clobbered."},
+  il6:{workflow:"intentTick()",title:"Skip",dependsOn:"il4 failing.",does:"Logged and skipped — that contact is picked up again next tick since its notes still differ from contact_intent_classified_notes."},
+
+  nl1:{workflow:"noteTick()",title:"Poll tick",dependsOn:"Nothing — the loop's own sleep.",does:"Fires every 10s — the fastest of the five loops."},
+  nl2:{workflow:"noteTick()",title:"Claim (optimistic)",dependsOn:"nl1 firing.",does:"UPDATE note_submissions ... WHERE status='pending_extraction' re-asserted, incrementing attempts."},
+  nl3:{workflow:"noteTick()",title:"claude -p — extract-note-contacts",dependsOn:"nl2's claimed note text.",does:"Sandboxed subprocess (Read only) splits one pasted or texted note into one structured contact per person."},
+  nl4:{workflow:"noteTick()",title:"Validate — NoteExtractionOutput",dependsOn:"nl3's stdout.",does:"Caps output at 50 contacts per note — one paste can't queue unbounded downstream LLM work."},
+  nl5:{workflow:"noteTick()",title:"POST + write",dependsOn:"nl4 passing.",does:"POSTs each extracted contact individually, then marks the submission completed.",extra:[["Calls","contacts-from-note, per contact"]]},
+  nl6:{workflow:"noteTick()",title:"Mark failed",dependsOn:"nl4 failing.",does:"Leaves the note for manual review rather than guessing at a malformed extraction."},
+
+  wl1:{workflow:"watch-cards.command",title:"Poll tick",dependsOn:"Nothing — a find + while-read loop, not an event watcher.",does:"Scans inbox/<event-code>/ every 45s for new files."},
+  wl2:{workflow:"watch-cards.command",title:"Hash + dedupe",dependsOn:"wl1 finding a file.",does:"shasum -a 256 on the original bytes; skips if processed/<code>/<hash>.* already exists."},
+  wl3:{workflow:"watch-cards.command",title:"Convert + stage",dependsOn:"wl2 confirming it's new.",does:"Converts HEIC to JPEG via sips if needed, stages in .processing/ so a crash mid-run can resume."},
+  wl4:{workflow:"watch-cards.command",title:"claude -p — process-cards",dependsOn:"wl3's staged file.",does:"Same skill as pl4, but the sandbox args are a hand-maintained bash duplicate of skill-profiles.mjs — not shared code."},
+  wl5:{workflow:"watch-cards.command",title:"Extract JSON",dependsOn:"wl4's stdout.",does:"A second, independent implementation of the last-balanced-JSON-object logic, written in an embedded Python heredoc — has already drifted from the JS version once."},
+  wl6:{workflow:"watch-cards.command",title:"Upload + POST",dependsOn:"wl5's parsed cards.",does:"Uploads via raw curl to the Storage REST endpoint, then POSTs each card via Python's urllib.",extra:[["Calls","contacts-from-ocr, per card"]]},
+  wl7:{workflow:"watch-cards.command",title:"failed/<code>/",dependsOn:"Any step above failing.",does:"Moves the original into failed/<event-code>/ alongside an error.txt — no automatic retry."},
+
+  sr1:{workflow:"Startup reconciliation",title:"agent.mjs starts",dependsOn:"A Login Item launch, or the watchdog's process.exit(1) triggering a restart.",does:"Runs once per process start — there's no other 'start' moment in this architecture."},
+  sr2:{workflow:"Startup reconciliation",title:"Postgres (2 RPCs)",dependsOn:"sr1.",does:"Resets any row stuck 'processing' for 30+ minutes (a crash mid-run) back to its pending_* status, for both inbound_messages and note_submissions.",extra:[["Calls","reconcile_stale_inbound_messages(30), reconcile_stale_note_submissions(30)"]]},
+
+  hw1:{workflow:"heartbeatWatchdog()",title:"Check tick",dependsOn:"Nothing — its own periodic check inside the same process.",does:"Runs alongside the five loops in the same Promise.all()."},
+  hw2:{workflow:"heartbeatWatchdog()",title:"Compare heartbeats",dependsOn:"hw1.",does:"Each loop stamps heartbeat.<name> on every tick; this compares all five against a 20-minute staleness threshold."},
+  hw3:{workflow:"heartbeatWatchdog()",title:"process.exit(1)",dependsOn:"hw2 finding any loop stale.",does:"Deliberately crashes the whole process rather than trying to restart just one loop — simpler and matches how a real hang usually needs a full restart anyway."},
+  hw4:{workflow:"heartbeatWatchdog()",title:"start-agent.command restarts",dependsOn:"hw3's exit.",does:"The bash wrapper's own while true loop relaunches agent.mjs after a 5s pause — the entire process-supervision story, no launchd/pm2 involved."},
+
+  pu1:{workflow:"purge-expired-media.mjs",title:"Run by hand",dependsOn:"Someone remembering to run it.",does:"Documented in CLAUDE.md's common tasks, but no cron entry or Login Item actually calls this — a real, currently-open retention gap."},
+  pu2:{workflow:"purge-expired-media.mjs",title:"Postgres",dependsOn:"pu1.",does:"Lists inbound_messages rows past the retention window (default 90 days) that still have Storage bytes.",extra:[["Calls","expired_media(90,500)"]]},
+  pu3:{workflow:"purge-expired-media.mjs",title:"Storage",dependsOn:"pu2's rows, grouped by bucket.",does:"Deletes the actual bytes from contact-photos or voice-memos, whichever the row's kind maps to."},
+  pu4:{workflow:"purge-expired-media.mjs",title:"Postgres",dependsOn:"pu3's successful deletes only.",does:"Nulls storage_path only for rows whose delete actually succeeded — a failed delete is never treated as purged.",extra:[["Calls","mark_media_purged()"]]}
+};
+
+var activeNode = null;
+function escapeHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function showDetail(el){
+  var id = el.getAttribute("data-id");
+  var d = NODE_DETAILS[id];
+  if(!d) return;
+  if(activeNode) activeNode.classList.remove("active");
+  el.classList.add("active");
+  activeNode = el;
+  var rows = [["Depends on", d.dependsOn], ["What it does", d.does]];
+  if(d.extra){ for(var i=0;i<d.extra.length;i++){ rows.push(d.extra[i]); } }
+  var rowsHtml = "";
+  for(var j=0;j<rows.length;j++){
+    var label = rows[j][0], value = rows[j][1];
+    var isCode = /\(\)|_[a-zA-Z]/.test(value);
+    rowsHtml += '<div class="detail-row"><dt>' + escapeHtml(label) + '</dt><dd class="' + (isCode ? "mono" : "") + '">' + escapeHtml(value) + '</dd></div>';
+  }
+  var panel = document.getElementById("detailPanel");
+  panel.innerHTML =
+    '<div class="detail-head"><span class="detail-wf">' + escapeHtml(d.workflow) + '</span>' +
+    '<button class="detail-close" onclick="clearDetail()" aria-label="Close detail">&times;</button></div>' +
+    '<h3 class="detail-title">' + escapeHtml(d.title) + '</h3>' +
+    '<dl class="detail-rows">' + rowsHtml + '</dl>';
+}
+function clearDetail(){
+  if(activeNode){ activeNode.classList.remove("active"); activeNode = null; }
+  document.getElementById("detailPanel").innerHTML = '<div class="detail-empty">Click any step below to see its breakdown.</div>';
+}
+document.addEventListener("keydown", function(e){
+  if((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("node")){
+    e.preventDefault();
+    showDetail(e.target);
+  }
+});
+</script>

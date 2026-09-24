@@ -1,0 +1,233 @@
+{
+  "id": "M6OFvzSBsFoRqSNA",
+  "name": "sub-link-transcript-to-contacts",
+  "active": false,
+  "nodes": [
+    {
+      "id": "8b3f5e07-bf72-45d3-856a-bd09c759f550",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 500],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": { "values": [{ "name": "messageId", "type": "string" }, { "name": "transcript", "type": "string" }, { "name": "candidates", "type": "array" }] }
+      }
+    },
+    {
+      "id": "edd7d87e-4149-4183-a0d8-02e0683fc857",
+      "name": "Has Candidates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [400, 500],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.candidates.length > 0 }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ae633cdd-15d5-4eab-b2fe-54115e910349",
+      "name": "Call Attribute Voice Memo",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [640, 400],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "ksmGrhtoUsyDZVLb", "cachedResultName": "sub-attribute-voice-memo" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "transcript": "={{ $json.transcript }}", "candidates": "={{ $json.candidates.map(c => ({ contactId: c.contactId, firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, title: c.title })) }}" },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "transcript", "displayName": "transcript", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "candidates", "displayName": "candidates", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "array" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    },
+    {
+      "id": "f420433a-dcca-48d3-b15b-91a1f6b60155",
+      "name": "Attribution Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [880, 400],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.success === true }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "3820b4fb-6479-44f6-aff5-d17c0109aa92",
+      "name": "Compute Attach List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const results = ($json.data && $json.data.results) || [];\nconst attachList = results\n  .filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0)\n  .map((r) => ({ contactId: r.contactId, excerpt: r.excerpt }));\nconst messageId = $('Sub-workflow Input').item.json.messageId;\nreturn [{ json: { attachList: attachList, messageId: messageId } }];"
+      }
+    },
+    {
+      "id": "e8b07a35-067e-4aaa-97a1-cb86954d13b1",
+      "name": "Has Attach Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1320, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.attachList.length > 0 }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "c1e4dbaa-8e5a-4038-bf42-8b2c5dc7a034",
+      "name": "Split Attach List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const attachList = $json.attachList;\nconst messageId = $json.messageId;\nreturn attachList.map((item) => ({ json: { contactId: item.contactId, excerpt: item.excerpt, messageId: messageId } }));"
+      }
+    },
+    {
+      "id": "5cb54139-1a7f-491e-89a8-6ba4643ffdab",
+      "name": "Attach Excerpt To Contact",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1760, 200],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.contacts\nset interaction_notes = case\n  when interaction_notes is not null and position($2 in interaction_notes) > 0 then interaction_notes\n  else coalesce(interaction_notes || E'\\n\\n', '') || $2\nend\nwhere id = $1\nreturning id;",
+        "options": { "queryReplacement": "={{ [ $json.contactId, $json.excerpt ] }}" }
+      }
+    },
+    {
+      "id": "bc52a4de-53de-43cf-a259-1ad9d547d14a",
+      "name": "Record Attach Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 120],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "return { json: { contactId: $json.id, matched: true, messageId: $('Split Attach List').item.json.messageId } };"
+      }
+    },
+    {
+      "id": "36f7fbab-e060-4ad9-b61d-178151f8943a",
+      "name": "Record Attach Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 280],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "return { json: { contactId: $('Split Attach List').item.json.contactId, matched: false, messageId: $('Split Attach List').item.json.messageId } };"
+      }
+    },
+    {
+      "id": "4af3a39a-35cf-45c4-a8ef-304e8eafebd0",
+      "name": "Aggregate Matched Ids",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst matchedContactIds = items.filter((i) => i.json.matched).map((i) => i.json.contactId);\nconst messageId = items[0].json.messageId;\nreturn [{ json: { matchedContactIds: matchedContactIds, messageId: messageId } }];"
+      }
+    },
+    {
+      "id": "328bad43-33b7-4c9c-8c83-7c0c4a23434f",
+      "name": "No Attach Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { matchedContactIds: [], messageId: $json.messageId } }];"
+      }
+    },
+    {
+      "id": "187f5f1b-5a27-4c5d-a79b-2f8de1e46ef0",
+      "name": "Write No-Candidates Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [640, 700],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set matched_contact_ids = '{}' where id = $1 returning id;",
+        "options": { "queryReplacement": "={{ $json.messageId }}" }
+      }
+    },
+    {
+      "id": "1d8d9aa8-becb-4735-88fa-55036c624ec5",
+      "name": "Write Link Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [2360, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with updated as (\n  update public.inbound_messages\n  set link_attempts = link_attempts + 1,\n      last_link_attempt_at = now(),\n      matched_contact_ids = $2::uuid[]\n  where id = $1\n  returning id, link_attempts\n)\nupdate public.inbound_messages i\nset link_status = case\n  when array_length($2::uuid[], 1) > 0 then 'linked'\n  when u.link_attempts >= 50 then 'no_candidate_found'\n  else i.link_status\nend\nfrom updated u\nwhere i.id = u.id\nreturning i.id, i.link_status;",
+        "options": { "queryReplacement": "={{ [ $json.messageId, $json.matchedContactIds ] }}" }
+      }
+    },
+    {
+      "id": "467155d4-df6d-412d-861c-987bc90c7a4e",
+      "name": "Sticky Note bd8789f2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## sub-link-transcript-to-contacts\nExtracted shared logic, mirroring agent.mjs's own factoring exactly: linkTranscriptToContacts + recordLinkResult are used both by the first attribution attempt (processAudioMessage, right after transcribing) and every retry pass (relinkUnlinkedAudioMessages) -- \"re-running this against a possibly-grown candidate list is exactly the right retry behavior\" per the source comment. This sub-workflow is that shared unit: given {messageId, transcript, candidates}, it decides whether to run attribution at all, calls sub-attribute-voice-memo when there's something to reason about, attaches excerpts idempotently, and always ends in the same recordLinkResult write.\n\nCalled by pipeline-voice-transcription (Stage 3, first pass, right after Write Transcript) and pipeline-relink-unlinked-audio (Stage 0's retry sweep, completed alongside this build -- see that workflow's own updated sticky note).\n\nHas Candidates? / Attribution Succeeded? / Has Attach Items? all branch BEFORE their respective fan-outs rather than relying on zero-item behavior after them -- a real, valid outcome (no candidates; the skill found nobody; nothing attributable) must still reach a write, and deriving that from an aggregate step fed by zero items risks the aggregate never running at all. Every branch stamps messageId (and contactId/excerpt for the attach fan-out) onto its own items explicitly rather than reaching back across a fan-out/collapse boundary via $('Node').item.\n\nA genuine sub-attribute-voice-memo FAILURE (not 'found nobody', an actual validation/API/circuit-breaker failure) does no write at all (Attribution Succeeded? onFalse is a dead end) -- matches processAudioMessage exactly: link_attempts is never bumped for a failed call, so the row looks like 'never attempted' and stays eligible for claim_unlinked_audio_messages to pick up again, which is the pass that actually counts as an attempt.\n\nWrite Link Result's two feeder branches (No Attach Items, and Aggregate Matched Ids after the per-contact attach loop) produce the identically-shaped {matchedContactIds, messageId} so ONE shared Postgres node handles both -- matched_contact_ids is written unconditionally, link_status only advances to linked (any match) or no_candidate_found (link_attempts >= LINK_MAX_ATTEMPTS=50 with none), otherwise untouched, in one atomic two-CTE statement. The no-candidates case (Has Candidates? onFalse) is the one exception: it writes matched_contact_ids='{}' only, with no link_attempts bump at all -- matching linkTranscriptToContacts returning ranAttribution:false, which processAudioMessage never counts as a spent attempt.\n\nAttach Excerpt To Contact's idempotency check (position(excerpt in interaction_notes) > 0 -> leave unchanged) is done IN SQL, atomically -- matches attachExcerpts' own it's-already-there-do-nothing behavior. Uses position(), not LIKE, since an excerpt containing a literal % or _ would otherwise act as a SQL wildcard.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 3). No credential of its own on the Anthropic side (lives in sub-run-skill via sub-attribute-voice-memo) -- the Postgres nodes here have no credential attached yet either, see n8n/README.md.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Sub-workflow Input": { "main": [[{ "node": "Has Candidates?", "type": "main", "index": 0 }]] },
+    "Has Candidates?": {
+      "main": [
+        [{ "node": "Call Attribute Voice Memo", "type": "main", "index": 0 }],
+        [{ "node": "Write No-Candidates Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Attribute Voice Memo": { "main": [[{ "node": "Attribution Succeeded?", "type": "main", "index": 0 }]] },
+    "Attribution Succeeded?": { "main": [[{ "node": "Compute Attach List", "type": "main", "index": 0 }]] },
+    "Compute Attach List": { "main": [[{ "node": "Has Attach Items?", "type": "main", "index": 0 }]] },
+    "Has Attach Items?": {
+      "main": [
+        [{ "node": "Split Attach List", "type": "main", "index": 0 }],
+        [{ "node": "No Attach Items", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Attach List": { "main": [[{ "node": "Attach Excerpt To Contact", "type": "main", "index": 0 }]] },
+    "Attach Excerpt To Contact": {
+      "main": [
+        [{ "node": "Record Attach Success", "type": "main", "index": 0 }],
+        [{ "node": "Record Attach Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Record Attach Success": { "main": [[{ "node": "Aggregate Matched Ids", "type": "main", "index": 0 }]] },
+    "Record Attach Failure": { "main": [[{ "node": "Aggregate Matched Ids", "type": "main", "index": 0 }]] },
+    "Aggregate Matched Ids": { "main": [[{ "node": "Write Link Result", "type": "main", "index": 0 }]] },
+    "No Attach Items": { "main": [[{ "node": "Write Link Result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 260 }
+}

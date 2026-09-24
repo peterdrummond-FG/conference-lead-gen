@@ -1,0 +1,12 @@
+{
+  "name": "ckh-connect-n8n-schemas",
+  "private": true,
+  "type": "module",
+  "description": "Zod output-validation schemas for the n8n migration, ported from local-agent/schemas.mjs. Inlined into n8n Code nodes at build time; this package.json exists only so the test suite is runnable standalone (node --test).",
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "id": "dUJIv68hGjquWecB",
+  "name": "pipeline-voice-transcription",
+  "active": false,
+  "nodes": [
+    {
+      "id": "80d47822-aee7-4204-ab38-7e1da1144fcb",
+      "name": "Every 20 Seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [160, 500],
+      "parameters": { "rule": { "interval": [{ "field": "seconds", "secondsInterval": 20 }] } }
+    },
+    {
+      "id": "d5b5965a-b1fe-4572-b513-c97aa5941fcf",
+      "name": "Find Pending Audio",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [360, 500],
+      "parameters": { "operation": "executeQuery", "query": "select * from public.inbound_messages where kind = 'audio' and status = 'pending_transcription' and storage_path is not null order by received_at limit 1;" }
+    },
+    {
+      "id": "0ba45b65-e8ea-404f-81c6-46548e33b38a",
+      "name": "Claim Audio Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [560, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages\nset status = 'processing', claimed_at = now(), processing_attempts = processing_attempts + 1, last_processing_attempt_at = now()\nwhere id = $1 and status = 'pending_transcription'\nreturning *;",
+        "options": { "queryReplacement": "={{ $json.id }}" }
+      }
+    },
+    {
+      "id": "153d8dc0-b8d0-4b63-b746-9ff988f1db1f",
+      "name": "Find Candidate Contacts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [760, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(\n  json_agg(json_build_object(\n    'contactId', c.id,\n    'firstName', c.first_name,\n    'lastName', c.last_name,\n    'email', c.email,\n    'phone', c.phone,\n    'title', c.title,\n    'interactionNotes', c.interaction_notes\n  ) order by c.created_at desc), '[]'::json\n) as candidates\nfrom public.contacts c\njoin public.inbound_messages m on m.id = c.source_message_id\nwhere c.event_id = $1\n  and c.source in ('card_photo', 'directory_photo')\n  and m.from_phone = $2;",
+        "options": { "queryReplacement": "={{ [ $json.event_id, $json.from_phone ] }}" }
+      }
+    },
+    {
+      "id": "11ef35a5-6535-4c19-8c9f-67673f8359ba",
+      "name": "Build Name Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 500],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const NAME_TOKEN = /^[\\p{L}][\\p{L}'\\-.]{0,30}$/u;\nconst MAX_PROMPT_NAMES = 30;\nfunction safeNameForPrompt(first, last) {\n  const parts = [first, last].filter(Boolean).map((p) => String(p).trim()).filter(Boolean);\n  if (parts.length === 0 || parts.length > 2) return null;\n  if (!parts.every((p) => NAME_TOKEN.test(p))) return null;\n  return parts.join(' ');\n}\nconst candidates = $json.candidates || [];\nconst names = candidates.map((c) => safeNameForPrompt(c.firstName, c.lastName)).filter(Boolean).slice(0, MAX_PROMPT_NAMES);\nconst prompt = names.length === 0 ? null : 'Contacts at this event: ' + names.join(', ') + '.';\nreturn [{ json: { prompt: prompt } }];"
+      }
+    },
+    {
+      "id": "2327a7e5-a3c7-4683-b7e9-2860cb29caca",
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1160, 500],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://yrvppufkerbjpvrxniot.supabase.co/storage/v1/object/voice-memos/' + $('Claim Audio Message').item.json.storage_path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } } }
+      }
+    },
+    {
+      "id": "df322fc8-5248-4340-bb35-d38360d3a7cb",
+      "name": "Call Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1360, 500],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__Whisper ASR endpoint URL -- NOT provisioned anywhere yet. n8n/infra/docker-compose.yml's 'whisper' service (http://whisper:9000) is a docker-compose-internal hostname that only resolves inside that not-yet-deployed stack; workflow.flippengroup.com (the real instance this was built in) is a separate, pre-existing hosting setup with no sibling Whisper container. Enter the real, reachable Whisper URL here once one is stood up somewhere this instance can call.__>",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "task", "value": "transcribe" },
+            { "name": "language", "value": "en" },
+            { "name": "initial_prompt", "value": "={{ $('Build Name Prompt').item.json.prompt || '' }}" },
+            { "name": "output", "value": "text" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": { "response": { "response": { "responseFormat": "text", "outputPropertyName": "transcript" } } }
+      }
+    },
+    {
+      "id": "c84cf8d0-2e5c-478f-9611-4cb05df0bb1b",
+      "name": "Write Transcript",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1560, 500],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set status = 'completed', transcript = $1, processed_at = now() where id = $2 returning id, transcript;",
+        "options": { "queryReplacement": "={{ [ $json.transcript, $('Claim Audio Message').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "6265b89c-ff22-4506-a51e-6296e35a629f",
+      "name": "Classify Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 700],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const TERMINAL_ERROR_PATTERNS = [/no legible business card detected/i, /refusing to (build a prompt|upload)/i];\nconst message = $json.error || 'unknown error';\nconst errorClass = TERMINAL_ERROR_PATTERNS.some((re) => re.test(message)) ? 'terminal' : 'transient';\nreturn [{ json: { errorMessage: message, errorClass: errorClass } }];"
+      }
+    },
+    {
+      "id": "a33080d4-0c6c-4207-86e7-0cb4f61f2719",
+      "name": "Write Transcription Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1560, 700],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.inbound_messages set status = 'failed', error = $1, error_class = $2 where id = $3 returning id;",
+        "options": { "queryReplacement": "={{ [ $json.errorMessage, $json.errorClass, $('Claim Audio Message').item.json.id ] }}" }
+      }
+    },
+    {
+      "id": "337ea8b8-d9f0-4dce-ba4c-c450d0923edb",
+      "name": "Sticky Note 424ce805",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## pipeline-voice-transcription\nThe n8n replacement for local-agent/agent.mjs transcriptionLoop. Needs the self-hosted Whisper container (see n8n/infra/docker-compose.yml, service 'whisper') -- not provisioned yet, so the Call Whisper node's exact request shape below is a best-effort port of whisper-asr-webservice's documented API (POST /asr?task=transcribe&language=en&initial_prompt=...&output=text, audio_file as the request body), NOT verified against a live instance. VERIFY BEFORE THIS LEAVES DRAFT, per the plan's own explicit callout: that the chosen Whisper image actually exposes initial_prompt over HTTP the same way the CLI flag does.\n\nFind Pending Audio + Claim Audio Message mirror findNextPendingAudioMessage/claimAudioMessage exactly (plain SELECT then a single atomic UPDATE ... WHERE status=pending_transcription RETURNING *, same safe-race reasoning as pipeline-note-extraction).\n\nFind Candidate Contacts uses a json_agg(...) aggregate specifically so it ALWAYS returns exactly one row (with candidates as a possibly-empty JSON array), even when zero contacts match -- a plain SELECT would return zero ROWS in that case, and a node that returns zero items is skipped entirely by n8n. Same VOICE_CANDIDATE_SOURCES = card_photo/directory_photo the 2026-09-22 audit fixed (both sources, never just card_photo).\n\nBuild Name Prompt ports buildNamePrompt/safeNameForPrompt verbatim, including the audit's NAME_TOKEN allowlist and MAX_PROMPT_NAMES=30 cap (Audit A8: Whisper's initial_prompt biases the TEXT IT EMITS, and the roster comes from OCR of attacker-supplied card photos, so an unbounded or unvalidated name list is a second-hop prompt-injection surface into the transcript itself).\n\nDownload Audio -> Call Whisper run back-to-back with nothing in between so Download Audio's binary output (property 'data') reaches Call Whisper unmolested. Both use onError continueErrorOutput, funneling into Classify Error -> Write Transcription Failure, using the same TERMINAL_ERROR_PATTERNS classifyProcessingError uses for the photo path.\n\nWrite Transcript runs BEFORE the linking step and unconditionally on Whisper success -- mirrors processAudioMessage's explicit ordering comment: attribution can partially fail per-contact and must never be able to lose a transcript that already succeeded, or flip a real success back to failed.\n\nLink Transcript To Contacts (Execute Workflow -> sub-link-transcript-to-contacts) is where linkTranscriptToContacts + recordLinkResult actually live -- extracted into its own sub-workflow specifically because pipeline-relink-unlinked-audio's retry sweep (Stage 0, completed alongside this build) needs the EXACT same logic, matching agent.mjs's own factoring (both processAudioMessage and relinkUnlinkedAudioMessages call the same shared functions). This workflow originally had that logic inlined (13 nodes); it was refactored out immediately after first being built, before any duplication could drift the two callers apart -- see sub-link-transcript-to-contacts's own sticky note for the full attribution/attach/write-link-result design.\n\nINACTIVE / BUILD-ONLY (n8n migration Stage 3). \"Supabase Storage (n8n)\" is the same credential name from Stage 0 (pipeline-purge-expired-media) -- still unattached, n8n instance has zero credentials configured.",
+        "color": 4
+      }
+    },
+    {
+      "id": "ada48eab-4276-4286-b1e2-b92179c92ea9",
+      "name": "Link Transcript To Contacts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1760, 500],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "M6OFvzSBsFoRqSNA", "cachedResultName": "sub-link-transcript-to-contacts" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "messageId": "={{ $('Claim Audio Message').item.json.id }}",
+            "transcript": "={{ $json.transcript }}",
+            "candidates": "={{ $('Find Candidate Contacts').item.json.candidates.map(c => ({ contactId: c.contactId, firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, title: c.title, interactionNotes: c.interactionNotes })) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "messageId", "displayName": "messageId", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "transcript", "displayName": "transcript", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "candidates", "displayName": "candidates", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "array" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 20 Seconds": { "main": [[{ "node": "Find Pending Audio", "type": "main", "index": 0 }]] },
+    "Find Pending Audio": { "main": [[{ "node": "Claim Audio Message", "type": "main", "index": 0 }]] },
+    "Claim Audio Message": { "main": [[{ "node": "Find Candidate Contacts", "type": "main", "index": 0 }]] },
+    "Find Candidate Contacts": { "main": [[{ "node": "Build Name Prompt", "type": "main", "index": 0 }]] },
+    "Build Name Prompt": { "main": [[{ "node": "Download Audio", "type": "main", "index": 0 }]] },
+    "Download Audio": { "main": [[{ "node": "Call Whisper", "type": "main", "index": 0 }]] },
+    "Call Whisper": {
+      "main": [
+        [{ "node": "Write Transcript", "type": "main", "index": 0 }],
+        [{ "node": "Classify Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Classify Error": { "main": [[{ "node": "Write Transcription Failure", "type": "main", "index": 0 }]] },
+    "Write Transcript": { "main": [[{ "node": "Link Transcript To Contacts", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "executionTimeout": 600 }
+}
