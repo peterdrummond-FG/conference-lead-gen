@@ -656,9 +656,16 @@ const TRANSCRIPTION_POLL_INTERVAL_MS = Number(process.env.TRANSCRIPTION_POLL_INT
 // tries regardless of how long ago it arrived. Same reasoning as
 // contacts.match_attempts/MAX_MATCH_ATTEMPTS above (claim_pending_contacts)
 // — reusing that proven shape rather than the old in-memory-cooldown window.
-const LINK_MAX_ATTEMPTS = Number(process.env.LINK_MAX_ATTEMPTS ?? 50);
+const LINK_MAX_ATTEMPTS = Number(process.env.LINK_MAX_ATTEMPTS ?? 20);
 const LINK_RETRY_DELAY_MINUTES = Number(process.env.LINK_RETRY_DELAY_MINUTES ?? 20);
 const LINK_CLAIM_LIMIT = Number(process.env.LINK_CLAIM_LIMIT ?? 3);
+// At this attempt, if no existing candidate has matched yet, ask
+// attribute-voice-memo to additionally judge whether the transcript alone
+// justifies creating a brand-new contact (see linkTranscriptToContacts and
+// contacts-from-voice-memo). Deliberately well below LINK_MAX_ATTEMPTS: a
+// memo that will never find a candidate shouldn't sit unresolved for the
+// full retry window when the transcript itself may already be enough.
+const LINK_FALLBACK_ATTEMPT = Number(process.env.LINK_FALLBACK_ATTEMPT ?? 5);
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
 
 // Shared write path for every branch below — append-not-overwrite, same as
@@ -732,14 +739,54 @@ async function findCandidateContacts(eventId, fromPhone) {
   return data ?? [];
 }
 
+// Posted once per successfully-extracted fallback contact — mirrors
+// postExtractedContact (contacts-from-note) below, just keyed on the audio
+// message instead of a note submission. contacts-from-voice-memo dedupes on
+// (source_message_id, source='voice_memo') itself, so a retry after a crash
+// between this call succeeding and link_status being recorded just gets the
+// same contact id back rather than a duplicate.
+async function postVoiceMemoContact(inboundMessageId, contact) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/contacts-from-voice-memo`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      inboundMessageId,
+      firstName: contact.firstName ?? '',
+      lastName: contact.lastName ?? '',
+      email: contact.email ?? '',
+      phone: contact.phone ?? '',
+      title: contact.title ?? '',
+      districtName: contact.districtName ?? '',
+      schoolName: contact.schoolName ?? '',
+      interactionNotes: contact.interactionNotes ?? '',
+      extractionConfidence: contact.extractionConfidence,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let detail = text;
+    try {
+      detail = JSON.parse(text).error ?? text;
+    } catch { /* non-JSON error body — use it as-is */ }
+    throw new Error(`HTTP ${res.status}: ${detail}`.trim());
+  }
+  return res.json();
+}
+
 // Used both by the first attempt (right after transcribing) and every retry
 // pass below (relinkUnlinkedAudioMessages) — re-running this against a
 // possibly-grown candidate list is exactly the right retry behavior.
 //
-// Returns { matchedContactIds, ranAttribution }. ranAttribution is false
-// only when there were zero candidates to reason about at all — that's not
-// a real attempt (nothing was evaluated), so callers must not count it
-// against link_attempts, unlike a real invocation that came back empty.
+// Returns { matchedContactIds, ranAttribution, createdContactId }.
+// ranAttribution is false only when there were zero candidates to reason
+// about AND fallback extraction wasn't requested — that's not a real
+// attempt (nothing was evaluated), so callers must not count it against
+// link_attempts, unlike a real invocation that came back empty.
+// createdContactId is set only when attemptFallbackExtraction was true and
+// the skill judged the transcript alone sufficient to create a contact.
 //
 // 2026-09-22 audit: this used to have two fallbacks that force-attached the
 // FULL transcript to a contact the skill never actually matched — a
@@ -750,16 +797,26 @@ async function findCandidateContacts(eventId, fromPhone) {
 // unrelated conversations onto real people's CRM notes (Bob Eby and Edwin
 // Jarnagin both picked up excerpts about Adam Stone, Katina Simmons, and
 // Charlotte McCoy/Jennifer Field — none of whom they are). Neither fallback
-// remains: when attribution can't confidently place the transcript, the
-// memo is simply left unlinked and retried later via link_status, exactly
-// like the "nothing to attach to yet" case below always has been.
-async function linkTranscriptToContacts(message, transcript, prefetched) {
-  if (!message.event_id) return { matchedContactIds: [], ranAttribution: false }; // no event bound — nothing to scope to (should be unreachable in practice)
+// remains: when attribution can't confidently place the transcript against
+// an EXISTING contact, the memo is simply left unlinked and retried later
+// via link_status, exactly like the "nothing to attach to yet" case below
+// always has been. The extraction fallback below is a different shape —
+// it only ever creates a brand-new contact from the model's own judgment
+// that the transcript independently names someone, never touches an
+// existing contact's data.
+async function linkTranscriptToContacts(message, transcript, prefetched, attemptFallbackExtraction = false) {
+  if (!message.event_id) return { matchedContactIds: [], ranAttribution: false, createdContactId: null }; // no event bound — nothing to scope to (should be unreachable in practice)
 
   // processAudioMessage already fetched this exact set to build the Whisper
   // name prompt; the retry sweep has nothing prefetched and passes none.
   const candidates = prefetched ?? await findCandidateContacts(message.event_id, message.from_phone);
-  if (candidates.length === 0) return { matchedContactIds: [], ranAttribution: false }; // nothing to attach to yet; retry sweep will catch it later
+  // Zero candidates is normally "nothing to attach to yet, retry sweep will
+  // catch it later" — but once fallback extraction is in play there's still
+  // a real question worth asking the model (does the transcript alone name
+  // someone?), so don't skip the call just because no one else was captured.
+  if (candidates.length === 0 && !attemptFallbackExtraction) {
+    return { matchedContactIds: [], ranAttribution: false, createdContactId: null };
+  }
 
   // Always run attribution, even for a single candidate — the skill's own
   // ambiguity/no-name-mentioned rules handle that case correctly (see
@@ -776,18 +833,31 @@ async function linkTranscriptToContacts(message, transcript, prefetched) {
       phone: c.phone,
       title: c.title,
     })),
+    ...(attemptFallbackExtraction ? { extractFallbackContact: true } : {}),
   };
-  const { results } = await runSkill('attribute-voice-memo', skillInput, AGENT_WORKDIR, {
+  const { results, extractedContact } = await runSkill('attribute-voice-memo', skillInput, AGENT_WORKDIR, {
     schema: AttributionOutput,
   });
   const attributed = (results ?? []).filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0);
 
   if (attributed.length === 0) {
+    if (attemptFallbackExtraction && extractedContact) {
+      try {
+        const created = await postVoiceMemoContact(message.id, extractedContact);
+        return { matchedContactIds: [], ranAttribution: true, createdContactId: created.id };
+      } catch (err) {
+        // Don't let a create failure masquerade as "handled" — fall through
+        // to the normal unmatched outcome below so this attempt still
+        // counts and the row remains eligible for another retry.
+        log(`voice-memo fallback contact creation FAIL for ${message.id}: ${err.message ?? err}`);
+      }
+    }
     // Memo names no one the skill could confidently place among today's
-    // candidates — leave it unlinked rather than guessing. A new candidate
-    // (a slower OCR pass, a re-sent photo, a directory-page batch) may
-    // still show up and match on a later attempt.
-    return { matchedContactIds: [], ranAttribution: true };
+    // candidates, and either extraction wasn't attempted or didn't qualify
+    // — leave it unlinked rather than guessing. A new candidate (a slower
+    // OCR pass, a re-sent photo, a directory-page batch) may still show up
+    // and match on a later attempt.
+    return { matchedContactIds: [], ranAttribution: true, createdContactId: null };
   }
 
   const byId = new Map(candidates.map((c) => [c.id, c]));
@@ -795,25 +865,30 @@ async function linkTranscriptToContacts(message, transcript, prefetched) {
     .map((r) => ({ contact: byId.get(r.contactId), excerpt: r.excerpt }))
     .filter((x) => x.contact); // defensive: ignore an id the skill echoed that wasn't in the candidate list
   const matchedContactIds = await attachExcerpts(toAttach);
-  return { matchedContactIds, ranAttribution: true };
+  return { matchedContactIds, ranAttribution: true, createdContactId: null };
 }
 
 // Applies one linkTranscriptToContacts result to its row: records any new
 // matches, and — only when an attempt was actually spent (ranAttribution) —
-// advances link_status to 'linked' on success or 'no_candidate_found' once
-// link_attempts has hit the cap without ever matching. currentAttempts is
-// the row's link_attempts AFTER this attempt (already incremented, either
-// by claim_unlinked_audio_messages for a retry, or by the +1 this function
-// applies itself for the first attempt).
-async function recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds) {
+// advances link_status to 'contact_created' when the fallback minted a new
+// contact, 'linked' when an existing candidate matched, or
+// 'no_candidate_found' once link_attempts has hit the cap without either.
+// currentAttempts is the row's link_attempts AFTER this attempt (already
+// incremented, either by claim_unlinked_audio_messages for a retry, or by
+// the +1 this function applies itself for the first attempt).
+async function recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds, createdContactId) {
   const patch = { matched_contact_ids: matchedContactIds };
-  if (matchedContactIds.length > 0) {
+  if (createdContactId) {
+    patch.link_status = 'contact_created';
+    patch.matched_contact_ids = [createdContactId];
+  } else if (matchedContactIds.length > 0) {
     patch.link_status = 'linked';
   } else if (ranAttribution && currentAttempts >= LINK_MAX_ATTEMPTS) {
-    // Exhausted every retry without ever finding a match — likely someone
-    // never captured through any intake path at all (e.g. only ever
-    // mentioned by voice, no card, no roster photo). Surfaced to a human
-    // via Review's unmatched-memos list rather than retried forever.
+    // Exhausted every retry without ever finding a match or extracting
+    // enough to create one — likely someone whose mention was too thin to
+    // stand alone (e.g. a name with no role or school context at all).
+    // Surfaced to a human via Review's unmatched-memos list rather than
+    // retried forever.
     patch.link_status = 'no_candidate_found';
   }
   const { error } = await supabase.from('inbound_messages').update(patch).eq('id', message.id);
@@ -847,9 +922,17 @@ async function relinkUnlinkedAudioMessages() {
 
   for (const message of claimed) {
     try {
-      const { matchedContactIds, ranAttribution } = await linkTranscriptToContacts(message, message.transcript);
-      await recordLinkResult(message, message.link_attempts, ranAttribution, matchedContactIds);
-      if (matchedContactIds.length > 0) {
+      // message.link_attempts is already post-increment (claim_unlinked_
+      // audio_messages bumps it atomically as part of the claim above), so
+      // this is the actual attempt number this pass represents.
+      const attemptFallbackExtraction = message.link_attempts === LINK_FALLBACK_ATTEMPT;
+      const { matchedContactIds, ranAttribution, createdContactId } = await linkTranscriptToContacts(
+        message, message.transcript, undefined, attemptFallbackExtraction,
+      );
+      await recordLinkResult(message, message.link_attempts, ranAttribution, matchedContactIds, createdContactId);
+      if (createdContactId) {
+        log(`voice-memo fallback OK: ${message.id} -> created contact ${createdContactId}`);
+      } else if (matchedContactIds.length > 0) {
         log(`retry-link OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
       }
     } catch (err) {
@@ -989,7 +1072,11 @@ async function processAudioMessage(message) {
   }).eq('id', message.id);
 
   try {
-    const { matchedContactIds, ranAttribution } = await linkTranscriptToContacts(message, transcript, candidates);
+    // Fallback extraction is never relevant on this very first attempt —
+    // LINK_FALLBACK_ATTEMPT is well above 1 — so this always passes false.
+    const { matchedContactIds, ranAttribution, createdContactId } = await linkTranscriptToContacts(
+      message, transcript, candidates, false,
+    );
     // This is the first attribution attempt for this row, so link_attempts
     // goes from 0 -> 1 here (the retry sweep's own +1 happens server-side,
     // inside claim_unlinked_audio_messages, for every attempt after this
@@ -1000,7 +1087,7 @@ async function processAudioMessage(message) {
         .update({ link_attempts: currentAttempts, last_link_attempt_at: new Date().toISOString() })
         .eq('id', message.id);
     }
-    await recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds);
+    await recordLinkResult(message, currentAttempts, ranAttribution, matchedContactIds, createdContactId);
     log(`transcription OK: ${message.id} (${matchedContactIds.length} contact(s) updated)`);
   } catch (err) {
     log(`attribution FAIL: ${message.id} — ${err.message ?? err}`);
@@ -1010,6 +1097,11 @@ async function processAudioMessage(message) {
 }
 
 async function transcriptionTick() {
+  // photoTick normally runs this sweep for photo and audio rows alike. With
+  // the photo loop off (AGENT_LOOPS=transcription at the n8n cutover), a
+  // transient transcription failure would otherwise never be retried.
+  if (!enabledLoops.includes('photo')) await reconcileRetryableFailedMessages();
+
   let message;
   try {
     const candidate = await findNextPendingAudioMessage();
@@ -1360,13 +1452,40 @@ async function reconcileStaleNoteSubmissions() {
 
 log('=== local-agent starting ===');
 
+// AGENT_LOOPS (comma-separated) runs a subset of the five loops. Added for the
+// n8n cutover (2026-09-25): n8n took over matching, photo, intent and note, and
+// voice stays here until Whisper is hosted somewhere n8n can reach, so the
+// agent runs with AGENT_LOOPS=transcription. Unset means all five, i.e. no
+// behavior change. An unknown name exits loudly rather than silently running
+// less than intended.
+const ALL_LOOPS = {
+  matching: matchingLoop,
+  photo: photoLoop,
+  transcription: transcriptionLoop,
+  intent: intentLoop,
+  note: noteLoop,
+};
+const enabledLoops = (process.env.AGENT_LOOPS ?? Object.keys(ALL_LOOPS).join(','))
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const unknownLoops = enabledLoops.filter((name) => !ALL_LOOPS[name]);
+if (enabledLoops.length === 0 || unknownLoops.length > 0) {
+  log(`FATAL: AGENT_LOOPS must list one or more of ${Object.keys(ALL_LOOPS).join(', ')}; got '${process.env.AGENT_LOOPS}'`);
+  process.exit(1);
+}
+// The watchdog must only watch loops that are running, or a disabled loop's
+// never-updated heartbeat would kill the process after 20 minutes.
+for (const name of Object.keys(heartbeat)) {
+  if (!enabledLoops.includes(name)) delete heartbeat[name];
+}
+log(`loops enabled: ${enabledLoops.join(', ')}`);
+
 await reconcileStaleInboundMessages();
 await reconcileStaleNoteSubmissions();
 
-// Five independent, concurrently-running loops in one process — a slow
+// Up to five independent, concurrently-running loops in one process — a slow
 // process-cards run (up to 15 min) or note extraction (up to 5) must not
 // delay the 20s matching poll, and transcription/intent classification each
-// run independently of the others. heartbeatWatchdog is a sixth: it never
-// does pipeline work, only exits the process if one of the other five stops
-// advancing (see its own comment above).
-await Promise.all([matchingLoop(), photoLoop(), transcriptionLoop(), intentLoop(), noteLoop(), heartbeatWatchdog()]);
+// run independently of the others. heartbeatWatchdog never does pipeline
+// work, only exits the process if an enabled loop stops advancing (see its
+// own comment above).
+await Promise.all([...enabledLoops.map((name) => ALL_LOOPS[name]()), heartbeatWatchdog()]);

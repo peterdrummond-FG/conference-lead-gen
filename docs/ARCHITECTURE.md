@@ -171,3 +171,33 @@ moves to a human instead:
   `contacts-bulk-delete` uses against a stale client selection: a memo the
   auto-linker just matched out from under the reviewer can never be
   deleted through this endpoint.
+
+### Voice-memo fallback contact creation
+
+"Nobody yet" and "nobody ever" aren't the only two outcomes — a memo can
+also describe someone thoroughly enough (a name plus a title, school, or
+district) that no card or roster photo is needed to place them at all. At
+`link_attempts = LINK_FALLBACK_ATTEMPT` (5, well below `LINK_MAX_ATTEMPTS`'s
+20), `linkTranscriptToContacts` asks `attribute-voice-memo` to additionally
+judge this — via an `extractFallbackContact` input flag and an
+`extractedContact` output field, both optional and ignored on every other
+attempt (`.claude/skills/attribute-voice-memo/SKILL.md`, validated by
+`local-agent/schemas.mjs`'s `AttributionOutput`). A qualifying transcript is
+POSTed to a new Edge Function, `contacts-from-voice-memo` (sibling of
+`contacts-from-note`, keyed on the inbound message id instead of a note
+submission, deduped by a partial unique index on `(source_message_id) WHERE
+source = 'voice_memo'`), which inserts a `source='voice_memo'` contact —
+`match_status='pending'`, so it flows into `research-contact`/`match-contact`
+through the ordinary pending-contact loop with no special-casing needed.
+
+`inbound_messages.link_status` gained a fourth value, `contact_created`,
+distinct from `linked` (attached to an *existing* candidate) — deliberately
+left out of `inbound-messages-unresolved-list`'s and `inbound-messages-delete`'s
+`link_status IN (...)` allowlists above, since a `contact_created` memo
+already has a real contact record backing it and surfaces through Review the
+same way any other new contact does. See
+`20260928120000_voice_memo_fallback_contact_creation.sql` for the schema
+change and `local-agent/agent.mjs`'s `linkTranscriptToContacts` for the full
+decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
+`n8n/pipelines/pipeline-voice-transcription.ts` and
+`n8n/schemas/attribution.schema.json`.

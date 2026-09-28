@@ -27,6 +27,32 @@
           }
         ]
       }
+    },
+    "extractedContact": {
+      "type": "object",
+      "description": "Only include this key when extractFallbackContact was true in the input AND the transcript alone names someone with a title, district, or school — see SKILL.md Step 7. Omit the key entirely otherwise.",
+      "properties": {
+        "firstName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "lastName": { "type": "string", "maxLength": 100, "default": "" },
+        "email": { "type": "string", "maxLength": 320, "default": "" },
+        "phone": { "type": "string", "maxLength": 40, "default": "" },
+        "title": { "type": "string", "maxLength": 200, "default": "" },
+        "districtName": { "type": "string", "maxLength": 200, "default": "" },
+        "schoolName": { "type": "string", "maxLength": 200, "default": "" },
+        "interactionNotes": { "type": "string", "maxLength": 4000, "default": "" },
+        "extractionConfidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      },
+      "required": ["firstName", "extractionConfidence"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "anyOf": [
+            { "properties": { "title": { "minLength": 1 } }, "required": ["title"] },
+            { "properties": { "districtName": { "minLength": 1 } }, "required": ["districtName"] },
+            { "properties": { "schoolName": { "minLength": 1 } }, "required": ["schoolName"] }
+          ]
+        }
+      ]
     }
   }
 }

@@ -84,6 +84,20 @@ been replaced, the replacement is noted here instead of rewriting history.
   actually use the new columns/functions, so there's no gap where the schema
   exists but nothing reads or writes it.
 
+## Voice-memo fallback contact creation (2026-09-28)
+
+- **`20260928120000_voice_memo_fallback_contact_creation.sql`** extends two
+  of the check constraints added above rather than replacing their
+  description: `contacts.source` gains `'voice_memo'`, and
+  `inbound_messages.link_status` gains a fourth value, `contact_created`
+  (distinct from `linked` — see the column comment this migration rewrites).
+  Also adds a partial unique index on `contacts(source_message_id) WHERE
+  source = 'voice_memo'` so `contacts-from-voice-memo` can dedupe a retried
+  create the same way `contacts-from-ocr` dedupes on `source_image_hash`.
+  Schema-only, same shape as the 2026-09-22 entry above: `local-agent/agent.mjs`
+  and the new `contacts-from-voice-memo` Edge Function were added in the same
+  change. See `docs/ARCHITECTURE.md`'s "Voice-memo fallback contact creation".
+
 ## Watch out for
 
 - **`create or replace` with a changed argument list silently drops settings.**

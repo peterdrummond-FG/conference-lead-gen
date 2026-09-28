@@ -1,10 +1,10 @@
 # Skill output schemas
 
 One JSON Schema per skill output contract. These are the source of truth for
-what a skill may return; each skill sub-workflow passes its schema to
-`sub-run-skill` (n8n workflow `mSh7BrUutm3k2p4B`), whose Structured Output
-Parser rejects anything that doesn't match. A rejection is a pipeline failure:
-the row stays pending for a human (CLAUDE.md rule 3).
+what a skill may return: `n8n/scripts/build-skill-workflow.mjs` embeds each one
+in its skill workflow's Structured Output Parser, which rejects anything that
+doesn't match. A rejection is a pipeline failure: the row stays pending for a
+human (CLAUDE.md rule 3).
 
 | File | Skill |
 |---|---|
@@ -48,9 +48,12 @@ the control; it just isn't the only thing shaping the output.
 - **Pass-through fields.** Unknown keys do not survive: research-contact's
   input fields (email, district, phone…) were silently dropped. Its contract —
   output is the input plus the research fields, handed to match-contact
-  unchanged — is therefore implemented by the research-contact sub-workflow
-  merging `{...input, ...validatedOutput}`, not by the model copying fields.
-  Research's own `firstName`/`lastName` still win, preserving name correction.
+  unchanged — is therefore implemented by the research-contact workflow
+  merging `{...validatedOutput, ...input}`, not by the model copying fields.
+  The input wins on purpose: research-contact's own SKILL.md forbids it from
+  ever overwriting `firstName`/`lastName`/`districtName`/`schoolName`
+  (corrections go only in the `alternate*` fields), and match-contact relies
+  on that distinction — so the merge enforces it instead of trusting it.
 - **Defaults.** Every probe case came back with defaulted fields filled in, but
   whether the parser or the model did it isn't observable. Read optional fields
   with a fallback (`?? ''` / `?? null`) rather than assuming they're present.
@@ -65,10 +68,21 @@ the control; it just isn't the only thing shaping the output.
 - `attribution.schema.json` rejects an extra key on a result (Zod silently
   dropped it). "No other keys" is the simplest proven way to say "exactly one
   of `excerpt` or `notFound`". It fails safe: the memo stays pending.
+- `extractedContact`'s "title, districtName, or schoolName must be non-blank"
+  rule (mirroring the Zod `.refine()` in `schemas.mjs`) is encoded as
+  `anyOf: [{required:['title'], properties:{title:{minLength:1}}}, ...]` per
+  the `anyOf`/`allOf` rule above — **unverified against the live parser**,
+  unlike every other rule on this page. The "Defaults" caveat means a field
+  the model never mentions may still arrive as `""` from the parser's own
+  defaulting rather than being absent, in which case `required` alone
+  wouldn't have caught it — `minLength: 1` inside each `anyOf` branch is
+  there specifically so an empty-string default still fails the branch. Probe
+  this the same way the other rules here were probed before relying on it.
 
 ## Changing a schema
 
-Edit the file here, then rebuild the skill sub-workflow that embeds it — n8n
-holds a copy, not a reference. Test both the case you're allowing and the case
+Edit the file here, then regenerate the skill workflow that embeds it
+(`node n8n/scripts/build-skill-workflow.mjs <skill>`) and push it — n8n holds a
+copy, not a reference; re-publish it too if it's published. Test both the case you're allowing and the case
 you're rejecting; the parser has already proven it will ignore a keyword
 without complaint.

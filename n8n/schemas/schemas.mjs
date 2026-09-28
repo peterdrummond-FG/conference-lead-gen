@@ -126,6 +126,30 @@ export const IntentOutput = z.object({
   contactIntent: z.enum(['hot', 'warm', 'cold']).nullable(),
 });
 
+// Same field shape as NoteExtractionOutput.contacts[] below — reused rather
+// than invented, since this is the same "extract a contact from raw text"
+// judgment, just sourced from a transcript instead of a pasted note.
+const ExtractedVoiceMemoContact = z
+  .object({
+    firstName: z.string().min(1).max(100),
+    lastName: z.string().max(100).default(''),
+    email: z.string().max(320).default(''),
+    phone: z.string().max(40).default(''),
+    title: z.string().max(200).default(''),
+    districtName: z.string().max(200).default(''),
+    schoolName: z.string().max(200).default(''),
+    interactionNotes: z.string().max(4000).default(''),
+    extractionConfidence: confidence,
+  })
+  // Backstop behind the SKILL.md sufficiency rule (Step 7): a name alone,
+  // with nothing to independently place the person at a school/district or
+  // in a role, is exactly the "not enough to stand alone" case the skill is
+  // told to leave out — enforced here rather than trusted, same reasoning
+  // as every other refine in this file.
+  .refine((c) => Boolean(c.title.trim() || c.districtName.trim() || c.schoolName.trim()), {
+    message: 'extractedContact requires a title, districtName, or schoolName',
+  });
+
 export const AttributionOutput = z.object({
   results: z
     .array(
@@ -141,6 +165,10 @@ export const AttributionOutput = z.object({
     )
     .max(200)
     .default([]),
+  // Only ever populated when the caller set extractFallbackContact: true and
+  // the transcript qualified — see SKILL.md Step 7. Omitted (not null)
+  // otherwise.
+  extractedContact: ExtractedVoiceMemoContact.optional(),
 });
 
 // One paste must not be able to queue unbounded downstream LLM work: every

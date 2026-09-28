@@ -605,6 +605,8 @@ const sourceTone = computed(() => {
       return 'purple';
     case 'note':
       return 'blue';
+    case 'voice_memo':
+      return 'blue';
     default:
       return 'slate';
   }
@@ -620,6 +622,8 @@ function sourceLabel(source: string) {
       return 'Directory';
     case 'note':
       return 'Note';
+    case 'voice_memo':
+      return 'Voice memo';
     case 'qr_code':
       return 'QR Code';
     default:
