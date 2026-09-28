@@ -99,7 +99,7 @@ plain additive change rather than a migration that touches every row.
 |---|---|---|
 | Id | uuid PK | |
 | EventId | FK → Events.Id | determines State/City/Lead Source at export |
-| Source | text | `form` or `card_photo` |
+| Source | text | `form`, `card_photo`, `directory_photo`, `note`, or `voice_memo` (this table was stale — see section 9's fallback-extraction update) |
 | FirstName | text | |
 | LastName | text | |
 | Email | text | nullable |
@@ -149,9 +149,9 @@ afterward resolves to that event until they text a different code.
 | Body | text | nullable — the raw SMS text, only meaningful for a folder-code bind |
 | MediaContentType / StoragePath | text | nullable — set once the webhook's background upload to `contact-photos`/`voice-memos` completes |
 | Transcript | text | nullable — Whisper output, only for `audio` rows |
-| MatchedContactIds | uuid[] | nullable — which `Contacts` row(s) a voice memo's transcript got merged into |
+| MatchedContactIds | uuid[] | nullable — which `Contacts` row(s) a voice memo's transcript got merged into, or the single new contact a fallback extraction created |
 | Attempts / Error | int / text | legacy retry counter, superseded 2026-09-22 by the columns below (kept, unwritten, per this repo's append-only migration convention) |
-| LinkStatus / LinkAttempts / LastLinkAttemptAt | text / int / timestamptz | audio only — `unlinked` / `linked` / `no_candidate_found`, same claim/cooldown shape as `Contacts.MatchStatus`/`MatchAttempts`/`LastMatchAttemptAt`. See section 9. |
+| LinkStatus / LinkAttempts / LastLinkAttemptAt | text / int / timestamptz | audio only — `unlinked` / `linked` / `no_candidate_found` / `contact_created` (added 2026-09-28), same claim/cooldown shape as `Contacts.MatchStatus`/`MatchAttempts`/`LastMatchAttemptAt`. See section 9. |
 | ProcessingAttempts / LastProcessingAttemptAt / ErrorClass | int / timestamptz / text | OCR/transcription's own claim/cooldown state; `ErrorClass` is `transient` (auto-retried) or `terminal` (needs a human's manual retry) |
 
 **`ReviewStatus` is no longer just about extraction quality.** A record only
@@ -625,6 +625,23 @@ cost/complexity shortcut and, in production, silently glued unrelated
 conversations onto real contacts' notes (see `docs/ENGINEERING-LESSONS.md`
 #14).
 
+**Fallback contact creation (added 2026-09-28).** "Nobody yet" and "nobody
+ever" used to be the only two outcomes for a memo with no matching candidate.
+Now, at `LinkAttempts = LINK_FALLBACK_ATTEMPT` (5, well short of
+`LINK_MAX_ATTEMPTS`'s 20), `attribute-voice-memo` is additionally asked
+(`extractFallbackContact: true` in its input) whether the transcript alone —
+a name plus a title, school, or district — is independently enough to create
+a contact, no card or roster photo needed. A qualifying transcript is POSTed
+to a new Edge Function, `contacts-from-voice-memo` (sibling of
+`contacts-from-note`, keyed on the `InboundMessages` id rather than a note
+submission, deduped by a partial unique index on `Contacts(SourceMessageId)
+WHERE Source = 'voice_memo'`), producing a `Source = 'voice_memo'` contact
+that flows into `research-contact`/`match-contact` the same automatic way any
+other new contact does. `LinkStatus` gains a fourth value, `contact_created`,
+kept out of Review's unresolved-intake and delete-endpoint allowlists since
+the memo now has a real contact behind it. See `docs/ARCHITECTURE.md`'s
+"Voice-memo fallback contact creation" for the full mechanics.
+
 **Retry is claim-based, not time-boxed.** Both `photoLoop`'s OCR step and
 voice-memo linking retry via an atomic
 `UPDATE ... WHERE attempts < max AND (cooldown elapsed) ... RETURNING *`
@@ -826,6 +843,18 @@ past that threshold.
   un-animated masonry reflow, missing confirmations on bulk-approve and
   duplicate-merge) turned up a dozen smaller fixes across Intake, Review, and
   Setup — UI/UX polish, not architecture, so not itemized here individually.
+- **Voice memos with no matching card/roster contact can now create one.**
+  Previously a memo about someone never photographed at all could only ever
+  retry candidate-matching up to `LINK_MAX_ATTEMPTS` and land on
+  `no_candidate_found` — a human had nothing but a raw transcript to work
+  from. At a lower attempt threshold (`LINK_FALLBACK_ATTEMPT = 5`;
+  `LINK_MAX_ATTEMPTS` also lowered 50 → 20), `attribute-voice-memo` now
+  additionally judges whether the transcript alone (name + title/school/
+  district) justifies creating a contact outright, via a new
+  `contacts-from-voice-memo` Edge Function and a `Source = 'voice_memo'` /
+  `LinkStatus = 'contact_created'` pair. See section 9's "Fallback contact
+  creation" and `docs/ARCHITECTURE.md`'s "Voice-memo fallback contact
+  creation" for the full mechanics.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /

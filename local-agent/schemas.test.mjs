@@ -81,6 +81,34 @@ test('AttributionOutput requires exactly one of excerpt / notFound', () => {
   assert.equal(AttributionOutput.safeParse({ results: [{ contactId: id }] }).success, false);
 });
 
+test('AttributionOutput accepts a well-formed extractedContact (name + title/district/school)', () => {
+  const base = { results: [], extractedContact: { firstName: 'Alex', extractionConfidence: 'medium' } };
+  assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, title: 'Curriculum Director' } }).success, true);
+  assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, districtName: 'Rivera Unified' } }).success, true);
+  assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, schoolName: 'Rivera Elementary' } }).success, true);
+});
+
+test('AttributionOutput rejects extractedContact with no title/district/school', () => {
+  const r = AttributionOutput.safeParse({
+    results: [],
+    extractedContact: { firstName: 'Alex', extractionConfidence: 'low' },
+  });
+  assert.equal(r.success, false);
+});
+
+test('AttributionOutput rejects extractedContact with no first name', () => {
+  const r = AttributionOutput.safeParse({
+    results: [],
+    extractedContact: { firstName: '', title: 'Curriculum Director', extractionConfidence: 'medium' },
+  });
+  assert.equal(r.success, false);
+});
+
+test('AttributionOutput allows omitting extractedContact entirely', () => {
+  const id = '2f2a77eb-8039-4359-880f-f4d9ef1d6f65';
+  assert.equal(AttributionOutput.safeParse({ results: [{ contactId: id, notFound: true }] }).success, true);
+});
+
 test('NoteExtractionOutput caps contacts per note', () => {
   const one = { firstName: 'A', lastName: 'B', extractionConfidence: 'high' };
   assert.equal(NoteExtractionOutput.safeParse({ contacts: Array(50).fill(one) }).success, true);
