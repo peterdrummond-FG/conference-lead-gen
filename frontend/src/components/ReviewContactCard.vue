@@ -325,7 +325,7 @@
             label="Approve"
             size="sm"
             :disable="contact.matchStatus === 'pending'"
-            @click="$emit('approve', contact.id)"
+            @click="onApproveClick"
           >
             <q-tooltip v-if="contact.matchStatus === 'ambiguous'">
               No confirmed Zoho match — approving exports this as a new lead, same as "new_account". Pick a candidate above first if one looks right.
@@ -348,6 +348,7 @@
 
 <script setup lang="ts">
 import { reactive, computed, ref, watch } from 'vue';
+import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
@@ -384,6 +385,23 @@ const showNotes = ref(false);
 const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
 
+// Approve isn't hard-disabled by an unresolved duplicate — a reviewer who's
+// already checked the two records may know more than the system does — but
+// it does interrupt with an explicit choice rather than silently letting the
+// click through past the banner's own "resolve this first" warning above.
+function onApproveClick() {
+  if (props.contact.localDuplicateOfContactName) {
+    Dialog.create({
+      title: 'Unresolved duplicate',
+      message: `Another contact named ${props.contact.localDuplicateOfContactName} looks like a possible match. Resolve it above, or approve anyway if you've already checked.`,
+      cancel: { label: 'Resolve the duplicate above', flat: true },
+      ok: { label: 'Approve anyway', color: 'positive' },
+    }).onOk(() => emit('approve', props.contact.id));
+    return;
+  }
+  emit('approve', props.contact.id);
+}
+
 const stateOptions = ref<UsStateOption[]>(US_STATES);
 
 const draft = reactive({
@@ -400,11 +418,11 @@ const draft = reactive({
 
 // State gates district, district gates school — changing an upstream field
 // invalidates whatever was picked downstream of it.
-watch(() => draft.state, () => {
-  draft.district = null;
+watch(() => draft.state, (_newState, oldState) => {
+  if (oldState) draft.district = null;
 });
-watch(() => draft.district, () => {
-  draft.school = null;
+watch(() => draft.district, (_newDistrict, oldDistrict) => {
+  if (oldDistrict) draft.school = null;
 });
 
 const newAccountId = ref('');
@@ -552,6 +570,12 @@ function notAMatch() {
     matchConfidence: null,
   };
   emit('update', props.contact.id, payload);
+  Notify.create({
+    type: 'info',
+    message: payload.matchStatus === 'ambiguous'
+      ? 'Match cleared — this contact now needs review.'
+      : 'Match cleared — kept the matched account, no specific contact.',
+  });
 }
 
 function linkNewAccount() {

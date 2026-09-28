@@ -145,7 +145,7 @@
 
       <q-card-actions align="right">
         <q-btn flat label="Cancel" @click="close" />
-        <q-btn color="positive" label="Merge" :disable="!keeperId || merging" :loading="merging" @click="merge" />
+        <q-btn color="positive" label="Merge" :disable="!keeperId || merging" :loading="merging" @click="confirmMerge" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -153,6 +153,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue';
+import { Dialog } from 'quasar';
 import { api } from '@/boot/axios';
 import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
@@ -241,11 +242,11 @@ const draft = reactive({
   school: null as TypeaheadOption | null,
 });
 
-watch(() => draft.state, () => {
-  draft.district = null;
+watch(() => draft.state, (_newState, oldState) => {
+  if (oldState) draft.district = null;
 });
-watch(() => draft.district, () => {
-  draft.school = null;
+watch(() => draft.district, (_newDistrict, oldDistrict) => {
+  if (oldDistrict) draft.school = null;
 });
 
 function selectKeeper(c: ContactListItem) {
@@ -318,6 +319,18 @@ watch(() => props.modelValue, (open) => {
 
 function close() {
   emit('update:modelValue', false);
+}
+
+function confirmMerge() {
+  if (!keeperId.value) return;
+  const count = others.value.length;
+  Dialog.create({
+    title: 'Merge duplicates?',
+    message: `Keep ${keeper.value?.firstName ?? 'this record'} and discard ${count} duplicate${count === 1 ? '' : 's'}? This can't be undone.`,
+    cancel: true,
+    persistent: true,
+    ok: { label: 'Merge', color: 'positive' },
+  }).onOk(merge);
 }
 
 async function merge() {

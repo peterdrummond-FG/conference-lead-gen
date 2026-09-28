@@ -31,5 +31,6 @@ Deno.serve(async (req) => {
     currentEventId: user.currentEventId,
     currentEventName: event?.name ?? null,
     repSlug: user.repSlug,
+    hasKioskPin: !!user.kioskPin,
   });
 });

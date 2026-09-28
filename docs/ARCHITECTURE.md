@@ -10,7 +10,7 @@
 | `supabase/seed/` | Zoho reference data (districts/schools/campaigns) for seeding a fresh environment. |
 | `local-agent/` | Five poll loops (matching, SMS photo, transcription, intent, note extraction). The only caller of `claude -p`. |
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
-| `.claude/skills/` | The seven skills. |
+| `.claude/skills/` | The six skills. |
 | `mcp/` | MCP configs for headless skill runs. Only `zoho-readonly.json` today. |
 | `scripts/` | Repo guards run in CI, plus `deploy-functions.mjs`. |
 
@@ -68,6 +68,23 @@ deleted this way 2026-09-22 and dropped from `RETIRED`. Keep the stub
 instead of deleting when the slug is still referenced somewhere worth
 keeping checkable — `transcribe-voice-memo` stays deployed for exactly that
 reason (named in this repo's own history docs).
+
+### Ending an event
+
+`events.is_active` used to be write-once-true: nothing ever set it back to
+`false`, because nothing needed to until `events-complete` (2026-09-28) added
+a way for admin/Solutions Success to mark a conference over. `events_complete()`
+flips `is_active` off and clears `current_event_id` on every profile still
+linked to that event, in one transaction — mirroring `events_activate()`'s own
+shape (see `20260917100000_event_reps_and_activation_guard.sql`).
+
+An event that can now be inactive again means **every place that resolves an
+event from something a client supplied** has to actually check `is_active`,
+not just the ones written after this existed. `contacts-create`'s `eventSlug`
+branch (a public per-event QR link) didn't — found while adding this feature,
+fixed in the same change. `events-active`'s own fallback branch already had
+the check; it just hadn't been true everywhere. Grep for `.eq("slug",` /
+`.eq("event_id",` on a client-supplied value before adding a new one.
 
 ### Invoking a skill
 

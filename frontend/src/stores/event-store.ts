@@ -12,6 +12,11 @@ export interface ActiveEvent {
   // Both only present for an authenticated caller (events-active) — absent
   // (undefined) for the public Intake fetch.
   isLinkedRep?: boolean;
+  // Also authenticated-caller-only, and further omitted whenever the caller's
+  // own profiles.phone_number is unset — in that case we genuinely can't
+  // tell whether they've texted SETUP, so this stays undefined rather than
+  // asserting a false "not done yet".
+  smsBound?: boolean;
 }
 
 export const useEventStore = defineStore('event', {

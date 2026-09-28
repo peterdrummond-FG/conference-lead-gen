@@ -201,6 +201,8 @@ every call.
 | `campaigns-list` | Searches a Postgres cache of Campaigns (`Type = conference`) — same cache-not-live-call approach as before, now just an Edge Function instead of a .NET endpoint |
 | `events-activate` | Activates a cached Campaign into a new `Event` row (atomic "deactivate current + insert new" lives in the `events_activate` Postgres function, since Edge Functions calling Postgres via `supabase-js` don't get automatic multi-statement transactions the way EF Core's `BeginTransactionAsync` did). Takes `state`/`city` directly from the rep — Zoho still has no such data to copy — and generates the `FolderCode` |
 | `events-active` | The currently active event, for both the frontend and (indirectly) the watcher/local-agent |
+| `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds Setup's "Reps & events" history table alongside `events-list-active` (which stays active-only) |
+| `events-complete` (added 2026-09-28) | Admin/Solutions-Success only. Ends a conference for everyone: `events_complete()` flips `is_active` off and clears `current_event_id` on every profile still linked to it, in one transaction — see the note in section 10 |
 | `GET /intake` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new" |
 | `contacts-create` | Saves a form row, runs the within-event duplicate check synchronously, then leaves it `pending` for `local-agent`'s matching loop to pick up (below) — the response returns immediately, before matching completes |
 | `districts-list` / `schools-list` | Type-ahead lookups |
@@ -789,6 +791,42 @@ past that threshold.
   first time. Confirmed live: every voice memo on the TOSS conference
   (the event being worked when this was found) is now correctly assigned.
 
+**Resolved since (Sept 28, 2026):**
+- **A conference can now actually be ended.** `events.is_active` used to be
+  write-once-true — nothing set it back to `false`. `events-complete`
+  (admin/Solutions Success, from Setup's "Reps & events" table) calls a new
+  `events_complete()` Postgres function that flips it off and clears
+  `current_event_id` on every profile still linked to that event, in one
+  transaction, mirroring `events_activate()`'s own shape. Found while adding
+  this: `contacts-create`'s `eventSlug` branch (a public per-event QR link)
+  resolved the event by slug alone with **no `is_active` check** — a printed
+  QR for a completed conference would have kept accepting Intake submissions
+  indefinitely. Fixed in the same change; see `docs/ARCHITECTURE.md`'s
+  "Ending an event" convention. Setup's event table now shows the 5 most
+  recent conferences (`events-list-recent`) alongside every active one, so a
+  completed conference stays visible as read-only history rather than
+  disappearing.
+- **Review's Approve is no longer silently bypassable past an unresolved
+  duplicate warning, but it isn't hard-blocked either.** The banner has always
+  said to resolve a flagged duplicate before confirming a match, but the
+  actual Approve button had no check tied to it. It's now an explicit choice —
+  clicking Approve with an unresolved duplicate present opens a dialog
+  ("Resolve the duplicate above" / "Approve anyway") rather than either
+  silently letting it through or refusing outright, since a reviewer who's
+  already checked the two records by hand may know more than the system does.
+- **Kiosk PIN can be set at lock time.** Locking a device to Intake-only
+  used to assume a kiosk PIN was already set in `/setup` — if it wasn't, the
+  rep had no way back in. "Lock kiosk" now checks for one first and, if
+  missing, prompts for it inline before locking, instead of sending the rep
+  to `/setup` mid-lock.
+- A pass through the app re-examined for what a first-time or infrequent user
+  would find non-obvious (disabled fields with no explanation, ambiguous
+  copy, a state edit silently discarding an already-correct district, a
+  Review contact count that didn't match its own conference filter, an
+  un-animated masonry reflow, missing confirmations on bulk-approve and
+  duplicate-merge) turned up a dozen smaller fixes across Intake, Review, and
+  Setup — UI/UX polish, not architecture, so not itemized here individually.
+
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
   refresh token were readable by permission-skipped agent sessions for the life
@@ -812,9 +850,6 @@ past that threshold.
   unauthenticated INSERT endpoints), so an unmatched typed name is now kept as
   plain text on the contact rather than creating a row. Confirm that's the
   desired long-term behaviour.
-- **Still assumes one active event at a time**: `events.is_active` is a single
-  unique-partial-index row. Two intake tables running at once against the same
-  project would need a real multi-active-event design.
 - **Observability**: failures are `console.log`/`console.error` to a local file
   or the Supabase log stream. No alerting — the first signal of a stuck
   pipeline is still a rep asking why a lead never appeared.
