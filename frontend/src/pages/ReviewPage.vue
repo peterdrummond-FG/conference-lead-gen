@@ -27,6 +27,19 @@
         label="Conference"
       />
 
+      <q-select
+        v-if="tab === 'approved'"
+        v-model="followedUpFilter"
+        :options="followedUpFilterOptions"
+        option-label="label"
+        dense
+        outlined
+        emit-value
+        map-options
+        style="min-width: 180px"
+        label="Follow-up status"
+      />
+
       <!-- A signed-in rep (or an admin previewing one) only ever sees their
            own leads — nothing to pick. Admin/Solutions Success see
            everyone and can slice by rep + sync status. -->
@@ -205,6 +218,12 @@ const syncedFilterOptions = [
 const syncedFilter = ref<string | null>(null);
 const salesScope = ref<'current' | 'past'>('current');
 const eventFilter = ref<string | null>(null);
+const followedUpFilterOptions = [
+  { label: 'All', value: null },
+  { label: 'Not yet followed up', value: 'false' },
+  { label: 'Already followed up', value: 'true' },
+];
+const followedUpFilter = ref<string | null>(null);
 
 // Whichever role Review is actually scoped to — the real logged-in user's,
 // or (admin only) whoever they're previewing via the user switcher.
@@ -234,9 +253,16 @@ const eventFilterOptions = computed(() => {
   ];
 });
 
-const filteredContacts = computed(() => (
-  eventFilter.value ? contacts.value.filter((c) => c.eventId === eventFilter.value) : contacts.value
-));
+const filteredContacts = computed(() => {
+  let list = eventFilter.value ? contacts.value.filter((c) => c.eventId === eventFilter.value) : contacts.value;
+  // Only meaningful on the Approved tab — this is where a rep works through
+  // who they still need to call, not a general-purpose filter.
+  if (tab.value === 'approved' && followedUpFilter.value) {
+    const wantFollowedUp = followedUpFilter.value === 'true';
+    list = list.filter((c) => c.followedUp === wantFollowedUp);
+  }
+  return list;
+});
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / PER_PAGE)));
 const pagedContacts = computed(() => filteredContacts.value.slice((page.value - 1) * PER_PAGE, page.value * PER_PAGE));
@@ -365,6 +391,9 @@ watch([repFilter, syncedFilter, salesScope], () => {
 // come from that same list), so it only needs to reset pagination, not
 // trigger a server round-trip.
 watch(eventFilter, () => {
+  page.value = 1;
+});
+watch(followedUpFilter, () => {
   page.value = 1;
 });
 // Changing pages closes whatever's expanded — otherwise its own slot would
