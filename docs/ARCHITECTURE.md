@@ -201,3 +201,16 @@ change and `local-agent/agent.mjs`'s `linkTranscriptToContacts` for the full
 decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 `n8n/pipelines/pipeline-voice-transcription.ts` and
 `n8n/schemas/attribution.schema.json`.
+
+### Follow-up tracking
+
+`contacts.followed_up` (`20260928130000_add_contact_followed_up.sql`) is a
+plain reviewer-set boolean, unrelated to `review_status` and never touched by
+any skill or auto-classification — a rep toggles it directly on the Review
+card (collapsed or expanded, any tab) via `contacts-patch`. The Approved
+tab's "Follow-up status" dropdown is the only place it drives behavior
+beyond display, and it's a client-side filter over the already-loaded list
+(same mechanism as the existing conference filter), not a server query
+param. `export-csv` carries it through as its own `Follow Up Done` column —
+no Zoho field is mapped to it yet, so it rides along unmapped until Sales
+picks one.

@@ -50,6 +50,7 @@ export interface ContactListItem {
   glanceSummary: string | null;
   interactionNotes: string | null;
   contactIntent: 'hot' | 'warm' | 'cold' | null;
+  followedUp: boolean;
   hasPhoto: boolean;
   hasCroppedPhoto: boolean;
   matchAttempts: number;
@@ -82,6 +83,7 @@ export interface UpdateContactPayload {
   reviewStatus?: string;
   interactionNotes?: string | null;
   contactIntent?: 'hot' | 'warm' | 'cold' | null;
+  followedUp?: boolean;
 }
 
 // The two "went missing" shapes surfaced by inbound-messages-unresolved-list

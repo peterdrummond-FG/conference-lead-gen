@@ -106,7 +106,9 @@ Deno.serve(async (req) => {
     contacts = data;
   }
 
-  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Account Status,Lead Source,Capture Channel,Description"];
+  // No Zoho field is mapped to this yet (2026-09-28) — it's a separate export
+  // column until Sales picks which Leads-module field should carry it.
+  const lines = ["Salutation,First Name,Last Name,Email,Phone,Title,Account Name,Account Id,Account Status,Lead Source,Capture Channel,Description,Follow Up Done"];
   for (const c of contacts) {
     lines.push([
       csvField(""),
@@ -121,6 +123,7 @@ Deno.serve(async (req) => {
       csvField(c.event?.name ?? ""),
       csvField(channelLabel(c)),
       csvField(buildDescription(c)),
+      csvField(c.followed_up ? "Yes" : "No"),
     ].join(","));
   }
 

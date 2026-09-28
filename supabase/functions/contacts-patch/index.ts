@@ -99,6 +99,14 @@ Deno.serve(async (req) => {
     if (has(body, jsonKey)) updates[column] = body[jsonKey];
   }
 
+  // followed_up is not-null with no clear state — a wrong type here would
+  // otherwise surface as an opaque 500 from the not-null/type constraint
+  // instead of a clear 400.
+  if (has(body, "followedUp")) {
+    if (typeof body.followedUp !== "boolean") return errorResponse(req, 400, "followedUp must be a boolean.");
+    updates.followed_up = body.followedUp;
+  }
+
   // contactIntent is reviewer-set, separate from the auto classification
   // local-agent's intentLoop writes from voice-memo text. Any explicit PATCH
   // here — including clearing it back to null — is a human decision, so it

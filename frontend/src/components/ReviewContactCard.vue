@@ -24,6 +24,16 @@
           <div class="text-caption ellipsis">{{ contact.email || 'No email' }}</div>
           <div class="text-caption">{{ contact.phone || 'No phone' }}</div>
           <q-chip dense size="sm" class="tag-chip q-mt-xs" :class="`tone-${matchStatusTone}`">{{ matchStatusLabel }}</q-chip>
+          <div>
+            <q-checkbox
+              :model-value="contact.followedUp"
+              dense
+              label="Followed up"
+              class="q-mt-xs"
+              @click.stop
+              @update:model-value="toggleFollowedUp"
+            />
+          </div>
         </div>
       </div>
     </q-card-section>
@@ -149,6 +159,15 @@
             @click="setContactIntent(null)"
           />
           <q-tooltip>Optional — how the conversation with this person went. Auto-suggested from voice-memo notes unless set here.</q-tooltip>
+        </div>
+        <div class="row items-center q-gutter-xs q-mt-xs">
+          <q-checkbox
+            :model-value="contact.followedUp"
+            dense
+            label="Followed up"
+            @update:model-value="toggleFollowedUp"
+          />
+          <q-tooltip>Carries through to the CSV export as its own "Follow Up Done" column.</q-tooltip>
         </div>
         <div class="text-caption text-grey">
           {{ contact.eventName }} · {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
@@ -541,6 +560,10 @@ const intentOptions: { value: 'hot' | 'warm' | 'cold'; label: string; color: str
 
 function setContactIntent(value: 'hot' | 'warm' | 'cold' | null) {
   emit('update', props.contact.id, { contactIntent: value });
+}
+
+function toggleFollowedUp(value: boolean) {
+  emit('update', props.contact.id, { followedUp: value });
 }
 
 function notAMatch() {
