@@ -157,11 +157,16 @@ Deno.serve(async (req) => {
     // The event is resolved server-side by the slug the QR's URL carried,
     // never trusted as an id from the client. A slug that doesn't match any
     // event is a 404, not a silent fall-through — better than mis-attributing
-    // a lead to the wrong conference.
+    // a lead to the wrong conference. is_active is checked here too — a
+    // printed/bookmarked per-event QR (unlike the repSlug path above, which
+    // is already gated on the rep's own current_event_id) carries nothing
+    // that naturally stops working once the conference is marked complete
+    // (events-complete) without this.
     const { data: bySlug, error: eventError } = await supabase
       .from("events")
       .select("id")
       .eq("slug", eventSlug)
+      .eq("is_active", true)
       .maybeSingle();
     if (eventError) return errorResponse(req, 500, eventError.message);
     if (!bySlug) return errorResponse(req, 404, `No event found for '${eventSlug}'.`);

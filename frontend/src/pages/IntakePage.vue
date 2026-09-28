@@ -2,12 +2,17 @@
   <q-page class="intake-page flex flex-center">
     <div class="intake-shell">
       <transition name="fade" mode="out-in">
-        <div v-if="submitted" key="thanks" class="text-center">
-          <q-icon name="check_circle" color="positive" size="72px" />
-          <div class="intake-thanks-title q-mt-md">Thanks — you're entered!</div>
+        <div v-if="!eventStore.loaded" key="loading" class="text-center">
+          <q-spinner size="40px" color="primary" />
         </div>
 
-        <div v-else-if="eventStore.loaded && !eventStore.activeEvent" key="unset" class="text-center">
+        <div v-else-if="submitted" key="thanks" class="text-center">
+          <q-icon name="check_circle" color="positive" size="72px" />
+          <div class="intake-thanks-title q-mt-md">Thanks — we've got your info!</div>
+          <div class="intake-subtitle">Someone from our team will be in touch.</div>
+        </div>
+
+        <div v-else-if="!eventStore.activeEvent" key="unset" class="text-center">
           <q-icon name="event_busy" color="grey-5" size="56px" />
           <div class="intake-thanks-title q-mt-md">No event set up yet</div>
           <div class="intake-subtitle q-mb-0">Sign in and pick today's event in Setup.</div>
@@ -83,6 +88,7 @@
               new-value-mode="add-unique"
               label="School District (optional)"
               :disable="!form.state"
+              :hint="!form.state ? 'Pick a state first' : undefined"
               @filter="districtTypeahead.filterFn"
               @new-value="onNewDistrict"
               @input-value="(val) => (districtInputText = val)"
@@ -101,6 +107,7 @@
               new-value-mode="add-unique"
               label="School / Campus (optional)"
               :disable="!form.district"
+              :hint="!form.district ? 'Pick a district first' : undefined"
               @filter="schoolTypeahead.filterFn"
               @new-value="onNewSchool"
               @input-value="(val) => (schoolInputText = val)"
@@ -195,11 +202,11 @@ const form = reactive({
 
 // State gates district, district gates school — changing an upstream field
 // invalidates whatever was picked downstream of it.
-watch(() => form.state, () => {
-  form.district = null;
+watch(() => form.state, (_newState, oldState) => {
+  if (oldState) form.district = null;
 });
-watch(() => form.district, () => {
-  form.school = null;
+watch(() => form.district, (_newDistrict, oldDistrict) => {
+  if (oldDistrict) form.school = null;
 });
 
 // Required at submit time (server enforces this too — see

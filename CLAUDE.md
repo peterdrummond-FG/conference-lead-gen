@@ -17,7 +17,7 @@ Read `docs/ARCHITECTURE.md` for the component map and
 | `supabase/migrations/` | Schema + stored functions. **Append-only.** |
 | `local-agent/` | Five poll loops. The only caller of `claude -p`. |
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
-| `.claude/skills/` | The seven skills. |
+| `.claude/skills/` | The six skills. |
 | `mcp/` | MCP configs for headless skill runs. |
 | `scripts/` | Repo guards and the deploy script. |
 
@@ -140,6 +140,17 @@ Supabase CLI on this machine.
   shows. Edge Functions, `local-agent/.env` and `watcher/.env` need the one
   that matches what's deployed, or auth silently 401s.
 - **The Management API token** (`sbp_…`) is none of the above.
+- **An event's `is_active` flag can now go back to `false`.** `events_complete()`
+  (added alongside `events-complete`) ends a conference for everyone — it clears
+  `current_event_id` on every linked profile, but a public per-event QR link
+  (`contacts-create`'s `eventSlug` path) resolves the event by slug alone.
+  Found while adding this: that path had **no `is_active` check at all**, so a
+  printed QR for a completed conference would have kept accepting Intake
+  submissions indefinitely. Any new place that resolves an event from
+  client-supplied data (a slug, a rep's reusable QR, anything not already
+  scoped to the caller's own `current_event_id`) needs the same check —
+  `events-active`'s own fallback branch already had it; `contacts-create`'s
+  `eventSlug` branch didn't.
 
 ## Before shipping a feature
 

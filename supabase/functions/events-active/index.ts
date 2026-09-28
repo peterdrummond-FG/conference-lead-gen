@@ -77,6 +77,14 @@ Deno.serve(async (req) => {
   // event -- drives SetupPage's "Download my QR" button. Only meaningful for
   // an authenticated caller; the public intake form never needs it.
   let isLinkedRep = false;
+  // Whether this rep has already completed today's "text SETUP" flow for
+  // this event -- phone_event_bindings is what that flow actually writes
+  // (see 20260902231500_twilio_intake_schema.sql /
+  // 20260909170000_conference_setup_sms.sql), keyed by phone number, not
+  // rep id, so this is resolved via the caller's own profiles.phone_number.
+  // undefined (not false) when that's null -- we genuinely can't tell in
+  // that case, and asserting "not done" would be wrong, not just unhelpful.
+  let smsBound: boolean | undefined;
   if (user) {
     const { data: link, error: linkError } = await supabase
       .from("event_reps")
@@ -86,6 +94,23 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (linkError) return errorResponse(req, 500, linkError.message);
     isLinkedRep = !!link;
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("phone_number")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileError) return errorResponse(req, 500, profileError.message);
+    if (profile?.phone_number) {
+      const { data: binding, error: bindingError } = await supabase
+        .from("phone_event_bindings")
+        .select("phone_number")
+        .eq("phone_number", profile.phone_number)
+        .eq("event_id", data.id)
+        .maybeSingle();
+      if (bindingError) return errorResponse(req, 500, bindingError.message);
+      smsBound = !!binding;
+    }
   }
 
   // Audit S11 (and its regression, found 2026-09-16): folder_code is the SMS
@@ -108,6 +133,7 @@ Deno.serve(async (req) => {
     slug: data.slug,
     activatedAt: data.activated_at,
     ...(user ? { isLinkedRep } : {}),
+    ...(smsBound !== undefined ? { smsBound } : {}),
     ...(canSeeFolderCode ? { folderCode: data.folder_code } : {}),
   });
 });

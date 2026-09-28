@@ -7,7 +7,7 @@
         <q-tab name="approved" label="Approved" />
         <q-tab name="rejected" label="Rejected" />
       </q-tabs>
-      <div v-if="contacts.length" class="text-caption text-grey">{{ contacts.length }} contact{{ contacts.length === 1 ? '' : 's' }}</div>
+      <div v-if="filteredContacts.length" class="text-caption text-grey">{{ filteredContacts.length }} contact{{ filteredContacts.length === 1 ? '' : 's' }}</div>
       <q-space />
 
       <!-- Options are built from whichever conferences are actually present
@@ -78,7 +78,7 @@
         color="positive"
         label="Bulk approve selected"
         :disable="selectedIds.length === 0"
-        @click="bulkApprove"
+        @click="confirmBulkApprove"
       />
     </div>
 
@@ -313,6 +313,17 @@ async function retryMatch(id: string) {
   await api.post(`/contacts-retry-match`, undefined, { params: { id } });
 }
 
+function confirmBulkApprove() {
+  const count = selectedIds.value.length;
+  Dialog.create({
+    title: 'Approve selected contacts?',
+    message: `Approve ${count} selected contact${count === 1 ? '' : 's'}? They'll be included in the next CSV export.`,
+    cancel: true,
+    persistent: true,
+    ok: { label: 'Approve', color: 'positive' },
+  }).onOk(bulkApprove);
+}
+
 async function bulkApprove() {
   await api.post('/contacts-bulk-approve', { ids: selectedIds.value });
   await load();
@@ -381,6 +392,19 @@ onMounted(async () => {
    the page. */
 .contacts-grid {
   position: relative;
+}
+
+/* Cards reposition (top/left/width, set inline by useMasonryGrid) after
+   every approve/reject/expand/collapse — animating that move instead of
+   snapping it keeps a reviewer from losing their place mid-triage. */
+.contacts-grid > div {
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contacts-grid > div {
+    transition: none;
+  }
 }
 
 .scope-tabs {

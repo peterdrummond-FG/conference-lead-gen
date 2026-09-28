@@ -82,6 +82,45 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Shown instead of locking immediately when the caller has never set a
+         kiosk PIN -- without one, locking the device would leave no way to
+         unlock it again at the booth. Setting it here means never having to
+         send the rep away to Setup mid-lock. -->
+    <q-dialog v-model="showSetPinDialog" @hide="newPinCode = ''; setPinError = ''">
+      <q-card style="width: 320px">
+        <q-card-section>
+          <div class="text-h6">Set a kiosk PIN</div>
+          <div class="text-caption text-grey">
+            You'll need this to unlock the device again — separate from your login password.
+          </div>
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="newPinCode"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            autofocus
+            label="New kiosk PIN"
+            hint="At least 4 characters"
+            :error="!!setPinError"
+            :error-message="setPinError"
+            @keyup.enter="onSetPinAndLock"
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn
+            color="primary"
+            label="Set PIN & lock"
+            :disable="newPinCode.length < 4"
+            :loading="settingPin"
+            @click="onSetPinAndLock"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-layout>
 </template>
 
@@ -120,9 +159,38 @@ const unlockCode = ref('');
 const unlockError = ref('');
 const unlocking = ref(false);
 
-function onLockKiosk() {
+const showSetPinDialog = ref(false);
+const newPinCode = ref('');
+const setPinError = ref('');
+const settingPin = ref(false);
+
+function performLock() {
   kioskModeStore.lock();
   void router.push('/intake');
+}
+
+function onLockKiosk() {
+  if (sessionStore.user?.hasKioskPin) {
+    performLock();
+    return;
+  }
+  showSetPinDialog.value = true;
+}
+
+async function onSetPinAndLock() {
+  if (newPinCode.value.length < 4) return;
+  settingPin.value = true;
+  setPinError.value = '';
+  try {
+    await api.post('/kiosk-set-code', { code: newPinCode.value });
+    if (sessionStore.user) sessionStore.user.hasKioskPin = true;
+    showSetPinDialog.value = false;
+    performLock();
+  } catch {
+    setPinError.value = 'Could not set your PIN — try again.';
+  } finally {
+    settingPin.value = false;
+  }
 }
 
 // Kiosk-locking never signs anyone out — the same account is still the one

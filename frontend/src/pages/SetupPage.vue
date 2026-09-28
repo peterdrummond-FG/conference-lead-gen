@@ -53,6 +53,7 @@
                 hide-selected
                 input-debounce="0"
                 label="Conference location (state) *"
+                hint="Used to help match card-photo submissions when the district isn't legible"
                 :rules="[(v: UsStateOption | null) => !!v || 'Required']"
                 @filter="filterStates"
               />
@@ -141,8 +142,11 @@
               <div class="text-caption text-grey q-mb-sm">
                 Every rep does this once per event, then just texts photos as they go.
               </div>
+              <div v-if="eventStore.activeEvent.smsBound" class="text-body2 text-green-9 q-mb-sm">
+                <q-icon name="check_circle" size="18px" /> You've already texted SETUP for this event today.
+              </div>
               <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
-                <li>
+                <li v-if="!eventStore.activeEvent.smsBound">
                   Text
                   <span class="text-weight-bold">SETUP</span>
                   to
@@ -214,8 +218,8 @@
             checking a different one here unchecks whichever they were on.
           </div>
         </q-card-section>
-        <q-card-section v-if="!activeEvents.length" class="text-caption text-grey">
-          No active conferences yet — activate one above first.
+        <q-card-section v-if="!eventRows.length" class="text-caption text-grey">
+          No conferences yet — activate one above first.
         </q-card-section>
         <q-card-section v-else-if="!salesProfiles.length" class="text-caption text-grey">
           No sales reps yet — add one below first.
@@ -225,7 +229,11 @@
                table's natural width (long conference names) from pushing
                the whole thing past the card — rep columns stay narrow
                (checkboxes only need so much room) and overflow-x above is
-               just the safety net for however many reps get added. -->
+               just the safety net for however many reps get added. Includes
+               the 5 most recent conferences alongside every active one
+               (eventRows) so a completed conference stays visible as
+               read-only history, with "Mark complete" living right on its
+               row rather than as a separate per-rep toggle. -->
           <q-markup-table flat dense style="table-layout: fixed; width: 100%">
             <thead>
               <tr>
@@ -242,17 +250,33 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="event in activeEvents" :key="event.id">
+              <tr v-for="event in eventRows" :key="event.id">
                 <td class="text-left" style="white-space: normal; word-break: break-word">
-                  {{ event.name }}
-                  <div v-if="!salesProfiles.some((r) => r.currentEventId === event.id)" class="text-caption text-orange-9">
+                  <div class="row items-center q-gutter-xs">
+                    <span>{{ event.name }}</span>
+                    <q-badge
+                      :color="event.status === 'active' ? 'positive' : 'grey-6'"
+                      :label="event.status === 'active' ? 'Active' : 'Completed'"
+                    />
+                  </div>
+                  <div
+                    v-if="event.status === 'active' && !salesProfiles.some((r) => r.currentEventId === event.id)"
+                    class="text-caption text-orange-9"
+                  >
                     <q-icon name="warning" size="14px" /> No reps linked yet
+                  </div>
+                  <div v-if="event.status === 'active'" class="q-mt-xs">
+                    <q-btn
+                      flat dense no-caps size="sm" color="negative" label="Mark complete"
+                      :loading="completingEvent === event.id"
+                      @click="confirmMarkComplete(event)"
+                    />
                   </div>
                 </td>
                 <td v-for="rep in salesProfiles" :key="rep.id" class="text-center">
                   <q-checkbox
                     :model-value="rep.currentEventId === event.id"
-                    :disable="linkingCell === `${event.id}:${rep.id}`"
+                    :disable="event.status === 'completed' || linkingCell === `${event.id}:${rep.id}`"
                     @update:model-value="(v: boolean) => toggleEventRep(event, rep, v)"
                   />
                 </td>
@@ -390,6 +414,10 @@ interface ActiveEventOption {
   activatedAt: string;
 }
 
+interface RecentEventOption extends ActiveEventOption {
+  status: 'active' | 'completed';
+}
+
 // The number Twilio's SMS/MMS webhook is configured against — not stored
 // anywhere server-side (the app never needs to know its own number; Twilio
 // just POSTs inbound messages to twilio-webhook), so this is the one place
@@ -434,6 +462,25 @@ const linkingMyself = ref(false);
 // inheriting whichever conference was activated most recently system-wide.
 const activeEvents = ref<ActiveEventOption[]>([]);
 const switchingEvent = ref(false);
+
+// The 5 most recently activated conferences regardless of status — feeds
+// the "Reps & events" table's history alongside activeEvents (which stays
+// active-only; see events-list-recent's own header comment for why these
+// are two separate reads rather than one).
+const recentEvents = ref<RecentEventOption[]>([]);
+const completingEvent = ref<string | null>(null);
+
+// Every active conference, plus whichever of the 5 most recent ones aren't
+// already active (so a since-completed conference still shows, read-only) —
+// de-duplicated by id, newest first.
+const eventRows = computed<RecentEventOption[]>(() => {
+  const byId = new Map<string, RecentEventOption>();
+  for (const e of recentEvents.value) byId.set(e.id, e);
+  for (const e of activeEvents.value) {
+    if (!byId.has(e.id)) byId.set(e.id, { ...e, status: 'active' });
+  }
+  return Array.from(byId.values()).sort((a, b) => b.activatedAt.localeCompare(a.activatedAt));
+});
 
 const profiles = ref<Profile[]>([]);
 const salesProfiles = computed(() => profiles.value.filter((p) => p.role === 'sales'));
@@ -515,6 +562,39 @@ async function activate() {
 async function loadActiveEvents() {
   const { data } = await api.get<ActiveEventOption[]>('/events-list-active');
   activeEvents.value = data;
+}
+
+async function loadRecentEvents() {
+  const { data } = await api.get<RecentEventOption[]>('/events-list-recent');
+  recentEvents.value = data;
+}
+
+function confirmMarkComplete(event: RecentEventOption) {
+  Dialog.create({
+    title: 'Mark conference complete?',
+    message: `This ends "${event.name}" for every rep currently linked to it — they'll need to link to a new conference in Setup next time. This can't be undone.`,
+    cancel: true,
+    persistent: true,
+    ok: { label: 'Mark complete', color: 'negative' },
+  }).onOk(() => markComplete(event.id));
+}
+
+async function markComplete(eventId: string) {
+  completingEvent.value = eventId;
+  try {
+    await api.post('/events-complete', { eventId });
+    await Promise.all([loadActiveEvents(), loadRecentEvents(), loadProfiles()]);
+    // The admin/SS caller themself might have been linked to the event they
+    // just completed — reflect that immediately rather than waiting for
+    // their next reload.
+    if (sessionStore.user?.currentEventId === eventId) {
+      await sessionStore.fetchMe();
+      await eventStore.fetchActive();
+    }
+    Notify.create({ type: 'positive', message: 'Conference marked complete.' });
+  } finally {
+    completingEvent.value = null;
+  }
 }
 
 async function switchEvent(eventId: string) {
@@ -677,6 +757,7 @@ onMounted(() => {
   void loadActiveEvents();
   if (canManageEvents.value) {
     void loadProfiles();
+    void loadRecentEvents();
   }
 });
 </script>
