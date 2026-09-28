@@ -7,29 +7,39 @@
        the masonry gap. Spacing between cards comes entirely from that
        composable's `gap` option. The `expanded` model is just an
        open/closed flag driven by the parent (ReviewPage owns which single
-       contact, if any, is expanded). -->
-  <q-card bordered>
-    <q-card-section v-if="!isExpanded" class="cursor-pointer" @click="isExpanded = true">
+       contact, if any, is expanded).
+
+       The expanded layout responds to the CARD's width (a container query on
+       .rc), not the viewport's: the masonry grid makes the same card ~700px
+       wide on a desktop (spanning two columns) and ~340px on a phone, and a
+       viewport media query can't tell those apart. Before this, the expanded
+       card was a fixed flex row (checkbox | 220px photo | fields) — on a
+       375px phone that left the fields column 45px wide (each input 27px)
+       and the page scrolled sideways. -->
+  <q-card bordered class="rc">
+    <q-card-section v-if="!isExpanded" class="rc-collapsed cursor-pointer" @click="isExpanded = true">
       <div class="row items-start no-wrap q-gutter-sm">
         <q-checkbox v-model="selected" dense class="q-mt-xs" @click.stop />
         <div class="col overflow-hidden">
-          <div class="row items-center q-gutter-xs">
-            <span class="text-subtitle2 text-weight-medium">{{ contact.firstName }} {{ contact.lastName }}</span>
+          <div class="row items-center no-wrap q-gutter-xs">
+            <span class="col ellipsis text-subtitle2 text-weight-medium">{{ contact.firstName }} {{ contact.lastName }}</span>
             <q-chip v-if="contact.contactIntent" dense size="sm" :class="['tag-chip', intentTone(contact.contactIntent)]">
               {{ capitalize(contact.contactIntent) }}
             </q-chip>
           </div>
-          <div class="text-caption text-grey ellipsis">{{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}</div>
-          <div class="text-caption text-grey ellipsis">{{ contact.schoolName || contact.schoolNameRaw || 'No school on file' }}</div>
-          <div class="text-caption ellipsis">{{ contact.email || 'No email' }}</div>
-          <div class="text-caption">{{ contact.phone || 'No phone' }}</div>
-          <q-chip dense size="sm" class="tag-chip q-mt-xs" :class="`tone-${matchStatusTone}`">{{ matchStatusLabel }}</q-chip>
-          <div>
+          <div class="text-caption text-grey-8 ellipsis">
+            {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
+          </div>
+          <div class="text-caption ellipsis" :class="{ 'text-grey': !contact.email }">{{ contact.email || 'No email' }}</div>
+          <div class="text-caption" :class="{ 'text-grey': !contact.phone }">{{ contact.phone || 'No phone' }}</div>
+          <div class="row items-center no-wrap justify-between q-mt-xs">
+            <q-chip dense size="sm" class="tag-chip q-ma-none" :class="`tone-${matchStatusTone}`">{{ matchStatusLabel }}</q-chip>
             <q-checkbox
               :model-value="contact.followedUp"
               dense
+              size="sm"
               label="Followed up"
-              class="q-mt-xs"
+              class="text-caption"
               @click.stop
               @update:model-value="toggleFollowedUp"
             />
@@ -38,48 +48,117 @@
       </div>
     </q-card-section>
 
-    <q-card-section v-else class="row items-start q-gutter-sm">
-      <q-checkbox v-model="selected" dense class="q-mt-xs" />
+    <q-card-section v-else class="rc-expanded">
+      <div class="rc-head">
+        <q-checkbox v-model="selected" dense class="rc-head-check" aria-label="Select contact" />
 
-      <div v-if="isPhotoSourced" class="q-mr-sm" style="width: 220px">
-        <div class="text-caption text-grey q-mb-xs">
-          {{ contact.source === 'directory_photo' ? 'Original directory page' : 'Original card' }}
+        <div class="rc-head-id">
+          <div class="rc-name">{{ contact.firstName }} {{ contact.lastName }}</div>
+          <div class="rc-chips">
+            <q-chip dense size="sm" :class="['tag-chip', `tone-${sourceTone}`]">
+              {{ sourceLabel(contact.source) }}
+              <q-tooltip>Import source — where this contact signed up</q-tooltip>
+            </q-chip>
+
+            <q-chip v-if="contact.qrChannel" dense size="sm" class="tag-chip tone-blue">
+              {{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}
+              <q-tooltip>Which QR code this lead scanned</q-tooltip>
+            </q-chip>
+
+            <q-chip v-if="contact.repName" dense size="sm" class="tag-chip tone-teal">
+              {{ contact.repName }}
+              <q-tooltip>Rep credited with this lead</q-tooltip>
+            </q-chip>
+
+            <q-chip dense size="sm" :class="['tag-chip', `tone-${matchStatusTone}`]">
+              {{ matchStatusLabel }}
+              <q-tooltip>Whether this school/district — and this contact — already exist in the CRM</q-tooltip>
+            </q-chip>
+
+            <q-chip v-if="isStuck" dense size="sm" class="tag-chip tone-red">Stuck — needs manual retry</q-chip>
+          </div>
+          <div class="rc-meta">{{ contact.eventName }}</div>
         </div>
-        <q-img
-          v-if="contact.hasPhoto && !thumbnailPhotoError"
-          :src="thumbnailPhotoUrl ?? undefined"
-          fit="contain"
-          style="width: 220px; height: 220px; cursor: zoom-in"
-          class="rounded-borders bg-grey-2"
-          @click="showFullImage = true"
-        >
-          <template #loading>
-            <div class="absolute-full flex flex-center">
-              <q-spinner color="primary" size="32px" />
-            </div>
-          </template>
-          <template #error>
-            <div class="absolute-full flex flex-center text-caption text-grey">Image failed to load</div>
-          </template>
-        </q-img>
-        <div
-          v-else-if="contact.hasPhoto && thumbnailPhotoError"
-          class="rounded-borders bg-grey-2 flex flex-center text-caption text-grey"
-          style="width: 220px; height: 220px"
-        >
-          Photo failed to load
+
+        <div class="rc-intent" role="group" aria-label="Contact intent">
+          <button
+            v-for="opt in intentOptions"
+            :key="opt.value"
+            type="button"
+            class="rc-intent-btn"
+            :class="[`is-${opt.value}`, { 'is-on': contact.contactIntent === opt.value }]"
+            :aria-pressed="contact.contactIntent === opt.value"
+            @click="setContactIntent(contact.contactIntent === opt.value ? null : opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+          <q-tooltip>Optional — how the conversation went. Auto-suggested from voice-memo notes unless set here. Tap the selected one again to clear it.</q-tooltip>
         </div>
-        <div
-          v-else
-          class="rounded-borders bg-grey-2 flex flex-center text-caption text-grey"
-          style="width: 220px; height: 220px"
-        >
-          No photo on file
-        </div>
-        <div v-if="contact.hasCroppedPhoto" class="text-caption q-mt-xs">
-          <a href="#" @click.prevent="showFullSheet = true">View full sheet</a>
-        </div>
+
+        <q-btn class="rc-head-collapse" flat round dense icon="expand_less" aria-label="Collapse" @click="isExpanded = false">
+          <q-tooltip>Collapse</q-tooltip>
+        </q-btn>
       </div>
+
+      <div v-if="contact.glanceSummary" class="ai-research-box">
+        <q-icon name="travel_explore" size="18px" color="purple-8" class="q-mt-xs" />
+        <div class="col">
+          <span class="text-weight-medium text-purple-10">AI guess, unverified. </span>
+          <span>{{ contact.glanceSummary }}</span>
+        </div>
+        <q-tooltip anchor="top middle" self="bottom middle">
+          Generated from a web search during intake. Not checked against Zoho or any authoritative
+          source (a directory listing, a card scan) — treat it as a hint to verify, not a fact.
+        </q-tooltip>
+      </div>
+
+      <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey q-mt-xs">
+        Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
+        <q-btn dense flat no-caps size="sm" color="primary" label="Retry match" class="q-ml-sm" @click="$emit('retryMatch', contact.id)" />
+      </div>
+
+      <q-banner v-if="contact.localDuplicateOfContactName" dense rounded class="rc-banner bg-orange-1 text-orange-10">
+        <div>
+          <span class="text-weight-medium">Possible duplicate:</span>
+          {{ contact.localDuplicateOfContactName }}<template v-if="contact.localDuplicateOfContactContext"> ({{ contact.localDuplicateOfContactContext }})</template>.
+          <span v-if="contact.matchStatus === 'existing_contact'">Resolve it before confirming this match.</span>
+          <q-tooltip>
+            Could be the same person with conflicting info, or two different people who share a name —
+            check research/match confidence on both before deciding.
+          </q-tooltip>
+        </div>
+        <template #action>
+          <q-btn dense flat no-caps size="sm" color="orange-10" label="Resolve duplicate" @click="showDuplicateDialog = true" />
+        </template>
+      </q-banner>
+
+      <q-banner v-else-if="contact.matchStatus === 'existing_contact'" dense rounded class="rc-banner bg-green-1 text-green-10">
+        <div class="text-weight-medium">
+          Potential match: {{ contact.matchedZohoContactName }}<span v-if="contact.matchedZohoContactTitle"> — {{ contact.matchedZohoContactTitle }}</span>
+        </div>
+        <div class="text-caption">
+          {{ contact.matchedZohoContactEmail || 'No email on file' }} · {{ contact.matchedZohoContactPhone || 'No phone on file' }}
+        </div>
+        <div class="text-caption">{{ contact.matchedZohoAccountName }}<template v-if="opportunityLine"> · {{ opportunityLine }}</template></div>
+        <template #action>
+          <q-btn dense flat no-caps size="sm" color="grey-8" label="Not a match" @click="notAMatch" />
+          <q-btn dense unelevated no-caps size="sm" color="positive" label="Confirm match" @click="approveNow" />
+        </template>
+      </q-banner>
+
+      <q-banner v-else-if="contact.matchStatus === 'new_contact_existing_account' && contact.matchedZohoAccountName" dense rounded class="rc-banner bg-blue-1 text-blue-10">
+        <div class="text-weight-medium">
+          Matched account: {{ contact.matchedZohoAccountName }}<span v-if="contact.matchedZohoAccountLevel"> · {{ capitalize(contact.matchedZohoAccountLevel) }}</span>
+        </div>
+        <div v-if="opportunityLine" class="text-caption">{{ opportunityLine }}</div>
+        <div class="text-caption">No existing contact found here — {{ contact.firstName }} {{ contact.lastName }} would be added as new.</div>
+      </q-banner>
+
+      <DuplicateResolutionDialog
+        v-model="showDuplicateDialog"
+        :contact-id="contact.id"
+        @resolved="$emit('duplicatesResolved')"
+      />
 
       <q-dialog v-model="showFullImage">
         <q-img
@@ -101,168 +180,71 @@
         <q-card v-else class="q-pa-md text-grey">Photo failed to load</q-card>
       </q-dialog>
 
-      <div class="col">
-        <div class="row items-center">
-          <q-space />
-          <q-btn flat round dense icon="expand_less" size="sm" @click="isExpanded = false">
-            <q-tooltip>Collapse</q-tooltip>
-          </q-btn>
-        </div>
-        <div class="row items-center q-gutter-xs">
-          <span class="text-subtitle1">{{ contact.firstName }} {{ contact.lastName }}</span>
-
-          <q-chip dense size="sm" :class="['tag-chip', `tone-${sourceTone}`]">
-            {{ sourceLabel(contact.source) }}
-            <q-tooltip>Import source — where this contact signed up</q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="contact.qrChannel" dense size="sm" class="tag-chip tone-blue">
-            {{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}
-            <q-tooltip>Which QR code this lead scanned</q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="contact.repName" dense size="sm" class="tag-chip tone-teal">
-            {{ contact.repName }}
-            <q-tooltip>Rep credited with this lead</q-tooltip>
-          </q-chip>
-
-          <q-chip dense size="sm" :class="['tag-chip', `tone-${matchStatusTone}`]">
-            {{ matchStatusLabel }}
-            <q-tooltip>Whether this school/district — and this contact — already exist in the CRM</q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="isStuck" dense size="sm" class="tag-chip tone-red">Stuck — needs manual retry</q-chip>
-        </div>
-        <div class="row items-center q-gutter-xs q-mt-xs">
-          <span class="text-caption text-grey">Contact intent:</span>
-          <q-btn
-            v-for="opt in intentOptions"
-            :key="opt.value"
-            dense
-            no-caps
-            unelevated
-            size="sm"
-            :outline="contact.contactIntent !== opt.value"
-            :color="opt.color"
-            :label="opt.label"
-            class="q-px-sm"
-            @click="setContactIntent(opt.value)"
-          />
-          <q-btn
-            v-if="contact.contactIntent"
-            dense
-            flat
-            no-caps
-            size="sm"
-            color="grey-7"
-            label="Clear"
-            @click="setContactIntent(null)"
-          />
-          <q-tooltip>Optional — how the conversation with this person went. Auto-suggested from voice-memo notes unless set here.</q-tooltip>
-        </div>
-        <div class="row items-center q-gutter-xs q-mt-xs">
-          <q-checkbox
-            :model-value="contact.followedUp"
-            dense
-            label="Followed up"
-            @update:model-value="toggleFollowedUp"
-          />
-          <q-tooltip>Carries through to the CSV export as its own "Follow Up Done" column.</q-tooltip>
-        </div>
-        <div class="text-caption text-grey">
-          {{ contact.eventName }} · {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
-        </div>
-        <div v-if="contact.glanceSummary" class="ai-research-box row items-start no-wrap q-gutter-xs q-mt-sm">
-          <q-icon name="travel_explore" size="18px" color="purple-8" class="q-mt-xs" />
-          <div class="col">
-            <div class="text-caption text-weight-medium text-purple-10">AI research — unverified guess</div>
-            <div class="text-body2">{{ contact.glanceSummary }}</div>
+      <div class="rc-body">
+        <div v-if="isPhotoSourced" class="rc-photo">
+          <q-img
+            v-if="contact.hasPhoto && !thumbnailPhotoError"
+            :src="thumbnailPhotoUrl ?? undefined"
+            fit="contain"
+            class="rc-thumb"
+            role="button"
+            aria-label="Enlarge original photo"
+            @click="showFullImage = true"
+          >
+            <template #loading>
+              <div class="absolute-full flex flex-center">
+                <q-spinner color="primary" size="24px" />
+              </div>
+            </template>
+            <template #error>
+              <div class="absolute-full flex flex-center text-caption text-grey">Failed to load</div>
+            </template>
+          </q-img>
+          <div v-else class="rc-thumb rc-thumb-empty">
+            {{ contact.hasPhoto ? 'Photo failed to load' : 'No photo on file' }}
           </div>
-          <q-tooltip anchor="top middle" self="bottom middle">
-            Generated from a web search during intake. Not checked against Zoho or any authoritative
-            source (a directory listing, a card scan) — treat it as a hint to verify, not a fact.
-          </q-tooltip>
-        </div>
-        <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey">
-          Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
-          <q-btn dense flat size="sm" color="primary" label="Retry match" class="q-ml-sm" @click="$emit('retryMatch', contact.id)" />
-        </div>
-
-        <q-banner v-if="contact.localDuplicateOfContactName" dense class="bg-orange-1 text-orange-10 q-mt-sm">
-          <div class="row items-center q-gutter-sm">
-            <span>
-              Possible duplicate — another contact named {{ contact.localDuplicateOfContactName }} already exists<template v-if="contact.localDuplicateOfContactContext"> ({{ contact.localDuplicateOfContactContext }})</template>.
-              Could be the same person with conflicting info, or two different people who share a name — check research/match confidence on both before deciding.
-            </span>
-            <q-btn dense flat size="sm" color="orange-10" label="Resolve duplicate" @click="showDuplicateDialog = true" />
-          </div>
-          <div v-if="contact.matchStatus === 'existing_contact'" class="text-caption q-mt-xs">
-            Resolve the duplicate above before confirming this match.
-          </div>
-        </q-banner>
-
-        <q-banner v-else-if="contact.matchStatus === 'existing_contact'" dense class="bg-green-1 text-green-10 q-mt-sm">
-          <div class="text-weight-medium">Potential Match Found</div>
-          <div class="q-mt-xs">
-            <div>{{ contact.matchedZohoContactName }}<span v-if="contact.matchedZohoContactTitle"> — {{ contact.matchedZohoContactTitle }}</span></div>
-            <div class="text-caption">
-              {{ contact.matchedZohoContactEmail || 'No email on file' }} · {{ contact.matchedZohoContactPhone || 'No phone on file' }}
+          <div class="rc-photo-cap">
+            <div class="text-caption text-grey-8">
+              {{ contact.source === 'directory_photo' ? 'Original directory page' : 'Original card' }}
             </div>
-            <div class="text-caption">{{ contact.matchedZohoAccountName }}</div>
-            <div v-if="opportunityLine" class="text-caption">{{ opportunityLine }}</div>
+            <a v-if="contact.hasCroppedPhoto" href="#" class="text-caption" @click.prevent="showFullSheet = true">View full sheet</a>
           </div>
-          <div class="q-mt-sm row q-gutter-sm">
-            <q-btn dense color="positive" size="sm" label="Confirm match" @click="$emit('approve', contact.id)" />
-            <q-btn dense flat size="sm" color="grey-8" label="Not a match" @click="notAMatch" />
-          </div>
-        </q-banner>
+        </div>
 
-        <q-banner v-else-if="contact.matchStatus === 'new_contact_existing_account' && contact.matchedZohoAccountName" dense class="bg-blue-1 text-blue-10 q-mt-sm">
-          <div class="text-weight-medium">Matched Account</div>
-          <div class="q-mt-xs">
-            {{ contact.matchedZohoAccountName }}<span v-if="contact.matchedZohoAccountLevel"> · {{ capitalize(contact.matchedZohoAccountLevel) }}</span>
-          </div>
-          <div v-if="opportunityLine" class="text-caption">{{ opportunityLine }}</div>
-          <div class="text-caption">No existing contact found at this account — {{ contact.firstName }} {{ contact.lastName }} would be added as new.</div>
-        </q-banner>
-
-        <DuplicateResolutionDialog
-          v-model="showDuplicateDialog"
-          :contact-id="contact.id"
-          @resolved="$emit('duplicatesResolved')"
-        />
-
-        <div class="row q-col-gutter-sm q-mt-sm">
-          <q-input v-model="draft.firstName" dense outlined class="col-6 col-sm-3" label="First name" />
-          <q-input v-model="draft.lastName" dense outlined class="col-6 col-sm-3" label="Last name" />
-          <q-input v-model="draft.email" dense outlined class="col-6 col-sm-3" label="Email" />
-          <q-input v-model="draft.phone" dense outlined class="col-6 col-sm-3" label="Phone" />
-          <q-input v-model="draft.title" dense outlined class="col-12 col-sm-6" label="Title" />
+        <div class="rc-form">
+          <q-input v-model="draft.firstName" dense outlined class="rc-s3" label="First name" />
+          <q-input v-model="draft.lastName" dense outlined class="rc-s3" label="Last name" />
+          <q-input v-model="draft.email" dense outlined type="email" class="rc-s4" label="Email" />
+          <q-input v-model="draft.phone" dense outlined type="tel" class="rc-s2" label="Phone" />
+          <q-input v-model="draft.title" dense outlined class="rc-s6" label="Title" />
 
           <q-select
             v-model="draft.state"
             :options="stateOptions"
             option-label="name"
+            dense
+            outlined
             use-input
             fill-input
             hide-selected
             input-debounce="0"
-            class="col-6 col-sm-3"
-            label="State (optional)"
-            :hint="isPhotoSourced ? 'Suggested from district/conference — confirm or change' : undefined"
+            class="rc-s2"
+            label="State"
             @filter="filterStates"
           />
           <q-select
             v-model="draft.district"
             :options="districtTypeahead.options.value"
             option-label="name"
+            dense
+            outlined
             use-input
             fill-input
             hide-selected
             input-debounce="300"
             new-value-mode="add-unique"
-            class="col-6 col-sm-3"
-            label="School District (optional)"
+            class="rc-s4"
+            label="District"
             :disable="!draft.state"
             @filter="districtTypeahead.filterFn"
             @new-value="onNewDistrict"
@@ -273,77 +255,86 @@
             v-model="draft.school"
             :options="schoolTypeahead.options.value"
             option-label="name"
+            dense
+            outlined
             use-input
             fill-input
             hide-selected
             input-debounce="300"
             new-value-mode="add-unique"
-            class="col-6"
-            label="School / Campus (optional)"
+            class="rc-s6"
+            label="School / campus"
             :disable="!draft.district"
             @filter="schoolTypeahead.filterFn"
             @new-value="onNewSchool"
             @input-value="(val) => (schoolInputText = val)"
             @blur="onSchoolBlur"
           />
+          <div v-if="isPhotoSourced" class="rc-s6 text-caption text-grey rc-suggest">
+            State and district are suggested from the conference — confirm or change.
+          </div>
 
           <q-input
             v-model="draft.interactionNotes"
             dense
             outlined
             type="textarea"
-            autogrow
-            class="col-12"
+            class="rc-s6 rc-notes"
             label="Interaction notes (from voice memos)"
-            hint="Reviewer-editable — separate from the match reasoning below"
+            input-style="height: 84px; min-height: 64px; max-height: 220px"
           />
-        </div>
 
-        <div v-if="contact.matchStatus === 'ambiguous' && contact.candidateMatches?.length" class="q-mt-sm">
-          <div class="text-caption text-weight-medium q-mb-xs">Candidate matches — pick one:</div>
-          <q-list bordered dense>
-            <q-item v-for="c in contact.candidateMatches" :key="c.zohoId" clickable @click="resolveCandidate(c)">
-              <q-item-section>
-                <q-item-label>{{ c.name }}</q-item-label>
-                <q-item-label caption>{{ c.type }}<span v-if="c.level"> ({{ c.level }})</span> · score {{ c.score.toFixed(2) }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
-        </div>
+          <div v-if="contact.matchStatus === 'ambiguous' && contact.candidateMatches?.length" class="rc-s6">
+            <div class="text-caption text-weight-medium q-mb-xs">Candidate matches — pick one:</div>
+            <q-list bordered dense>
+              <q-item v-for="c in contact.candidateMatches" :key="c.zohoId" clickable @click="resolveCandidate(c)">
+                <q-item-section>
+                  <q-item-label>{{ c.name }}</q-item-label>
+                  <q-item-label caption>{{ c.type }}<span v-if="c.level"> ({{ c.level }})</span> · score {{ c.score.toFixed(2) }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </div>
 
-        <div v-if="contact.matchStatus === 'new_account'" class="q-mt-sm row q-col-gutter-sm items-end">
-          <q-input v-model="newAccountId" dense outlined class="col-5" label="Zoho Account Id (once created)" />
-          <q-input v-model="newAccountName" dense outlined class="col-5" label="Account name" />
-          <q-btn dense flat color="primary" label="Link" class="col-2" :disable="!newAccountId || !newAccountName" @click="linkNewAccount" />
-        </div>
+          <div v-if="contact.matchStatus === 'new_account'" class="rc-s6 rc-link-account">
+            <q-input v-model="newAccountId" dense outlined label="Zoho Account Id (once created)" />
+            <q-input v-model="newAccountName" dense outlined label="Account name" />
+            <q-btn dense flat no-caps color="primary" label="Link" :disable="!newAccountId || !newAccountName" @click="linkNewAccount" />
+          </div>
 
-        <div v-if="contact.notes" class="text-caption text-grey q-mt-sm">
-          <a href="#" @click.prevent="showNotes = !showNotes">{{ showNotes ? 'Hide match reasoning' : 'Show match reasoning' }}</a>
-          <div v-if="showNotes" class="q-mt-xs">{{ contact.notes }}</div>
+          <div v-if="contact.notes" class="rc-s6 text-caption">
+            <a href="#" @click.prevent="showNotes = !showNotes">{{ showNotes ? 'Hide match reasoning' : 'Show match reasoning' }}</a>
+            <div v-if="showNotes" class="q-mt-xs text-grey-8">{{ contact.notes }}</div>
+          </div>
         </div>
+      </div>
 
-        <div class="q-mt-sm row q-gutter-sm">
-          <q-btn
-            color="positive"
-            label="Approve"
-            size="sm"
-            :disable="contact.matchStatus === 'pending'"
-            @click="onApproveClick"
-          >
-            <q-tooltip v-if="contact.matchStatus === 'ambiguous'">
-              No confirmed Zoho match — approving exports this as a new lead, same as "new_account". Pick a candidate above first if one looks right.
-            </q-tooltip>
-          </q-btn>
-          <q-btn
-            color="primary"
-            label="Save"
-            size="sm"
-            outline
-            :disable="!isDirty"
-            @click="save"
-          />
-          <q-btn color="negative" label="Reject" size="sm" outline @click="$emit('reject', contact.id)" />
-        </div>
+      <div class="rc-foot">
+        <q-checkbox
+          :model-value="contact.followedUp"
+          dense
+          label="Followed up"
+          class="rc-foot-follow"
+          @update:model-value="toggleFollowedUp"
+        >
+          <q-tooltip>Carries through to the CSV export as its own "Follow Up Done" column.</q-tooltip>
+        </q-checkbox>
+        <q-btn v-if="isDirty" outline no-caps color="primary" label="Save changes" @click="save" />
+        <q-btn flat no-caps color="negative" label="Reject" @click="$emit('reject', contact.id)" />
+        <q-btn
+          unelevated
+          no-caps
+          color="positive"
+          label="Approve"
+          class="rc-approve"
+          :disable="contact.matchStatus === 'pending'"
+          @click="onApproveClick"
+        >
+          <q-tooltip v-if="contact.matchStatus === 'pending'">Waiting for the account match to finish.</q-tooltip>
+          <q-tooltip v-else-if="contact.matchStatus === 'ambiguous'">
+            No confirmed Zoho match — approving exports this as a new lead, same as "new_account". Pick a candidate above first if one looks right.
+          </q-tooltip>
+        </q-btn>
       </div>
     </q-card-section>
   </q-card>
@@ -362,7 +353,7 @@ import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/ty
 
 const props = defineProps<{ contact: ContactListItem }>();
 const emit = defineEmits<{
-  approve: [id: string];
+  approve: [id: string, pendingEdits?: UpdateContactPayload];
   reject: [id: string];
   update: [id: string, payload: UpdateContactPayload];
   retryMatch: [id: string];
@@ -399,10 +390,19 @@ function onApproveClick() {
       message: `Another contact named ${props.contact.localDuplicateOfContactName} looks like a possible match. Resolve it above, or approve anyway if you've already checked.`,
       cancel: { label: 'Resolve the duplicate above', flat: true },
       ok: { label: 'Approve anyway', color: 'positive' },
-    }).onOk(() => emit('approve', props.contact.id));
+    }).onOk(() => approveNow());
     return;
   }
-  emit('approve', props.contact.id);
+  approveNow();
+}
+
+// Approve used to send only { reviewStatus: 'approved' }, so a reviewer who
+// fixed a typo and clicked Approve without first clicking Save exported the
+// OLD value — the edit was dropped without a word. The pending edits now ride
+// along on the same request (see ReviewPage.approve), which is one PATCH
+// rather than a save-then-approve pair that could land out of order.
+function approveNow() {
+  emit('approve', props.contact.id, isDirty.value ? draftPayload() : undefined);
 }
 
 const stateOptions = ref<UsStateOption[]>(US_STATES);
@@ -517,8 +517,8 @@ watch(() => props.contact, (newContact) => {
   draft.interactionNotes = newContact.interactionNotes ?? '';
 });
 
-function save() {
-  emit('update', props.contact.id, {
+function draftPayload(): UpdateContactPayload {
+  return {
     firstName: draft.firstName,
     lastName: draft.lastName,
     email: draft.email || null,
@@ -530,7 +530,11 @@ function save() {
     schoolId: draft.school?.id ?? null,
     schoolNameRaw: draft.school && !draft.school.id ? draft.school.name : null,
     interactionNotes: draft.interactionNotes || null,
-  });
+  };
+}
+
+function save() {
+  emit('update', props.contact.id, draftPayload());
 }
 
 function resolveCandidate(candidate: CandidateMatch) {
@@ -765,9 +769,224 @@ function capitalize(s: string) {
    makes "this is AI research, not verified" visible without reading the
    words. */
 .ai-research-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
   background: #F7F3FC;
   border: 1px solid #E0D0F5;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ── Expanded card layout ────────────────────────────────────────────────
+   Sized by the card's own width (see the note atop the template). Wide (the
+   card spans two masonry columns on a desktop): identity + intent on one
+   row, photo in a left column, fields in a 6-track grid. Narrow (a phone, or
+   any single-column grid): everything stacks, the photo shrinks to a strip,
+   and the action bar pins to the bottom of the screen. */
+.rc {
+  container: rc / inline-size;
+}
+
+.rc-expanded {
+  padding: 14px 16px;
+}
+
+.rc-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'check id intent collapse';
+  align-items: start;
+  gap: 4px 10px;
+}
+.rc-head-check { grid-area: check; margin-top: 2px; }
+.rc-head-id { grid-area: id; min-width: 0; }
+.rc-intent { grid-area: intent; }
+.rc-head-collapse { grid-area: collapse; margin: -2px -6px 0 0; }
+
+.rc-name {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.rc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.rc-chips :deep(.q-chip) {
+  margin: 0;
+}
+.rc-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #5B6670;
+}
+
+/* Segmented Hot / Warm / Cold. Clicking the selected one clears it, which
+   replaces the separate "Clear" button. Each unselected segment stays
+   neutral so the row doesn't read as three coloured buttons at rest. */
+.rc-intent {
+  display: inline-flex;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.rc-intent-btn {
+  border: 0;
+  background: transparent;
+  color: #5B6670;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 12px;
+  height: 30px;
+  cursor: pointer;
+}
+.rc-intent-btn + .rc-intent-btn {
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
+.rc-intent-btn:focus-visible {
+  outline: 2px solid #0067AC;
+  outline-offset: -2px;
+}
+.rc-intent-btn.is-on.is-hot { background: #FBEAEA; color: #B23B3B; font-weight: 500; }
+.rc-intent-btn.is-on.is-warm { background: #FDEEE3; color: #B35A00; font-weight: 500; }
+.rc-intent-btn.is-on.is-cold { background: #E3F1FA; color: #0067AC; font-weight: 500; }
+
+.rc-banner {
+  margin-top: 10px;
+}
+
+.rc-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+.rc-body:not(:has(.rc-photo)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rc-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rc-thumb {
+  width: 148px;
+  height: 168px;
+  border-radius: 8px;
+  background: #F1F3F5;
+  cursor: zoom-in;
+}
+.rc-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  color: #5B6670;
+  cursor: default;
+}
+
+.rc-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.rc-s2 { grid-column: span 2; }
+.rc-s3 { grid-column: span 3; }
+.rc-s4 { grid-column: span 4; }
+.rc-s6 { grid-column: span 6; }
+.rc-suggest { margin-top: -6px; }
+.rc-link-account {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.rc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.rc-foot-follow {
+  margin-right: auto;
+}
+.rc-approve {
+  min-width: 96px;
+}
+
+@container rc (max-width: 560px) {
+  .rc-expanded { padding: 12px; }
+
+  .rc-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'check id collapse'
+      '. intent intent';
+  }
+  .rc-intent {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-top: 6px;
+  }
+  .rc-intent-btn { height: 44px; font-size: 14px; }
+
+  .rc-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+
+  /* The photo becomes a one-line strip: enough to tap open, and the fields
+     keep the full card width. */
+  .rc-photo {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .rc-thumb { width: 64px; height: 64px; flex: none; }
+  .rc-photo-cap a { display: inline-block; padding: 6px 0; }
+
+  /* Email, phone, state and district each take a full row: at 2-4 tracks of a
+     ~317px form, State was ~98px and clipped "Tennessee" to "Tennes". */
+  .rc-s2, .rc-s4 { grid-column: span 6; }
+  .rc-form :deep(.q-field--dense .q-field__control),
+  .rc-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
+
+  .rc-link-account { grid-template-columns: 1fr; }
+
+  /* Pinned so Approve / Reject are always one thumb-reach away on a card
+     that is ~900px tall on a phone. Bleeds to the card edges to cover the
+     fields scrolling underneath. */
+  .rc-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin: 14px -12px -12px;
+    padding: 10px 12px 12px;
+    background: #fff;
+    border-radius: 0 0 14px 14px;
+    box-shadow: 0 -4px 8px -6px rgba(0, 0, 0, 0.18);
+  }
+  .rc-foot-follow { flex: 1 0 100%; margin-right: 0; }
+  .rc-foot :deep(.q-btn) { min-height: 44px; }
+  .rc-approve { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-intent-btn { transition: none; }
 }
 </style>
