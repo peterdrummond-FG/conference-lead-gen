@@ -1,98 +1,108 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="row items-center q-mb-md q-gutter-md">
-      <div class="text-h5">Review</div>
-      <q-tabs v-model="tab" dense class="col-auto">
+    <!-- One wrapping flex bar on a desktop (title + tabs left, filters and
+         actions right). On a phone the filters drop into a 2-column grid and
+         the two actions share a full-width row — the old q-gutter-md row let
+         each select keep a 160-200px min-width, so every control landed on
+         its own line and the first card started below the fold. -->
+    <div class="rv-bar q-mb-md">
+      <div class="rv-heading">
+        <div class="text-h5">Review</div>
+        <div v-if="filteredContacts.length" class="text-caption text-grey">{{ filteredContacts.length }} contact{{ filteredContacts.length === 1 ? '' : 's' }}</div>
+      </div>
+      <q-tabs v-model="tab" dense class="rv-tabs">
         <q-tab name="needs_review" label="Needs Review" />
         <q-tab name="approved" label="Approved" />
         <q-tab name="rejected" label="Rejected" />
       </q-tabs>
-      <div v-if="filteredContacts.length" class="text-caption text-grey">{{ filteredContacts.length }} contact{{ filteredContacts.length === 1 ? '' : 's' }}</div>
-      <q-space />
 
-      <!-- Options are built from whichever conferences are actually present
-           in the loaded list, not every event ever created — filtering to a
-           conference with nothing pending here would just show an empty
-           list with no way to tell why. -->
-      <q-select
-        v-if="eventFilterOptions.length > 2"
-        v-model="eventFilter"
-        :options="eventFilterOptions"
-        option-label="label"
-        dense
-        outlined
-        emit-value
-        map-options
-        style="min-width: 200px"
-        label="Conference"
-      />
-
-      <q-select
-        v-if="tab === 'approved'"
-        v-model="followedUpFilter"
-        :options="followedUpFilterOptions"
-        option-label="label"
-        dense
-        outlined
-        emit-value
-        map-options
-        style="min-width: 180px"
-        label="Follow-up status"
-      />
-
-      <!-- A signed-in rep (or an admin previewing one) only ever sees their
-           own leads — nothing to pick. Admin/Solutions Success see
-           everyone and can slice by rep + sync status. -->
-      <template v-if="!isSales">
+      <div class="rv-filters">
+        <!-- Options are built from whichever conferences are actually present
+             in the loaded list, not every event ever created — filtering to a
+             conference with nothing pending here would just show an empty
+             list with no way to tell why. -->
         <q-select
-          v-model="repFilter"
-          :options="repFilterOptions"
+          v-if="eventFilterOptions.length > 2"
+          v-model="eventFilter"
+          :options="eventFilterOptions"
           option-label="label"
           dense
           outlined
           emit-value
           map-options
-          style="min-width: 180px"
-          label="Rep"
+          label="Conference"
         />
+
         <q-select
-          v-model="syncedFilter"
-          :options="syncedFilterOptions"
+          v-if="tab === 'approved'"
+          v-model="followedUpFilter"
+          :options="followedUpFilterOptions"
           option-label="label"
           dense
           outlined
           emit-value
           map-options
-          style="min-width: 160px"
-          label="Sync status"
+          label="Follow-up status"
         />
-      </template>
 
-      <q-btn
-        color="primary"
-        outline
-        no-caps
-        icon="add"
-        label="Contacts from note"
-        to="/notes"
-      >
-        <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
-      </q-btn>
+        <!-- A signed-in rep (or an admin previewing one) only ever sees their
+             own leads — nothing to pick. Admin/Solutions Success see
+             everyone and can slice by rep + sync status. -->
+        <template v-if="!isSales">
+          <q-select
+            v-model="repFilter"
+            :options="repFilterOptions"
+            option-label="label"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="Rep"
+          />
+          <q-select
+            v-model="syncedFilter"
+            :options="syncedFilterOptions"
+            option-label="label"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="Sync status"
+          />
+        </template>
+      </div>
 
-      <q-btn
-        v-if="tab === 'rejected'"
-        color="negative"
-        label="Bulk delete selected"
-        :disable="selectedIds.length === 0"
-        @click="confirmBulkDelete"
-      />
-      <q-btn
-        v-else
-        color="positive"
-        label="Bulk approve selected"
-        :disable="selectedIds.length === 0"
-        @click="confirmBulkApprove"
-      />
+      <div class="rv-actions">
+        <q-btn
+          color="primary"
+          outline
+          no-caps
+          icon="add"
+          label="Contacts from note"
+          to="/notes"
+        >
+          <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
+        </q-btn>
+
+        <q-btn
+          v-if="tab === 'rejected'"
+          color="negative"
+          no-caps
+          unelevated
+          label="Bulk delete selected"
+          :disable="selectedIds.length === 0"
+          @click="confirmBulkDelete"
+        />
+        <q-btn
+          v-else
+          color="positive"
+          no-caps
+          unelevated
+          label="Bulk approve selected"
+          :disable="selectedIds.length === 0"
+          @click="confirmBulkApprove"
+        />
+      </div>
     </div>
 
     <div v-if="isSales" class="row items-center q-gutter-md q-mb-md">
@@ -317,8 +327,12 @@ function applyStatusChange(id: string, reviewStatus: string) {
   if (page.value > pageCount.value) page.value = pageCount.value;
 }
 
-async function approve(id: string) {
-  await api.patch(`/contacts-patch`, { reviewStatus: 'approved' }, { params: { id } });
+// pendingEdits: unsaved field edits from the open card. They used to be
+// dropped here — Approve sent only reviewStatus — so a typo fixed but not
+// Saved exported uncorrected. One PATCH, so the edit and the approval land
+// (or fail) together.
+async function approve(id: string, pendingEdits?: UpdateContactPayload) {
+  await api.patch(`/contacts-patch`, { ...pendingEdits, reviewStatus: 'approved' }, { params: { id } });
   applyStatusChange(id, 'approved');
 }
 
@@ -434,6 +448,48 @@ onMounted(async () => {
   .contacts-grid > div {
     transition: none;
   }
+}
+
+.rv-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+.rv-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.rv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+}
+.rv-filters .q-select {
+  min-width: 170px;
+}
+.rv-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 599px) {
+  .rv-bar { gap: 8px 12px; }
+  .rv-tabs { order: 2; width: 100%; }
+  .rv-heading { order: 1; width: 100%; }
+  .rv-filters {
+    order: 3;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    margin-left: 0;
+    gap: 8px;
+  }
+  .rv-filters .q-select { min-width: 0; }
+  .rv-actions { order: 4; width: 100%; }
+  .rv-actions .q-btn { flex: 1; min-height: 44px; }
 }
 
 .scope-tabs {
