@@ -18,9 +18,9 @@
 //
 // KNOWN RESIDUAL GAP: a per-command allow like 'Bash(sips:*)' does not, on
 // its own, confine Bash to that command under --dangerously-skip-permissions
-// -- so process-cards/locate-cards effectively have a general shell. What
-// bounds them instead is that they hold no credential (the POST moved to the
-// caller, audit A2) and run in AGENT_WORKDIR, which contains only a
+// -- so process-cards effectively has a general shell. What
+// bounds it instead is that it holds no credential (the POST moved to the
+// caller, audit A2) and runs in AGENT_WORKDIR, which contains only a
 // .claude/skills symlink. Worth revisiting if the CLI gains a hard
 // per-command Bash restriction.
 //
@@ -136,10 +136,11 @@ export const SKILL_PROFILES = {
     allowedTools: ['Read', 'Write', 'Bash(sips:*)', 'Bash(bc:*)'],
     mcpConfig: null,
   },
-  'locate-cards': {
-    allowedTools: ['Read', 'Write', 'Bash(sips:*)', 'Bash(bc:*)'],
-    mcpConfig: null,
-  },
+  // locate-cards was retired 2026-09-25. Its only caller,
+  // backend/Tools/BackfillCardCrops.cs, went with the ASP.NET backend on
+  // 2026-09-14, and every multi-person photo in the live project already has
+  // per-contact crops (process-cards crops at intake). The skill was a
+  // shell-capable session nothing invoked. Recoverable from git history.
 };
 
 export function profileFor(skillName) {
