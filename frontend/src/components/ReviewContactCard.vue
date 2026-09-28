@@ -179,7 +179,17 @@
         <div class="text-caption text-grey">
           {{ contact.eventName }} · {{ contact.districtName || contact.schoolDistrictNameRaw || 'No district on file' }}<span v-if="contact.schoolName || contact.schoolNameRaw"> · {{ contact.schoolName || contact.schoolNameRaw }}</span>
         </div>
-        <div v-if="contact.glanceSummary" class="text-body2 q-mt-xs">{{ contact.glanceSummary }}</div>
+        <div v-if="contact.glanceSummary" class="ai-research-box row items-start no-wrap q-gutter-xs q-mt-sm">
+          <q-icon name="travel_explore" size="18px" color="purple-8" class="q-mt-xs" />
+          <div class="col">
+            <div class="text-caption text-weight-medium text-purple-10">AI research — unverified guess</div>
+            <div class="text-body2">{{ contact.glanceSummary }}</div>
+          </div>
+          <q-tooltip anchor="top middle" self="bottom middle">
+            Generated from a web search during intake. Not checked against Zoho or any authoritative
+            source (a directory listing, a card scan) — treat it as a hint to verify, not a fact.
+          </q-tooltip>
+        </div>
         <div v-if="contact.matchStatus === 'pending' && contact.matchAttempts >= 1" class="text-caption text-grey">
           Match attempt {{ contact.matchAttempts }} of {{ maxAutoAttempts }}
           <q-btn dense flat size="sm" color="primary" label="Retry match" class="q-ml-sm" @click="$emit('retryMatch', contact.id)" />
@@ -758,5 +768,20 @@ function capitalize(s: string) {
 .tone-grey {
   background: #EEF0F2;
   color: #5B6670;
+}
+
+/* Deliberately distinct from every fact on the card (title input, matched-CRM
+   banners, chips) — an AI-derived guess must never look like confirmed data.
+   Jordan (2026-09) flagged that a hedged sentence like "likely director of
+   schools" rendered as plain body text reads as the system being unsure of
+   something a reliable source already settled. Boxing it, labeling it, and
+   giving it its own (purple, matching the card/directory source chips) color
+   makes "this is AI research, not verified" visible without reading the
+   words. */
+.ai-research-box {
+  background: #F7F3FC;
+  border: 1px solid #E0D0F5;
+  border-radius: 4px;
+  padding: 6px 10px;
 }
 </style>
