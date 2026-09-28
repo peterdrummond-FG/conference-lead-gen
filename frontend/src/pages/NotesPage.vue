@@ -79,9 +79,6 @@
           <q-card-section class="q-py-sm">
             <div class="row items-center q-gutter-xs">
               <span class="text-weight-medium">{{ [c.firstName, c.lastName].filter(Boolean).join(' ') }}</span>
-              <q-chip dense size="sm" class="tag-chip" :class="`tone-${confidenceTone(c.extractionConfidence)}`">
-                {{ c.extractionConfidence }} confidence
-              </q-chip>
               <q-chip v-if="c.isDuplicate" dense size="sm" class="tag-chip tone-orange">
                 possible duplicate
               </q-chip>
@@ -192,19 +189,6 @@ const targetEventName = computed(
   () => sessionStore.user?.currentEventName ?? eventStore.activeEvent?.name ?? null,
 );
 
-function confidenceTone(confidence: string | null) {
-  switch (confidence) {
-    case 'high':
-      return 'green';
-    case 'medium':
-      return 'orange';
-    case 'low':
-      return 'red';
-    default:
-      return 'slate';
-  }
-}
-
 function stopPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = undefined;
@@ -294,23 +278,8 @@ if (!eventStore.loaded) void eventStore.fetchActive();
   font-weight: 500;
 }
 
-.tone-green {
-  background: #e6f4ea;
-  color: #1e7e34;
-}
-
 .tone-orange {
   background: #fdeee3;
   color: #b35a00;
-}
-
-.tone-red {
-  background: #fbeaea;
-  color: #b23b3b;
-}
-
-.tone-slate {
-  background: #eceff1;
-  color: #455a64;
 }
 </style>

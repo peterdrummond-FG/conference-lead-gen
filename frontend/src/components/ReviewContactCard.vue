@@ -116,35 +116,9 @@
             <q-tooltip>Rep credited with this lead</q-tooltip>
           </q-chip>
 
-          <q-chip v-if="contact.syncedAt" dense size="sm" class="tag-chip tone-grey">
-            Synced
-            <q-tooltip>Already included in a CSV export to Zoho</q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="contact.extractionConfidence" dense size="sm" :class="['tag-chip', `tone-${confidenceTone(contact.extractionConfidence)}`]">
-            Import confidence: {{ capitalize(contact.extractionConfidence) }}
-            <q-tooltip>
-              How confident the card scan was when reading this contact's details.
-              <template v-if="contact.extractionConfidence === 'failed'">The scan failed — type the details in from the original photo.</template>
-            </q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="contact.personVerified !== null" dense size="sm" :class="['tag-chip', contact.personVerified ? 'tone-green' : 'tone-grey']">
-            Research verified: {{ contact.personVerified ? 'Strong' : 'Weak' }}
-            <q-tooltip>
-              <template v-if="contact.personVerified">Research confirmed this person works at this school/district.</template>
-              <template v-else>Research could not independently confirm this person at this school/district.</template>
-            </q-tooltip>
-          </q-chip>
-
           <q-chip dense size="sm" :class="['tag-chip', `tone-${matchStatusTone}`]">
             {{ matchStatusLabel }}
             <q-tooltip>Whether this school/district — and this contact — already exist in the CRM</q-tooltip>
-          </q-chip>
-
-          <q-chip v-if="contact.matchConfidence" dense size="sm" :class="['tag-chip', `tone-${confidenceTone(contact.matchConfidence)}`]">
-            Match confidence: {{ capitalize(contact.matchConfidence) }}
-            <q-tooltip>How confident the CRM match itself is</q-tooltip>
           </q-chip>
 
           <q-chip v-if="isStuck" dense size="sm" class="tag-chip tone-red">Stuck — needs manual retry</q-chip>
@@ -704,17 +678,6 @@ function intentTone(intent: 'hot' | 'warm' | 'cold' | null) {
       return 'tone-blue';
     default:
       return 'tone-grey';
-  }
-}
-
-function confidenceTone(level: string) {
-  switch (level) {
-    case 'high':
-      return 'green';
-    case 'medium':
-      return 'orange';
-    default:
-      return 'red';
   }
 }
 
