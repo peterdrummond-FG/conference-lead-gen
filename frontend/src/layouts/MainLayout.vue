@@ -1,7 +1,7 @@
 <template>
   <q-layout view="hHh lpr fFf">
     <q-header v-if="sessionStore.user && !kioskModeStore.locked" class="bg-white text-dark app-header" bordered>
-      <q-toolbar>
+      <q-toolbar class="app-toolbar">
         <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
         <q-tabs class="nav-pills" indicator-color="transparent" no-caps dense>
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
@@ -15,7 +15,7 @@
              accounts — picking someone previews Review exactly as they'd
              see it, but every write still lands under the admin's own
              account (see session-store's effectiveRole/effectiveRepId). -->
-        <q-btn-dropdown v-if="sessionStore.user.role === 'admin'" flat dense no-caps icon="switch_account" color="primary" :label="viewingAsLabel">
+        <q-btn-dropdown v-if="sessionStore.user.role === 'admin'" flat dense no-caps icon="switch_account" color="primary" :label="isPhone ? undefined : viewingAsLabel" :aria-label="viewingAsLabel">
           <q-tooltip>View as</q-tooltip>
           <q-list>
             <q-item clickable v-close-popup @click="sessionStore.setViewingAs(null)">
@@ -27,17 +27,17 @@
             </q-item>
           </q-list>
         </q-btn-dropdown>
-        <div v-else class="text-caption text-grey q-px-sm">{{ sessionStore.user.name }}</div>
+        <div v-else class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
 
         <!-- Locks this physical device down to just the public Intake
              screen — for a shared kiosk iPad/laptop an attendee will be
              handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
-        <q-btn flat dense no-caps icon="lock" color="grey-7" label="Lock kiosk" @click="onLockKiosk">
+        <q-btn flat dense no-caps icon="lock" color="grey-7" :label="isPhone ? undefined : 'Lock kiosk'" aria-label="Lock kiosk" @click="onLockKiosk">
           <q-tooltip>Lock this device to Intake only</q-tooltip>
         </q-btn>
 
         <q-separator vertical spaced />
-        <q-btn flat dense icon="logout" round color="grey-7" @click="onLogout">
+        <q-btn flat dense icon="logout" round color="grey-7" aria-label="Log out" @click="onLogout">
           <q-tooltip>Log out</q-tooltip>
         </q-btn>
       </q-toolbar>
@@ -127,12 +127,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { api } from '@/boot/axios';
 import type { Profile, Role } from '@/types/review';
 
 const router = useRouter();
+const $q = useQuasar();
+
+// Phone widths (< 600px) drop the text from the header's action buttons and
+// wrap the tabs onto their own row — see the .app-toolbar rules below.
+const isPhone = computed(() => $q.screen.lt.sm);
 const sessionStore = useSessionStore();
 const kioskModeStore = useKioskModeStore();
 
@@ -274,6 +280,55 @@ async function onLogout() {
   background: white;
   color: var(--q-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Phones: the single row (logo + 4 tabs + "Viewing as …" + "Lock kiosk" +
+   logout) is wider than a 375px screen, so the tabs were cut off at
+   "Revi…" and the page scrolled sideways. Two rows instead: logo and icon
+   actions on top, the tabs as equal-width pills underneath. */
+@media (max-width: 599px) {
+  .app-toolbar {
+    flex-wrap: wrap;
+    padding: 4px 8px 8px 12px;
+    row-gap: 4px;
+  }
+
+  .app-logo {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .app-toolbar > .q-separator {
+    display: none;
+  }
+
+  .app-username {
+    max-width: 30vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-toolbar > .q-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .nav-pills {
+    order: 10;
+    flex: 1 0 100%;
+  }
+
+  .nav-pills :deep(.q-tabs__content) {
+    width: 100%;
+  }
+
+  .nav-pills :deep(.q-tab) {
+    flex: 1 1 0;
+    padding: 0 8px;
+    min-height: 40px;
+  }
 }
 
 .kiosk-unlock-btn {
