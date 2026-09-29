@@ -109,6 +109,32 @@ test('AttributionOutput allows omitting extractedContact entirely', () => {
   assert.equal(AttributionOutput.safeParse({ results: [{ contactId: id, notFound: true }] }).success, true);
 });
 
+test('AttributionOutput accepts an unplacedContact that was met and described', () => {
+  const id = '2f2a77eb-8039-4359-880f-f4d9ef1d6f65';
+  const person = { firstName: 'Kaylin', interactionNotes: 'Great conversation with Kaylin, a superintendent.', spokeWithRep: true, detailsStated: true, extractionConfidence: 'low' };
+  const r = AttributionOutput.safeParse({ results: [{ contactId: id, excerpt: 'Tyler was great.' }], unplacedContacts: [person] });
+  assert.equal(r.success, true);
+  assert.equal(r.data.unplacedContacts[0].lastName, '');
+});
+
+test('AttributionOutput rejects an unplacedContact that is not asserted as met AND described', () => {
+  const ok = { firstName: 'Kaylin', interactionNotes: 'Great chat with Kaylin.', spokeWithRep: true, detailsStated: true, extractionConfidence: 'low' };
+  const parse = (p) => AttributionOutput.safeParse({ results: [], unplacedContacts: [p] }).success;
+  assert.equal(parse(ok), true);
+  assert.equal(parse({ ...ok, spokeWithRep: false }), false);
+  assert.equal(parse({ ...ok, detailsStated: false }), false);
+  const { spokeWithRep, ...noFlag } = ok;
+  assert.equal(parse(noFlag), false);
+  assert.equal(parse({ ...ok, interactionNotes: '   ' }), false);
+  assert.equal(parse({ ...ok, firstName: '' }), false);
+});
+
+test('AttributionOutput caps unplacedContacts at ten and defaults to none', () => {
+  const p = { firstName: 'A', interactionNotes: 'x', spokeWithRep: true, detailsStated: true, extractionConfidence: 'low' };
+  assert.equal(AttributionOutput.safeParse({ results: [], unplacedContacts: Array.from({ length: 11 }, () => p) }).success, false);
+  assert.deepEqual(AttributionOutput.parse({ results: [] }).unplacedContacts, []);
+});
+
 test('NoteExtractionOutput caps contacts per note', () => {
   const one = { firstName: 'A', lastName: 'B', extractionConfidence: 'high' };
   assert.equal(NoteExtractionOutput.safeParse({ contacts: Array(50).fill(one) }).success, true);

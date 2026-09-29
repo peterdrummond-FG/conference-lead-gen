@@ -28,6 +28,30 @@
         ]
       }
     },
+    "unplacedContacts": {
+      "type": "array",
+      "maxItems": 10,
+      "default": [],
+      "description": "Only when at least one candidate received an excerpt: a person the rep says they spoke with AND says something about, who is not a candidate. A name mentioned only in relation to someone else is not listed. See SKILL.md Step 8.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "firstName": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "lastName": { "type": "string", "maxLength": 100, "default": "" },
+          "email": { "type": "string", "maxLength": 320, "default": "" },
+          "phone": { "type": "string", "maxLength": 40, "default": "" },
+          "title": { "type": "string", "maxLength": 200, "default": "" },
+          "districtName": { "type": "string", "maxLength": 200, "default": "" },
+          "schoolName": { "type": "string", "maxLength": 200, "default": "" },
+          "interactionNotes": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "spokeWithRep": { "type": "boolean", "enum": [true] },
+          "detailsStated": { "type": "boolean", "enum": [true] },
+          "extractionConfidence": { "type": "string", "enum": ["high", "medium", "low"] }
+        },
+        "required": ["firstName", "interactionNotes", "spokeWithRep", "detailsStated", "extractionConfidence"],
+        "additionalProperties": false
+      }
+    },
     "extractedContact": {
       "type": "object",
       "description": "Only include this key when extractFallbackContact was true in the input AND the transcript alone names someone with a title, district, or school — see SKILL.md Step 7. Omit the key entirely otherwise.",

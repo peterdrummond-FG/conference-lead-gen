@@ -1,11 +1,13 @@
 // POST { inboundMessageId, firstName, lastName, email?, phone?, title?,
 //        districtName?, schoolName?, interactionNotes?, extractionConfidence }
 // -> { id, alreadyProcessed, createdAt }. Called only by local-agent's
-// transcription/relink loop, once attribute-voice-memo has judged (with
-// extractFallbackContact: true) that a transcript alone names someone
-// clearly enough to create a contact — after ordinary candidate-matching
-// against contacts already captured at the event has repeatedly found no
-// one this memo could be about. Never a browser. Authenticated via the
+// transcription/relink loop in two situations: (1) attribute-voice-memo judged
+// (with extractFallbackContact: true) that a transcript alone names someone
+// clearly enough to create a contact, after ordinary candidate-matching has
+// repeatedly found no one this memo could be about; (2) the memo matched some
+// captured contacts but also names people who matched none of them -- the rep
+// knows who they are even though the app has no card for them, so each becomes
+// a contact (unplacedContacts). One memo can therefore create several. Never a browser. Authenticated via the
 // service-role key, not a logged-in user.
 //
 // Sibling of contacts-from-note: same district/school resolution and the
@@ -45,21 +47,30 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  // A repeat call for the same audio message (a retry after a crash between
-  // this function succeeding and the caller recording link_status) is a
-  // no-op, not a duplicate contact — mirrors contacts-from-ocr's
-  // source_image_hash pre-check, keyed on the partial unique index over
-  // (source_message_id) where source='voice_memo' instead (see
-  // 20260928120000_voice_memo_fallback_contact_creation.sql).
-  const { data: existing, error: existingError } = await supabase
-    .from("contacts")
-    .select("id, created_at")
-    .eq("source_message_id", body.inboundMessageId)
-    .eq("source", "voice_memo")
-    .maybeSingle();
-  if (existingError) return errorResponse(req, 500, existingError.message);
-  if (existing) {
-    return jsonResponse(req, { id: existing.id, alreadyProcessed: true, createdAt: existing.created_at });
+  // A repeat call for the same person from the same audio message (a retry
+  // after a crash between this function succeeding and the caller recording
+  // link_status) is a no-op, not a duplicate contact -- mirrors
+  // contacts-from-ocr's source_image_hash pre-check. Keyed on memo + name, not
+  // memo alone: one memo can now name several people who have no card (see
+  // 20260929180000_voice_memo_multi_contact.sql), and keying on the memo alone
+  // returned the FIRST person's row for every later one, silently dropping them.
+  // Names are compared in JS, not with ilike: a name is caller-supplied text
+  // and ILIKE would treat a % or _ in it as a wildcard.
+  const nameKey = (first: string, last: string) => `${first.trim().toLowerCase()}\u0000${last.trim().toLowerCase()}`;
+  const wantedKey = nameKey(body.firstName, body.lastName);
+  const findExisting = async () => {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id, created_at, first_name, last_name")
+      .eq("source_message_id", body.inboundMessageId)
+      .eq("source", "voice_memo");
+    if (error) return { error, row: null };
+    return { error: null, row: (data ?? []).find((r) => nameKey(r.first_name ?? "", r.last_name ?? "") === wantedKey) ?? null };
+  };
+  const existing = await findExisting();
+  if (existing.error) return errorResponse(req, 500, existing.error.message);
+  if (existing.row) {
+    return jsonResponse(req, { id: existing.row.id, alreadyProcessed: true, createdAt: existing.row.created_at });
   }
 
   // Event, rep, and state all come from the inbound message itself, never
@@ -128,13 +139,10 @@ Deno.serve(async (req) => {
     // Unique-violation race: another request (a concurrent retry sweep pass)
     // won the insert first.
     if (error.code === "23505") {
-      const { data: raced } = await supabase
-        .from("contacts")
-        .select("id, created_at")
-        .eq("source_message_id", body.inboundMessageId)
-        .eq("source", "voice_memo")
-        .maybeSingle();
-      if (raced) return jsonResponse(req, { id: raced.id, alreadyProcessed: true, createdAt: raced.created_at });
+      const raced = await findExisting();
+      if (raced.row) {
+        return jsonResponse(req, { id: raced.row.id, alreadyProcessed: true, createdAt: raced.row.created_at });
+      }
     }
     return errorResponse(req, 500, error.message);
   }
