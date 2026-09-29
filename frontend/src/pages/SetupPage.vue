@@ -160,75 +160,91 @@
                   <q-badge v-else-if="smsStatus === 'no-phone'" color="grey-7" label="Phone number needed" />
                 </div>
                 <div class="text-body2 text-grey-8">
-                  Photograph a business card, or send a voice memo, from your own phone. No laptop
-                  needed. Connect your phone once per conference.
+                  Photograph a business card, or send a voice memo, from your own phone. No laptop needed.
                 </div>
-
-                <div v-if="!joinedEvent" class="text-body2 text-grey q-mt-sm">
-                  Join a conference above to connect your phone.
+                <!-- Texting SETUP is self-contained (twilio-webhook finds or starts the
+                     conference by name and binds the phone itself), so reps don't have
+                     to come through this page each time -- and nothing about the
+                     instructions or the disclosure below depends on having joined a
+                     conference here. Only the status badge does (smsBound is per
+                     conference), which is why an earlier draft that hid this whole
+                     card until joining was wrong. -->
+                <div class="text-body2 text-grey-8 q-mt-xs">
+                  You can also start right from your phone: texting SETUP lets you find your
+                  conference by name, no website needed.
+                </div>
+                <div v-if="!joinedEvent" class="text-caption text-grey q-mt-xs">
+                  Your connection status shows here once you've joined a conference above.
                 </div>
                 <!-- Joined, but eventStore.activeEvent hasn't caught up yet (a moment after
-                     joining or switching). Without this the v-else below would render
-                     "You're connected" for a conference whose status simply isn't known yet. -->
-                <div v-else-if="smsStatus === null" class="text-caption text-grey q-mt-sm">Checking…</div>
-                <div v-else-if="smsStatus === 'no-phone'" class="text-body2 text-orange-9 q-mt-sm">
+                     joining or switching). Without this, smsStatus null would fall through to
+                     the "not connected" action below for a conference whose status simply
+                     isn't known yet. -->
+                <div v-else-if="smsStatus === null" class="text-caption text-grey q-mt-xs">Checking…</div>
+
+                <div v-if="smsStatus === 'no-phone'" class="text-body2 text-orange-9 q-mt-sm">
                   Your account has no phone number yet, so texted cards can't be credited to you.
                   Ask an admin to add yours.
                 </div>
-                <template v-else>
-                  <div v-if="smsStatus === 'pending'" class="q-mt-sm">
-                    <!-- sms: only opens a composer on a phone; on a laptop the
-                         number and keyword are spelled out instead. -->
-                    <q-btn
-                      v-if="isMobile"
-                      color="primary" no-caps icon="sms" label="Text SETUP"
-                      :href="`sms:${twilioNumberE164}?&body=SETUP`"
-                    />
-                    <div v-else class="text-body2">
-                      From your phone, text <span class="text-weight-bold">SETUP</span> to
-                      <span class="text-weight-bold">{{ twilioNumber }}</span>.
-                    </div>
-                    <div class="text-body2 q-mt-xs">
-                      Then reply to the prompts to find and confirm today's conference by name.
-                    </div>
-                    <!-- Consent disclosure has to sit next to the act that gives
-                         consent (texting SETUP), not inside the collapsed
-                         "How it works" below. -->
-                    <div class="text-caption text-grey q-mt-sm">
-                      By texting SETUP, you agree to receive recurring automated text messages from
-                      Flippen Group related to conference lead capture. Msg&amp;data rates may apply.
-                      Msg frequency varies. Reply HELP for help, STOP to cancel.
-                    </div>
-                  </div>
-                  <div v-else class="text-body2 q-mt-sm">
-                    <q-icon name="check_circle" color="positive" size="18px" />
-                    You're connected for this conference. Text photos and voice memos to
+                <div v-else-if="smsStatus === 'connected'" class="text-body2 q-mt-sm">
+                  <q-icon name="check_circle" color="positive" size="18px" />
+                  You're connected for this conference. Text photos and voice memos to
+                  <span class="text-weight-bold">{{ twilioNumber }}</span>.
+                </div>
+                <div v-else class="q-mt-sm">
+                  <!-- sms: only opens a composer on a phone; on a laptop the
+                       number and keyword are spelled out instead. -->
+                  <q-btn
+                    v-if="isMobile"
+                    color="primary" no-caps icon="sms" label="Text the code SETUP"
+                    :href="`sms:${twilioNumberE164}?&body=SETUP`"
+                  />
+                  <div v-else class="text-body2">
+                    From your phone, text the code <span class="text-weight-bold">SETUP</span> to
                     <span class="text-weight-bold">{{ twilioNumber }}</span>.
                   </div>
+                </div>
 
-                  <q-expansion-item dense dense-toggle label="How it works" header-class="text-primary q-px-none q-mt-xs" class="q-mt-xs">
-                    <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
-                      <li>Text a photo of a business card: one card filling the frame, or several laid out together on the table.</li>
-                      <li>
-                        Optional: right after, record and send a voice memo about the conversation. If it's
-                        about someone from earlier (not the card you just sent), say their name and the
-                        system sorts the note onto the right person.
-                      </li>
-                      <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
-                    </ol>
-                    <div class="text-caption text-grey q-mt-sm">
-                      Do this again if you switch phones or conferences.
-                    </div>
-                    <div v-if="linkedEvent?.folderCode" class="text-caption text-grey q-mt-xs">
-                      Already know today's code, <span class="text-weight-bold">{{ linkedEvent.folderCode }}</span>?
-                      After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }}
-                      to bind your phone to today's event instead of texting SETUP. By texting this code, you
-                      agree to receive recurring automated text messages from Flippen Group related to
-                      conference lead capture. Msg&amp;data rates may apply. Msg frequency varies. Reply HELP
-                      for help, STOP to cancel.
-                    </div>
-                  </q-expansion-item>
-                </template>
+                <!-- Consent disclosure: always visible, directly under the action that
+                     gives consent, never inside the collapsible steps below. This is the
+                     later (2026-09-11) of the two wordings the page used to carry; it is
+                     the only copy now, and it covers texting SETUP and texting the
+                     folder code alike -- hence "the code SETUP" in the action above. -->
+                <div class="text-caption text-grey q-mt-sm">
+                  By texting this code, you agree to receive recurring automated text messages from
+                  Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg
+                  frequency varies. Reply HELP for help, STOP to cancel.
+                </div>
+
+                <!-- Open by default until the phone is connected, then collapsed; the rep's
+                     own toggle wins once they've touched it. -->
+                <q-expansion-item
+                  dense dense-toggle label="How it works"
+                  header-class="text-primary q-px-none q-mt-xs" class="q-mt-xs"
+                  :model-value="stepsOpen"
+                  @update:model-value="(v: boolean) => (stepsOverride = v)"
+                >
+                  <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
+                    <li>
+                      Text <span class="text-weight-bold">SETUP</span> to
+                      <span class="text-weight-bold">{{ twilioNumber }}</span>, then reply to the prompts to
+                      find and confirm today's conference by name. Do this again if you switch phones or
+                      conferences.
+                    </li>
+                    <li>Text a photo of a business card: one card filling the frame, or several laid out together on the table.</li>
+                    <li>
+                      Optional: right after, record and send a voice memo about the conversation. If it's
+                      about someone from earlier (not the card you just sent), say their name and the
+                      system sorts the note onto the right person.
+                    </li>
+                    <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
+                  </ol>
+                  <div v-if="linkedEvent?.folderCode" class="text-caption text-grey q-mt-sm">
+                    Already know today's code, <span class="text-weight-bold">{{ linkedEvent.folderCode }}</span>?
+                    After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }}
+                    to bind your phone to today's event instead of texting SETUP.
+                  </div>
+                </q-expansion-item>
               </div>
             </div>
           </q-card-section>
@@ -339,6 +355,11 @@ const smsStatus = computed<'connected' | 'pending' | 'no-phone' | null>(() => {
   if (linkedEvent.value.smsBound === undefined) return 'no-phone';
   return linkedEvent.value.smsBound ? 'connected' : 'pending';
 });
+
+// "How it works" is open until the phone is connected, then collapses -- but
+// once the rep has toggled it themselves their choice sticks (null = untouched).
+const stepsOverride = ref<boolean | null>(null);
+const stepsOpen = computed(() => stepsOverride.value ?? smsStatus.value !== 'connected');
 
 // Rough enough to disambiguate same-named test/duplicate conferences in the
 // picker — not a general-purpose formatter.
