@@ -264,9 +264,10 @@
                   <ol class="text-body2 q-pl-md q-mt-none q-mb-none" style="line-height: 1.6">
                     <li>
                       Text <span class="text-weight-bold">SETUP</span> to
-                      <span class="text-weight-bold">{{ twilioNumber }}</span>, then reply to the prompts to
-                      find and confirm today's conference by name. Do this again if you switch phones or
-                      conferences.
+                      <span class="text-weight-bold">{{ twilioNumber }}</span>. If you've already joined a
+                      conference in the app it links your phone to that one; otherwise reply to the
+                      prompts to find today's conference by name (reply CHANGE to pick a different one).
+                      Do this again if you switch phones or conferences.
                     </li>
                     <li>Text a photo of a business card: one card filling the frame, or several laid out together on the table.</li>
                     <li>

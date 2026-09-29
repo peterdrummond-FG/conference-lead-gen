@@ -238,6 +238,33 @@ function fitsOneSmsSegment(text: string): boolean {
   return text.length <= (isAscii ? 160 : 70);
 }
 
+// The live conference a rep is already linked to in the app, found by the
+// texting phone number (profiles.phone_number is stored E.164, the same shape
+// as Twilio's From). Null -- so SETUP falls back to asking -- for an unknown
+// phone, a profile with no conference, a completed conference (events_complete
+// clears current_event_id, but re-check is_active rather than trust that), or
+// any lookup error: when unsure, ask; never bind to a guess.
+async function linkedEventFromProfile(
+  supabase: ReturnType<typeof serviceClient>,
+  phone: string,
+): Promise<{ id: string; name: string } | null> {
+  if (!phone) return null;
+  const { data: profile, error: profileError } = await step("profile select", () =>
+    supabase.from("profiles").select("current_event_id").eq("phone_number", phone).maybeSingle());
+  if (profileError) {
+    console.error("linkedEventFromProfile: profile lookup failed", profileError);
+    return null;
+  }
+  if (!profile?.current_event_id) return null;
+  const { data: event, error: eventError } = await step("linked event select", () =>
+    supabase.from("events").select("id, name, is_active").eq("id", profile.current_event_id).maybeSingle());
+  if (eventError) {
+    console.error("linkedEventFromProfile: event lookup failed", eventError);
+    return null;
+  }
+  return event?.is_active ? { id: event.id, name: event.name } : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -299,10 +326,59 @@ Deno.serve(async (req) => {
     }
     const session = isStale ? null : rawSession;
 
+    // A rep already linked to a live conference in the app (profiles
+    // .current_event_id) used to be asked "what's the name of the conference?"
+    // anyway, and their phone stayed unbound -- so card photos were rejected as
+    // "not linked" until they answered a question the app had already
+    // answered. SETUP now binds the phone to that conference and says so; CHANGE
+    // is the way out. Deliberately SETUP only: a folder code is never resolved
+    // through the profile (the rep is expected to text SETUP each time).
+    if (START_TRIGGER_PHRASES.has(normalized)) {
+      const linked = await linkedEventFromProfile(supabase, from);
+      if (linked) {
+        await step("phone_event_bindings upsert", () =>
+          supabase.from("phone_event_bindings").upsert({
+            phone_number: from,
+            event_id: linked.id,
+            updated_at: new Date().toISOString(),
+            last_activity_at: new Date().toISOString(),
+            expiry_notified_at: null,
+            // Same reset as every other bind: a stale watermark from a prior
+            // event must not skip confirming this event's first contacts.
+            contacts_confirmed_through: new Date().toISOString(),
+          }));
+        // A half-finished name search from earlier would otherwise swallow
+        // the rep's next text as its expected reply.
+        await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            event_id: linked.id,
+            kind: "conference_setup",
+            status: "completed",
+            body,
+          }));
+        return twiml(`You're already set up for ${linked.name}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready. Not the right conference? Reply CHANGE.`);
+      }
+    }
+
+    // CHANGE restarts the name search. Only honoured for a phone that's
+    // already bound (i.e. one that was just told to reply CHANGE): as a bare
+    // word from an unbound phone it's far more likely to be a note than a
+    // command, and it must not hijack a folder-code attempt.
+    let isChange = false;
+    if (normalized === "change") {
+      const { data: bound } = await step("binding select", () =>
+        supabase.from("phone_event_bindings").select("phone_number").eq("phone_number", from).maybeSingle());
+      isChange = !!bound;
+    }
+
     // A repeated trigger phrase mid-conversation (e.g. a rep re-sending it
     // after not seeing a reply) restarts the flow rather than being read as
     // the conference name/selection the current step was expecting.
-    if (session && START_TRIGGER_PHRASES.has(normalized)) {
+    if (session && (START_TRIGGER_PHRASES.has(normalized) || isChange)) {
       await step("conference_setup_sessions upsert", () =>
         supabase.from("conference_setup_sessions").upsert({
           phone_number: from,
@@ -547,7 +623,7 @@ Deno.serve(async (req) => {
       return twiml(`Here's what I found — reply with the number:\n${list}\n(If none of these are right, try texting the name again with more detail.)`);
     }
 
-    if (START_TRIGGER_PHRASES.has(normalized)) {
+    if (START_TRIGGER_PHRASES.has(normalized) || isChange) {
       await step("conference_setup_sessions upsert", () =>
         supabase.from("conference_setup_sessions").upsert({
           phone_number: from,
