@@ -106,8 +106,8 @@
         </q-card>
 
         <!-- Step 2 -->
-        <q-card data-tour="setup-capture">
-          <q-card-section>
+        <q-card>
+          <q-card-section data-tour="setup-capture-head">
             <div class="row items-center no-wrap">
               <q-avatar size="26px" color="primary" text-color="white" class="q-mr-sm">2</q-avatar>
               <div class="text-subtitle1 text-weight-medium">Choose how you'll capture leads</div>
@@ -185,7 +185,7 @@
 
 
           <q-separator />
-          <q-card-section>
+          <q-card-section data-tour="setup-text-in">
             <div class="row items-start no-wrap">
               <q-icon name="sms" size="28px" color="primary" class="q-mr-md" />
               <div class="col">
@@ -336,6 +336,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Dialog, Notify, Platform } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
+import { TWILIO_NUMBER_DISPLAY, TWILIO_NUMBER_E164 } from '@/utils/smsNumber';
 import { useSessionStore } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
 import QrSaveButtons from '@/components/QrSaveButtons.vue';
@@ -349,13 +350,9 @@ interface ActiveEventOption {
   activatedAt: string;
 }
 
-// The number Twilio's SMS/MMS webhook is configured against — not stored
-// anywhere server-side (the app never needs to know its own number; Twilio
-// just POSTs inbound messages to twilio-webhook), so this is the one place
-// it's hardcoded for display. Update here if the Twilio number ever changes.
-const twilioNumber = '+1 (936) 218-1311';
-// Same number as above, in the form an sms: link needs.
-const twilioNumberE164 = '+19362181311';
+// The number lives in utils/smsNumber.ts so the welcome tour quotes the same one.
+const twilioNumber = TWILIO_NUMBER_DISPLAY;
+const twilioNumberE164 = TWILIO_NUMBER_E164;
 // sms: opens a composer on a phone and does nothing useful on a laptop, so
 // the "Text SETUP" button is phone-only and desktop gets the number spelled out.
 const isMobile = Platform.is.mobile === true;

@@ -83,10 +83,6 @@
       </div>
     </header>
 
-    <!-- Only while the welcome tour is explaining a Ready lead. A picture, never
-         part of `leads`, so no count, filter or bulk action can reach it. -->
-    <TourSampleLead v-if="tour.currentStep?.id === 'review-sample'" />
-
     <UnresolvedIntakePanel :view-as-rep-id="sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null" />
 
     <div v-if="!loaded" class="text-center q-pa-lg"><q-spinner size="40px" color="primary" /></div>
@@ -256,11 +252,9 @@ import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
 import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
-import TourSampleLead from '@/components/onboarding/TourSampleLead.vue';
 import { useSmartReview, type DisplayPatch } from '@/composables/useSmartReview';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
-import { useTourStore } from '@/stores/tour-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
   DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, readyIds, searchLeads, sortLeads,
@@ -270,7 +264,6 @@ import {
 const $q = useQuasar();
 const sessionStore = useSessionStore();
 const eventStore = useEventStore();
-const tour = useTourStore();
 const { buckets, currentIds, loaded, busy, serverFilters, load, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');

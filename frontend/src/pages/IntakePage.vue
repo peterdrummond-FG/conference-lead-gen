@@ -1,6 +1,6 @@
 <template>
   <q-page class="intake-page flex flex-center">
-    <div class="intake-shell" data-tour="connect-form">
+    <div class="intake-shell">
       <transition name="fade" mode="out-in">
         <div v-if="!eventStore.loaded" key="loading" class="text-center">
           <q-spinner size="40px" color="primary" />

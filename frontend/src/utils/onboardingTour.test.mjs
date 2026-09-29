@@ -6,11 +6,14 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BANNED_WORDS, SAMPLE_LEAD, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole,
+  BANNED_WORDS, CONNECT_MOCK, SAMPLE_LEAD, SMS_MOCK, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole,
 } from './onboardingTour.ts';
+import { TWILIO_NUMBER_DISPLAY } from './smsNumber.ts';
 import { isReady } from './reviewSmart.ts';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO = join(SRC, '..', '..');
+const read = (...p) => readFileSync(join(...p), 'utf8');
 
 function sourceFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -50,11 +53,75 @@ test('every step sends a role only to pages that role can open', () => {
   }
 });
 
-test('every spotlight target exists on a real element', () => {
+// A spotlight may only point at something a brand-new account can see: always
+// on its page, and not dependent on a conference being joined or any data having
+// loaded. Two earlier steps broke this (the attendee form, which only renders
+// once a conference is joined; the sample lead injected into Review's list), so
+// the list is deliberately short and a new entry has to be argued for here.
+const ALWAYS_THERE = new Set([
+  'setup-conference', 'setup-capture-head', 'setup-text-in', 'review-tabs',
+  'review-note-button', 'export-button', 'nav-admin', 'tour-replay',
+]);
+
+test('every spotlight step points at something a brand-new account can see', () => {
   const all = sourceFiles(SRC).map((f) => readFileSync(f, 'utf8')).join('\n');
-  for (const step of TOUR_STEPS) {
+  for (const step of TOUR_STEPS.filter((s) => s.kind === 'spotlight')) {
+    assert.ok(step.target, `${step.id} has no target`);
+    assert.ok(ALWAYS_THERE.has(step.target), `${step.id}: "${step.target}" is not on the always-there list`);
     assert.ok(all.includes(`data-tour="${step.target}"`), `no data-tour="${step.target}" for step ${step.id}`);
   }
+});
+
+test('every illustrated step draws a picture that exists and does not depend on the page behind it', () => {
+  const stage = read(SRC, 'components/onboarding/TourStage.vue');
+  for (const step of TOUR_STEPS.filter((s) => s.kind === 'illustrated')) {
+    assert.ok(step.visual, `${step.id} has no visual`);
+    assert.ok(stage.includes(`'${step.visual}':`), `TourStage has no picture for "${step.visual}"`);
+    assert.equal(step.route, null, `${step.id} is illustrated, so it should not need a page`);
+    assert.equal(step.target, undefined, `${step.id} is illustrated, so it should not have a target`);
+  }
+});
+
+test('the attendee-form picture uses the labels the real form shows', () => {
+  const intake = read(SRC, 'pages/IntakePage.vue');
+  const labels = [...CONNECT_MOCK.fields, ...CONNECT_MOCK.optionalFields];
+  for (const l of labels) assert.ok(intake.includes(`label="${l}"`), `IntakePage has no field labelled "${l}"`);
+  assert.ok(intake.includes(CONNECT_MOCK.subtitle), 'subtitle drifted from IntakePage');
+  assert.ok(intake.includes(CONNECT_MOCK.hint), 'hint drifted from IntakePage');
+  assert.ok(intake.includes(`label="${CONNECT_MOCK.submit}"`), 'submit label drifted from IntakePage');
+});
+
+test('the text-message picture quotes what twilio-webhook really replies', () => {
+  const hook = read(REPO, 'supabase/functions/twilio-webhook/index.ts');
+  assert.ok(hook.includes(SMS_MOCK.replyPrefix), 'reply opening drifted from twilio-webhook');
+  assert.ok(hook.includes(SMS_MOCK.replyRest.replace(/^\.\s*/, '')), 'reply body drifted from twilio-webhook');
+  assert.ok(hook.includes('"setup"'), 'twilio-webhook no longer treats SETUP as the start phrase');
+});
+
+test('the phone number is written once and shared with Setup', () => {
+  assert.match(TWILIO_NUMBER_DISPLAY, /^\+1 \(\d{3}\) \d{3}-\d{4}$/);
+  const setup = read(SRC, 'pages/SetupPage.vue');
+  assert.ok(setup.includes("from '@/utils/smsNumber'"), 'Setup should import the shared number');
+  assert.ok(!setup.includes('218-1311'), 'Setup has its own copy of the number');
+  const phoneStep = TOUR_STEPS.find((s) => s.id === 'phone-text');
+  assert.ok(phoneStep.body.includes('{number}'), 'the phone step should use the shared number');
+});
+
+test('every role is walked through setting up their phone, and can skip past it', () => {
+  for (const role of ['admin', 'solutionsSuccess', 'sales']) {
+    const steps = stepsForRole(role);
+    const ids = steps.map((s) => s.id);
+    for (const id of ['phone-text', 'phone-media', 'phone-try']) assert.ok(ids.includes(id), `${role} misses ${id}`);
+    const skip = steps.find((s) => s.skipTo);
+    assert.ok(skip && ids.includes(skip.skipTo.id), `${role}: the way past the phone section leads nowhere`);
+    assert.ok(ids.indexOf(skip.skipTo.id) > ids.indexOf('phone-try'), `${role}: skipping must land after the phone section`);
+  }
+});
+
+test('the consent wording is not copied into the tour', () => {
+  const tourFiles = sourceFiles(join(SRC, 'components/onboarding')).map((f) => readFileSync(f, 'utf8')).join('\n') + allTourCopy().join('\n');
+  assert.ok(!/By texting this code/i.test(tourFiles), 'the opt-in disclosure lives once, on Setup, under the real button');
+  assert.ok(!/sms:/i.test(tourFiles), 'the tour must not offer its own text-now button; that is consent, and the disclosure has to sit beside it');
 });
 
 test('the sample lead is genuinely Ready under Review\'s own rule', () => {

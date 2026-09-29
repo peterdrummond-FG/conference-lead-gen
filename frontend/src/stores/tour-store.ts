@@ -55,6 +55,13 @@ export const useTourStore = defineStore('tour', {
       this.stepIndex += 1;
       this.save();
     },
+    // Jumps to a named step: the way past a section someone has already done.
+    goTo(id: string) {
+      const i = this.steps.findIndex((s) => s.id === id);
+      if (i < 0) return;
+      this.stepIndex = i;
+      this.save();
+    },
     back() {
       if (this.stepIndex > 0) {
         this.stepIndex -= 1;
