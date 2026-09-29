@@ -114,6 +114,17 @@ page. The disclosure ("By texting this code, …") is a single copy, always
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
+### Starting a conference
+
+Any role may start one (`events-activate`, with `campaigns-list` behind the
+search): a rep at a booth is often the first person to know a conference hasn't
+been started, and could already do it by texting `SETUP`. Because the caller is
+no longer necessarily staff, `events-activate` **never trusts the request's
+`name`** — it reads the name from the `campaigns` cache by `zohoCampaignId` and
+rejects an id that isn't there. Keep it that way: the name becomes the Zoho Lead
+Source. Ending stays admin/Solutions Success. Both Setup and Admin open the same
+`StartConferenceDialog`.
+
 ### Invoking a skill
 
 Every `claude -p` call goes through `local-agent/skill-runner.mjs`, which

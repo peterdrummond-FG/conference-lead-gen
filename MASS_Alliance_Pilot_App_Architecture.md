@@ -197,10 +197,10 @@ every call.
 
 | Page / Function | Purpose |
 |---|---|
-| `GET /setup` (Quasar page) | Rep-facing, two-step checklist (redesigned 2026-09-28). **Step 1** — the rep *joins* a live conference (a real write to their own `current_event_id`, not just a display choice: a rep's QR resolves its conference from that field and `contacts-create` rejects a scan when it's empty). **Step 2** — pick capture tools: their reusable QR (sales only — admin and Solutions Success hold no QR of their own, so they instead see a "Rep QR slides" list with a Download per Sales rep), text-in cards/voice notes (status: Connected / Not set up / Phone number needed), and a booth iPad kiosk PIN. QR and PIN belong to the person and are available before joining; only the text-in *status* depends on the joined conference — its phone steps and opt-in disclosure are always visible, since texting `SETUP` is self-contained. The event's `FolderCode` appears in the text-in card's "How it works" (for texting the code instead of `SETUP`) and per conference on `/admin` for the watcher's inbox subfolder |
+| `GET /setup` (Quasar page) | Rep-facing, two-step checklist (redesigned 2026-09-28). **Step 1** — the rep *joins* a live conference, or starts the one they're at if nobody has (any role) (a real write to their own `current_event_id`, not just a display choice: a rep's QR resolves its conference from that field and `contacts-create` rejects a scan when it's empty). **Step 2** — pick capture tools: their reusable QR (sales only — admin and Solutions Success hold no QR of their own, so they instead see a "Rep QR slides" list with a Download per Sales rep), text-in cards/voice notes (status: Connected / Not set up / Phone number needed), and a booth iPad kiosk PIN. QR and PIN belong to the person and are available before joining; only the text-in *status* depends on the joined conference — its phone steps and opt-in disclosure are always visible, since texting `SETUP` is self-contained. The event's `FolderCode` appears in the text-in card's "How it works" (for texting the code instead of `SETUP`) and per conference on `/admin` for the watcher's inbox subfolder |
 | `GET /admin` (Quasar page) | `admin` / `solutionsSuccess` only. **Conferences**: start one (searches/selects the Zoho Campaign, supplies State — see note below — and calls `events-activate`), end one, live/ended history, rep counts, the laptop-watcher folder code on demand. **Team**: add/edit/delete people, a per-rep "Working at" dropdown (the single control for placing a rep at a conference, replacing the old rep × event checkbox matrix), each rep's labelled "Download QR slide" button (staff download a rep's slide and send it to them themselves — the app has no email, and sends no message on their behalf) |
 | `campaigns-list` | Searches a Postgres cache of Campaigns (`Type = conference`) — same cache-not-live-call approach as before, now just an Edge Function instead of a .NET endpoint |
-| `events-activate` | Activates a cached Campaign into a new `Event` row (atomic "deactivate current + insert new" lives in the `events_activate` Postgres function, since Edge Functions calling Postgres via `supabase-js` don't get automatic multi-statement transactions the way EF Core's `BeginTransactionAsync` did). Takes `state`/`city` directly from the rep — Zoho still has no such data to copy — and generates the `FolderCode` |
+| `events-activate` | Any logged-in role (Sales included since 2026-09-29 — a rep could already start one by texting `SETUP`, which calls the same `events_activate`; `campaigns-list` opened to match). The conference **name is looked up from the `campaigns` cache by id, never taken from the caller**, since it becomes the Zoho Lead Source and the caller is no longer necessarily staff. Activates a cached Campaign into a new `Event` row (atomic "deactivate current + insert new" lives in the `events_activate` Postgres function, since Edge Functions calling Postgres via `supabase-js` don't get automatic multi-statement transactions the way EF Core's `BeginTransactionAsync` did). Takes `state`/`city` directly from the rep — Zoho still has no such data to copy — and generates the `FolderCode` |
 | `events-active` | The currently active event, for both the frontend and (indirectly) the watcher/local-agent |
 | `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds the Admin page's Conferences list (formerly Setup's "Reps & events" table) alongside `events-list-active` (which stays active-only) |
 | `events-complete` (added 2026-09-28) | Admin/Solutions-Success only. Ends a conference for everyone: `events_complete()` flips `is_active` off and clears `current_event_id` on every profile still linked to it, in one transaction — see the note in section 10 |
@@ -872,10 +872,22 @@ past that threshold.
   → Team now has Edit); and starting a conference links the caller server-side
   but Setup never refreshed the session, so it kept asking them to join
   what they'd just created. Front-end only — no Edge Function or migration
-  changes. A first cut of the redesign hid the whole text-in card until a
+  changes (until the 2026-09-29 follow-up below). A first cut of the redesign hid the whole text-in card until a
   conference was joined, which removed the phone instructions and the SMS
   opt-in disclosure for anyone who hadn't joined on the web; fixed the same
   day.
+
+- **A Sales rep can start a conference from the web app (2026-09-29).** Setup
+  step 1 offers "Start a new conference" to every role, on a phone as well as a
+  laptop; previously only admin/Solutions Success could in the app, while any rep
+  could already do it by texting `SETUP`. `events-activate` and `campaigns-list`
+  now accept `sales`, and `events-activate` validates the campaign server-side
+  (the name is read from the `campaigns` cache) — widening who may call it made
+  the old "trust the client's name" shape unsafe. Both functions need deploying
+  (`node scripts/deploy-functions.mjs events-activate campaigns-list`) before the
+  front end is pushed, or a rep's Start gets a 403. The dialog is shared
+  (`components/StartConferenceDialog.vue`) between Setup and Admin. A rep can
+  start but not end a conference; ending stays admin/Solutions Success.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
