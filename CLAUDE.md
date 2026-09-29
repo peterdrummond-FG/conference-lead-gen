@@ -183,6 +183,14 @@ Supabase CLI on this machine.
   duplicate, an email or phone, and a school or district. Change the rule there,
   not in a component. Details: `docs/ARCHITECTURE.md`, "Review's two views".
 
+- **The welcome tour's copy is a set of promises.** Its Review step says a green
+  "Ready" lead approves in one tap and that notes reach Zoho; its Setup steps
+  describe the QR, text-in and kiosk options. If you change Smart's Ready rule,
+  Setup's flow, or what `export-csv` emits, update
+  `frontend/src/utils/onboardingTour.ts` too (its tests catch the Ready rule and
+  missing spotlight targets, not the prose). Details: `docs/ARCHITECTURE.md`,
+  "Welcome tour".
+
 ## Before shipping a feature
 
 **Read `docs/ENGINEERING-LESSONS.md` first.** It generalises every bug the

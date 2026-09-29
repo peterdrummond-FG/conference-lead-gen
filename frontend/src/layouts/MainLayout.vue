@@ -8,7 +8,7 @@
           <q-route-tab to="/connect" label="Connect" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
-          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" />
+          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" data-tour="nav-admin" />
         </q-tabs>
         <q-separator vertical spaced />
 
@@ -35,6 +35,12 @@
              handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
         <q-btn flat dense no-caps icon="lock" color="grey-7" :label="isPhone ? undefined : 'Lock kiosk'" aria-label="Lock kiosk" @click="onLockKiosk">
           <q-tooltip>Lock this device to Connect only</q-tooltip>
+        </q-btn>
+
+        <!-- Replays the welcome tour. Never touches the saved "seen it" mark:
+             that was set the first time and a replay shouldn't undo it. -->
+        <q-btn flat dense round icon="help_outline" color="grey-7" aria-label="Take the tour" data-tour="tour-replay" @click="onReplayTour">
+          <q-tooltip>Take the tour</q-tooltip>
         </q-btn>
 
         <q-separator vertical spaced />
@@ -122,6 +128,14 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- The first-time welcome. Only for a signed-in person on an unlocked
+         device: attendees on the public Connect form, and a booth iPad locked
+         to it, must never see staff onboarding. -->
+    <template v-if="sessionStore.user && !kioskModeStore.locked">
+      <OnboardingSplash />
+      <TourOverlay />
+    </template>
   </q-layout>
 </template>
 
@@ -131,6 +145,9 @@ import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
+import { useTourStore } from '@/stores/tour-store';
+import OnboardingSplash from '@/components/onboarding/OnboardingSplash.vue';
+import TourOverlay from '@/components/onboarding/TourOverlay.vue';
 import { api } from '@/boot/axios';
 import type { Profile, Role } from '@/types/review';
 
@@ -142,6 +159,7 @@ const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 const sessionStore = useSessionStore();
 const kioskModeStore = useKioskModeStore();
+const tourStore = useTourStore();
 
 // effectiveRole (real role, or the admin-only "view as" preview role when
 // set) rather than sessionStore.user?.role directly -- found 2026-09-16: the
@@ -250,7 +268,36 @@ watch(() => sessionStore.user?.role, (role) => {
   if (role === 'admin') void loadProfiles();
 }, { immediate: true });
 
+// Starts the welcome for someone who hasn't seen it, or picks a refreshed tab
+// back up mid-tour. Uses the person's real role, not effectiveRole: an admin
+// previewing a rep's view (viewingAs) shouldn't trigger a tour, and shouldn't be
+// shown the rep's version of it. Only an explicit `onboarded === false` starts
+// it, so an older `me` response with no such field never shows it to everyone.
+function maybeStartTour() {
+  const u = sessionStore.user;
+  if (kioskModeStore.locked) {
+    if (tourStore.phase !== 'idle') tourStore.reset();
+    return;
+  }
+  if (!u || sessionStore.viewingAs || tourStore.phase !== 'idle') return;
+  if (tourStore.resume(u.role)) return;
+  if (u.onboarded === false) tourStore.start(u.role);
+}
+
+watch(
+  () => [sessionStore.user?.id, sessionStore.user?.onboarded, kioskModeStore.locked],
+  maybeStartTour,
+  { immediate: true },
+);
+
+function onReplayTour() {
+  if (sessionStore.user) tourStore.start(sessionStore.user.role);
+}
+
 async function onLogout() {
+  // Drop an in-progress tour without counting it as seen, so the next person
+  // on this tab doesn't resume it.
+  tourStore.reset();
   await sessionStore.logout();
   void router.push('/login');
 }

@@ -22,7 +22,7 @@
 
       <template v-else>
         <!-- Step 1 -->
-        <q-card>
+        <q-card data-tour="setup-conference">
           <q-card-section>
             <div class="row items-center no-wrap">
               <q-avatar size="26px" :color="joinedEvent ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
@@ -106,7 +106,7 @@
         </q-card>
 
         <!-- Step 2 -->
-        <q-card>
+        <q-card data-tour="setup-capture">
           <q-card-section>
             <div class="row items-center no-wrap">
               <q-avatar size="26px" color="primary" text-color="white" class="q-mr-sm">2</q-avatar>
