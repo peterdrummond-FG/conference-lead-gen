@@ -455,10 +455,13 @@ async function joinEvent(event: ActiveEventOption) {
 // Step 1 flips to "joined" -- but only if the session, the active list and
 // eventStore.activeEvent (smsBound/folderCode) are all refreshed; a fetchActive
 // alone left Step 1 asking them to join something they'd just created.
-async function onStarted() {
+async function onStarted(payload: { joined: boolean; name: string }) {
   await Promise.all([sessionStore.fetchMe(), eventStore.fetchActive(), loadActiveEvents()]);
   changing.value = false;
-  Notify.create({ type: 'positive', message: 'Conference started. You\'re now at it.' });
+  Notify.create({
+    type: 'positive',
+    message: payload.joined ? `You're now at ${payload.name}.` : `Started ${payload.name}. You're now at it.`,
+  });
 }
 
 // The sales rep's own reusable QR — shown once they have a repSlug at all

@@ -375,9 +375,12 @@ const pickingNew = ref(false);
 // events-activate also links the caller to the conference they just started,
 // so the session (Setup's "joined" state) and the team list both need a
 // refresh, not just the conferences.
-async function onStarted() {
+async function onStarted(payload: { joined: boolean; name: string }) {
   await Promise.all([sessionStore.fetchMe(), eventStore.fetchActive(), loadEvents(), loadProfiles()]);
-  Notify.create({ type: 'positive', message: 'Conference started.' });
+  Notify.create({
+    type: 'positive',
+    message: payload.joined ? `You're now at ${payload.name}.` : `Started ${payload.name}.`,
+  });
 }
 
 // --- Team ------------------------------------------------------------------

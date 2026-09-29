@@ -889,6 +889,21 @@ past that threshold.
   (`components/StartConferenceDialog.vue`) between Setup and Admin. A rep can
   start but not end a conference; ending stays admin/Solutions Success.
 
+- **"Start a conference" rebuilt for phones (2026-09-29).** The dialog held two
+  searchable `q-select`s; on a phone Quasar turns each into its own full-screen
+  popup over the dialog, with the field bleeding through and a half-clipped last
+  row. The search was also `order by name desc limit 50`, and because names start
+  `YYYY MM.DD` it buried this week's conference under December's (180 of 683
+  campaigns start "2026"). Now: one full-screen sheet with a plain scrolling
+  list, rows tidied (date/state beneath the title, full name on the confirm
+  step), state prefilled from the name's `(ST)` code (571 of 683 have one) with a
+  native picker only when it's missing or a regional code like `(TW)`, and a
+  **Join** button when the campaign is already live instead of an "already
+  active" error. Backed by `conference_search()` (migrations 20260929120000,
+  …123000, …124500) and a reworked `campaigns-list`, which needs redeploying.
+  The end-date parser shipped broken (Postgres `\b` is backspace) and was caught
+  by running it over all 578 dated names — see CLAUDE.md.
+
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
   refresh token were readable by permission-skipped agent sessions for the life
