@@ -198,3 +198,14 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
   link.click();
   URL.revokeObjectURL(url);
 }
+
+// Short, memorable, per-rep URL (routes.ts redirects this into
+// /intake?repSlug=...) — the QR itself is always scanned, but the slide also
+// spells the URL out for anyone who can't scan, so it needs to be typeable
+// on a phone keyboard. Stage 20: one of these per rep, reused across every
+// conference they work, rather than one per (event, rep) — which event a
+// scan belongs to is resolved server-side from that rep's current_event_id,
+// not from anything in the URL (20260916212541_add_profiles_rep_slug.sql).
+export function intakeUrlForRep(repSlug: string): string {
+  return `${window.location.origin}/connect/${repSlug}`;
+}

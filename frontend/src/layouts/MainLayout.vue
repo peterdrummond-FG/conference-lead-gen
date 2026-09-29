@@ -8,6 +8,7 @@
           <q-route-tab to="/intake" label="Intake" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
+          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" />
         </q-tabs>
         <q-separator vertical spaced />
 
@@ -157,6 +158,12 @@ const canSeeSetup = computed(() => (
 // could otherwise still click into the tab even though the router would
 // bounce them straight back out.
 const canSeeExport = computed(() => (
+  sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
+));
+
+// Matches the /admin route's own meta.roles guard (routes.ts) — the same two
+// roles that can already start conferences and manage accounts.
+const canSeeAdmin = computed(() => (
   sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
 

@@ -23,6 +23,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'privacy', component: () => import('@/pages/PrivacyPolicyPage.vue') },
       { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
+      { path: 'admin', component: () => import('@/pages/AdminPage.vue'), meta: { roles: ['admin', 'solutionsSuccess'] as Role[] } },
       { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
       // Pre-Stage-20 QR codes — one per event per rep
       // (/connect/<eventSlug>/<repId>), kept working so anything already

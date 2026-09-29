@@ -197,11 +197,12 @@ every call.
 
 | Page / Function | Purpose |
 |---|---|
-| `GET /setup` (Quasar page) | One-time-per-event screen. Rep searches/selects the Zoho Campaign for today, types in State/City (see note below), and on confirm activates a row in `Events`, shows the QR code for `/intake` **and the event's `FolderCode`** — printed/shown for the watcher's inbox subfolder and for reps to text first over SMS |
+| `GET /setup` (Quasar page) | Rep-facing, two-step checklist (redesigned 2026-09-28). **Step 1** — the rep *joins* a live conference (a real write to their own `current_event_id`, not just a display choice: a rep's QR resolves its conference from that field and `contacts-create` rejects a scan when it's empty). **Step 2** — pick capture tools: their reusable QR (sales only), text-in cards/voice notes (status: Connected / Not set up / Phone number needed), and a booth iPad kiosk PIN. QR and PIN belong to the person and are available before joining; only the text-in card depends on the joined conference. The event's `FolderCode` appears in the text-in card's "How it works" (for texting the code instead of `SETUP`) and per conference on `/admin` for the watcher's inbox subfolder |
+| `GET /admin` (Quasar page) | `admin` / `solutionsSuccess` only. **Conferences**: start one (searches/selects the Zoho Campaign, supplies State — see note below — and calls `events-activate`), end one, live/ended history, rep counts, the laptop-watcher folder code on demand. **Team**: add/edit/delete people, a per-rep "Working at" dropdown (the single control for placing a rep at a conference, replacing the old rep × event checkbox matrix), each rep's QR download |
 | `campaigns-list` | Searches a Postgres cache of Campaigns (`Type = conference`) — same cache-not-live-call approach as before, now just an Edge Function instead of a .NET endpoint |
 | `events-activate` | Activates a cached Campaign into a new `Event` row (atomic "deactivate current + insert new" lives in the `events_activate` Postgres function, since Edge Functions calling Postgres via `supabase-js` don't get automatic multi-statement transactions the way EF Core's `BeginTransactionAsync` did). Takes `state`/`city` directly from the rep — Zoho still has no such data to copy — and generates the `FolderCode` |
 | `events-active` | The currently active event, for both the frontend and (indirectly) the watcher/local-agent |
-| `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds Setup's "Reps & events" history table alongside `events-list-active` (which stays active-only) |
+| `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds the Admin page's Conferences list (formerly Setup's "Reps & events" table) alongside `events-list-active` (which stays active-only) |
 | `events-complete` (added 2026-09-28) | Admin/Solutions-Success only. Ends a conference for everyone: `events_complete()` flips `is_active` off and clears `current_event_id` on every profile still linked to it, in one transaction — see the note in section 10 |
 | `GET /intake` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new" |
 | `contacts-create` | Saves a form row, runs the within-event duplicate check synchronously, then leaves it `pending` for `local-agent`'s matching loop to pick up (below) — the response returns immediately, before matching completes |
@@ -718,7 +719,7 @@ past that threshold.
   (verified — Campaigns has no County field).
 - Event locked per table for the whole day; event name becomes Lead Source.
 - **Staff PIN auth, deferred through Stage 7, built in Stage 9**: gates
-  `/setup`, `/review`, `/export` server-side (not just hidden client-side) via
+  `/setup`, `/review`, `/export` (and later `/admin`) server-side (not just hidden client-side) via
   `x-staff-pin`, unified with the kiosk-unlock PIN rather than a second secret
   (section 8).
 - Matching (section 6): ambiguous matches show candidates to pick from; a new
@@ -811,7 +812,7 @@ past that threshold.
 **Resolved since (Sept 28, 2026):**
 - **A conference can now actually be ended.** `events.is_active` used to be
   write-once-true — nothing set it back to `false`. `events-complete`
-  (admin/Solutions Success, from Setup's "Reps & events" table) calls a new
+  (admin/Solutions Success, from the Admin page's Conferences list — originally Setup's "Reps & events" table) calls a new
   `events_complete()` Postgres function that flips it off and clears
   `current_event_id` on every profile still linked to that event, in one
   transaction, mirroring `events_activate()`'s own shape. Found while adding
@@ -819,7 +820,7 @@ past that threshold.
   resolved the event by slug alone with **no `is_active` check** — a printed
   QR for a completed conference would have kept accepting Intake submissions
   indefinitely. Fixed in the same change; see `docs/ARCHITECTURE.md`'s
-  "Ending an event" convention. Setup's event table now shows the 5 most
+  "Ending an event" convention. The Admin page's Conferences list now shows the 5 most
   recent conferences (`events-list-recent`) alongside every active one, so a
   completed conference stays visible as read-only history rather than
   disappearing.
@@ -855,6 +856,23 @@ past that threshold.
   `LinkStatus = 'contact_created'` pair. See section 9's "Fallback contact
   creation" and `docs/ARCHITECTURE.md`'s "Voice-memo fallback contact
   creation" for the full mechanics.
+- **Setup was split in two and rebuilt around "what do I do next".** The old
+  page mixed picking a conference, SMS instructions, personal QR, a rep × event
+  checkbox matrix, user management and the kiosk PIN, under five different
+  names for the same fact (`profiles.current_event_id`: Activate / Switch /
+  Link myself / matrix checkbox / Link to current event). `/setup` is now a
+  rep checklist and `/admin` (admin/Solutions Success) holds Conferences and
+  Team. Found while building it: `events-active`'s no-linked-user fallback
+  *displays* the most recent conference but links nobody, so a rep who merely
+  saw one on Setup still had a QR that `contacts-create` rejected — Setup now
+  keys "joined" off the session's own `currentEventId`, never off the
+  displayed event. Also fixed: the old Manage Users form called a sales
+  rep's phone "optional" though `profiles-create` requires it; there was no
+  UI to edit a phone number even though `profiles-update` supports it (Admin
+  → Team now has Edit); and starting a conference links the caller server-side
+  but Setup never refreshed the session, so it kept asking them to join
+  what they'd just created. Front-end only — no Edge Function or migration
+  changes.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
