@@ -153,6 +153,17 @@ Supabase CLI on this machine.
   `events-active`'s own fallback branch already had it; `contacts-create`'s
   `eventSlug` branch didn't.
 
+- **A bare call must not guess the conference.** `contacts-create` used to
+  file a submission with no `repSlug`/`eventSlug` under "the most recently
+  activated active event" with no rep. The in-app Connect tab is exactly that
+  call, and `events-active` showed the signed-in rep *their own* event while the
+  insert went to a different one (a Region 4 rep's lead landed in MoASSP with
+  `rep_id` null, invisible in their Review, 2026-09-29). Now a bare call is
+  resolved from the caller's token (their `current_event_id`, credited if
+  `sales`) and an anonymous one is rejected with 409; `events-active` returns
+  null for an anonymous bare call. Anything that shows an event and anything
+  that writes to one must resolve it the same way.
+
 - **Seeing a conference is not being linked to it.** `events-active`'s
   no-linked-user fallback returns the most recently activated event for
   display, but a rep's QR resolves its conference from their own

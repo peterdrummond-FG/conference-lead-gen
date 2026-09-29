@@ -12,10 +12,14 @@
           <div class="intake-subtitle">Someone from our team will be in touch.</div>
         </div>
 
-        <div v-else-if="!eventStore.activeEvent" key="unset" class="text-center">
+        <div v-else-if="!eventStore.activeEvent || needsLink" key="unset" class="text-center">
           <q-icon name="event_busy" color="grey-5" size="56px" />
-          <div class="intake-thanks-title q-mt-md">No event set up yet</div>
-          <div class="intake-subtitle q-mb-0">Sign in and join today's conference in Setup.</div>
+          <div class="intake-thanks-title q-mt-md">{{ sessionStore.user ? 'Join a conference first' : 'No event set up yet' }}</div>
+          <div class="intake-subtitle q-mb-0">
+            {{ sessionStore.user
+              ? 'Join today\'s conference in Setup, then come back here.'
+              : 'Scan the conference QR code again, or ask the rep for their code.' }}
+          </div>
         </div>
 
         <div v-else key="form">
@@ -200,6 +204,16 @@ const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventS
 // event is whatever that rep is currently linked to, resolved server-side
 // (events-active/contacts-create), never anything this page decides itself.
 const repSlug = typeof route.query.repSlug === 'string' ? route.query.repSlug : undefined;
+
+// A signed-in visitor on a bare /connect (the Connect tab) submits into their
+// OWN linked conference -- contacts-create resolves it from their token.
+// events-active still returns the most recently activated event for display
+// when they have none linked, so without this the form would name a
+// conference the submit will refuse (or, before contacts-create was fixed,
+// silently file the lead under). Key off currentEventId, never activeEvent.
+const needsLink = computed(
+  () => !!sessionStore.user && !eventSlug && !repSlug && !sessionStore.user.currentEventId,
+);
 
 const formRef = ref<QForm | null>(null);
 const submitting = ref(false);

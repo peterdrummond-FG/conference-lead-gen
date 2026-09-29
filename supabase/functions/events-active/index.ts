@@ -2,7 +2,8 @@
 // ?repSlug=<repSlug> -> the event that sales rep is currently linked to
 // (profiles.current_event_id), or null if they aren't linked to one right
 // now. GET with neither -> the caller's own linked event, or (for staff with
-// none linked) whichever event was activated most recently. Public — Intake
+// none linked) whichever event was activated most recently, or null for an
+// anonymous caller. Public — Intake
 // needs this to know which event contacts are attached to without a PIN.
 //
 // Multiple conferences can be active at once (see
@@ -57,10 +58,11 @@ Deno.serve(async (req) => {
     const { data: linked, error } = await supabase.from("events").select("*").eq("id", user.currentEventId).maybeSingle();
     if (error) return errorResponse(req, 500, error.message);
     data = linked;
-  } else {
-    // Legacy fallback for a bare /setup or /connect with no slug and no
-    // linked user -- picks whichever active event was activated last rather
-    // than crashing now that more than one row can be is_active.
+  } else if (user) {
+    // Staff with no linked event: whichever active event was activated last,
+    // for DISPLAY only (Setup/Review offer "Link to <it>"). Submitting is
+    // gated on the caller's own current_event_id in contacts-create, so the
+    // Connect form must not treat this as "you're at X".
     const { data: mostRecent, error } = await supabase
       .from("events")
       .select("*")
@@ -70,6 +72,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (error) return errorResponse(req, 500, error.message);
     data = mostRecent;
+  } else {
+    // An anonymous caller with no slug and no repSlug (a bare /connect, e.g.
+    // an old /booth or /session slide). Previously this also returned the
+    // latest-activated event, so the public form advertised a conference the
+    // link never named -- and contacts-create would have filed the lead there.
+    // With several events active that is a guess, so say "no event" instead.
+    data = null;
   }
   if (!data) return jsonResponse(req, null);
 

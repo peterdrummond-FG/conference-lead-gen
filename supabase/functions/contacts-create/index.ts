@@ -25,10 +25,11 @@
 // (/connect/<slug>/<repId> — see routes.ts, pre-Stage-20). Multiple
 // conferences can be active at once
 // (20260915120000_event_slug_and_concurrent_events.sql), so this — not "the"
-// active event — is what decides which event a submission belongs to. Falls
-// back to the most-recently-activated active event only when no slug (and
-// no repSlug) is present at all (a bare/legacy /connect link), which is
-// ambiguous by construction once more than one event is active.
+// active event — is what decides which event a submission belongs to. A bare
+// call (no slug, no repSlug) is resolved from the CALLER, never from "the
+// most recently activated event": a signed-in caller (the Connect tab inside
+// the app) lands in their own current_event_id and, if they're a sales rep, is
+// credited; an anonymous bare call is rejected. See the final branch below.
 //
 // repSlug (Stage 20 — 20260916212541_add_profiles_rep_slug.sql) is a rep's
 // own permanent identifier (/connect/<repSlug>, one QR reused across every
@@ -41,6 +42,7 @@
 // two shapes are never both populated by a real QR — see routes.ts — but a
 // tampered/combined request shouldn't get to pick the more permissive path).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { isUuid, LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
@@ -186,16 +188,45 @@ Deno.serve(async (req) => {
       repId = linkedRep?.rep_id ?? null;
     }
   } else {
-    const { data: mostRecent, error: eventError } = await supabase
+    // Bare call: no QR identified an event or a rep. The only trustworthy
+    // signal left is a signed-in caller -- the Connect tab in the app posts
+    // here with the staff member's own token.
+    //
+    // This branch used to pick "the most recently activated active event" and
+    // credit nobody. On 2026-09-29 a rep linked to Region 4 (TX) used the
+    // Connect tab: events-active showed them Region 4 (it honours their linked
+    // event), but this function ignored who was calling and saved the lead to
+    // MoASSP (MO), the latest-activated of four concurrent events, with no
+    // rep -- so it never appeared in their Review. The form showed one
+    // conference and wrote to another. With several events active there is no
+    // right answer to guess, so an unidentified caller fails closed.
+    const caller = await requireUser(req);
+    if (!caller) {
+      return errorResponse(
+        req,
+        409,
+        "This link doesn't say which conference it's for. Scan the QR code at the booth again, or ask the rep for their code.",
+      );
+    }
+    if (!caller.currentEventId) {
+      return errorResponse(req, 409, "You aren't linked to a conference right now -- join one in Setup first.");
+    }
+    // events_complete() clears current_event_id on every linked profile, so
+    // this should already hold; checked anyway because it is the same
+    // client-influenced-event rule the eventSlug branch enforces.
+    const { data: linked, error: eventError } = await supabase
       .from("events")
       .select("id")
+      .eq("id", caller.currentEventId)
       .eq("is_active", true)
-      .order("activated_at", { ascending: false })
-      .limit(1)
       .maybeSingle();
     if (eventError) return errorResponse(req, 500, eventError.message);
-    if (!mostRecent) return errorResponse(req, 409, "No active event. Activate one via events-activate first.");
-    activeEvent = mostRecent;
+    if (!linked) return errorResponse(req, 409, "Your conference has ended -- join a current one in Setup.");
+    activeEvent = linked;
+    // Only sales reps are credited, matching the repSlug path (which requires
+    // role = sales). An admin or Solutions Success user keying in a lead sees
+    // everything in Review anyway.
+    if (caller.role === "sales") repId = caller.id;
   }
 
   // Signing up from a breakout session is a stronger self-selected engagement
