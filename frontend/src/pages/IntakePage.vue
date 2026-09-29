@@ -26,12 +26,14 @@
             <q-input
               v-model="form.firstName"
               label="First name *"
+              :autocomplete="ac('given-name')"
               borderless
               :rules="[(v: string) => !!v || 'Required']"
             />
             <q-input
               v-model="form.lastName"
               label="Last name *"
+              :autocomplete="ac('family-name')"
               borderless
               :rules="[(v: string) => !!v || 'Required']"
             />
@@ -40,16 +42,27 @@
               v-model="form.email"
               label="Email"
               type="email"
+              inputmode="email"
+              :autocomplete="ac('email')"
               borderless
               :rules="[contactMethodRule]"
             />
+            <!-- type="tel" + inputmode="tel" is what brings up the number pad on
+                 a phone; a plain text input gave attendees the full keyboard. -->
             <q-input
               v-model="form.phone"
               label="Phone"
+              type="tel"
+              inputmode="tel"
+              :autocomplete="ac('tel')"
               borderless
               :rules="[contactMethodRule]"
             />
-            <q-input v-model="form.title" label="Title" borderless />
+            <!-- The rule below only used to surface as an error after Submit. -->
+            <div class="intake-hint">Add an email or a phone number. One is enough.</div>
+
+            <div class="intake-optional">Optional</div>
+            <q-input v-model="form.title" label="Title" :autocomplete="ac('organization-title')" borderless />
 
             <q-select
               v-model="form.channel"
@@ -60,7 +73,7 @@
               map-options
               clearable
               borderless
-              label="Where did you hear about us? (optional)"
+              label="How did you hear about us?"
             />
 
             <q-select
@@ -72,7 +85,7 @@
               hide-selected
               borderless
               input-debounce="0"
-              label="State (optional)"
+              label="State"
               @filter="filterStates"
             />
 
@@ -86,7 +99,7 @@
               borderless
               input-debounce="300"
               new-value-mode="add-unique"
-              label="School District (optional)"
+              label="School district"
               :disable="!form.state"
               :hint="!form.state ? 'Pick a state first' : undefined"
               @filter="districtTypeahead.filterFn"
@@ -105,7 +118,7 @@
               borderless
               input-debounce="300"
               new-value-mode="add-unique"
-              label="School / Campus (optional)"
+              label="School or campus"
               :disable="!form.district"
               :hint="!form.district ? 'Pick a district first' : undefined"
               @filter="schoolTypeahead.filterFn"
@@ -135,16 +148,30 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted } from 'vue';
+import { reactive, ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
+import { useSessionStore } from '@/stores/session-store';
+import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import type { QForm } from 'quasar';
 
 const eventStore = useEventStore();
+const sessionStore = useSessionStore();
+const kioskModeStore = useKioskModeStore();
 const route = useRoute();
+
+// Browser autofill helps an attendee on their own phone (the QR path), but on a
+// shared booth device it would offer the device OWNER's saved name, email and
+// phone to every attendee who taps a field. A locked kiosk, or any device with
+// a staff member signed in (someone showing the form on their own laptop or
+// phone), is a shared device, so autofill is off there.
+const autofillOn = computed(() => !kioskModeStore.locked && !sessionStore.user);
+function ac(token: string) {
+  return autofillOn.value ? token : 'off';
+}
 
 // Which specific rep's QR got scanned to land here (routes.ts pulls it off
 // /connect/<slug>/<repId>) — revalidated server-side against event_reps, so
@@ -333,6 +360,12 @@ onMounted(async () => {
   padding: 48px 24px;
 }
 
+/* A phone doesn't need 48px of air above the first field. */
+@media (max-width: 599px) {
+  .intake-page { padding: 20px 16px 32px; }
+  .intake-subtitle { margin-bottom: 20px; }
+}
+
 .intake-shell {
   width: 100%;
   max-width: 640px;
@@ -365,7 +398,23 @@ onMounted(async () => {
 
 .intake-form :deep(.q-field__label) {
   font-size: 18px;
-  color: #9a9a9a;
+  /* Was #9a9a9a on #fafafa (about 2.7:1) — hard to read at a booth. */
+  color: #5f6368;
+}
+
+/* One line of guidance under the phone field, and a plain divider label above
+   the fields that can be skipped, so nine boxes don't all read as required. */
+.intake-hint {
+  font-size: 14px;
+  color: #5f6368;
+  margin: -4px 0 20px;
+}
+.intake-optional {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #5f6368;
+  margin: 8px 0 0;
 }
 
 .intake-form :deep(.q-field__control) {
@@ -373,7 +422,8 @@ onMounted(async () => {
 }
 
 .intake-form :deep(.q-field--borderless .q-field__control::before) {
-  border-bottom: 2px solid #d8d8d8;
+  /* Was #d8d8d8 (about 1.4:1) — the field edges barely showed. */
+  border-bottom: 2px solid #8b95a1;
 }
 
 .intake-form :deep(.q-field--focused .q-field__control::before) {
