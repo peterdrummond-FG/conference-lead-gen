@@ -2,61 +2,57 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { auditWorkflows } from './check-n8n-credential-scopes.mjs';
 
-function sandboxedWorkflow(name, credentialNames) {
-  return {
-    file: `${name}.json`,
-    json: {
-      name,
-      tags: ['skill-sandboxed'],
-      nodes: credentialNames.map((credName, i) => ({
-        name: `Node ${i}`,
-        credentials: { someCredType: { id: 'irrelevant-in-git', name: credName } },
-      })),
-    },
+function wf(name, credentialNames, { wrapped = false } = {}) {
+  const workflow = {
+    name,
+    nodes: credentialNames.map((credName, i) => ({
+      name: `Node ${i}`,
+      credentials: { someCredType: { id: 'irrelevant-in-git', name: credName } },
+    })),
   };
+  return { file: `${name}.json`, json: wrapped ? { workflow } : workflow };
 }
 
-test('passes a skill workflow using only its declared credential', () => {
-  const failures = auditWorkflows([sandboxedWorkflow('sub-classify-contact-intent', ['Anthropic API'])]);
+test('passes a skill holding only the model credential', () => {
+  assert.deepEqual(auditWorkflows([wf('skill-classify-contact-intent', ['Anthropic account 2'])]).failures, []);
+});
+
+test('fails a skill that reaches the Supabase service-role credential', () => {
+  // The shape CLAUDE.md rule 2 forbids: an authenticated write inside the
+  // session that reads attacker-supplied input.
+  const { failures } = auditWorkflows([wf('skill-process-cards', ['Anthropic account 2', 'Supabase account'])]);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /"Supabase account", outside its policy/);
+});
+
+test('fails a pipeline that holds the model credential directly', () => {
+  // Rule 3: every model call goes through a skill whose output is validated.
+  const { failures } = auditWorkflows([wf('pipeline-match-contact', ['Supabase account', 'Anthropic account 2'])]);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /Anthropic account 2/);
+});
+
+test('fails a covered workflow with no policy entry instead of passing it', () => {
+  const { failures } = auditWorkflows([wf('skill-some-new-skill', ['Anthropic account 2'])]);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /no entry in WORKFLOW_CREDENTIAL_POLICY/);
+});
+
+test('fails a credential reference with no name', () => {
+  const nameless = { file: 'x.json', json: { name: 'skill-match-contact', nodes: [{ name: 'Agent', credentials: { anthropicApi: { id: 'abc' } } }] } };
+  const { failures } = auditWorkflows([nameless]);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /no name/);
+});
+
+test('ignores workflows outside the covered prefixes', () => {
+  const { failures, checked } = auditWorkflows([wf('Probe: Step 4 anything', ['Supabase account', 'Anthropic account 2'])]);
   assert.deepEqual(failures, []);
+  assert.equal(checked, 0);
 });
 
-test('fails a skill workflow that reaches an out-of-policy credential', () => {
-  // The exact incident this guards against: a text-only skill sub-workflow
-  // that somehow ends up with a node referencing the Supabase write
-  // credential — should never happen, must be caught mechanically.
-  const failures = auditWorkflows([
-    sandboxedWorkflow('sub-classify-contact-intent', ['Anthropic API', 'Supabase Write (service role)']),
-  ]);
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], /Supabase Write \(service role\)/);
-  assert.match(failures[0], /outside its declared policy/);
-});
-
-test('fails a tagged workflow with no policy entry at all, rather than assuming it is fine', () => {
-  const failures = auditWorkflows([sandboxedWorkflow('sub-some-new-skill', ['Anthropic API'])]);
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], /no entry in SKILL_WORKFLOW_CREDENTIAL_POLICY/);
-});
-
-test('ignores workflows not tagged skill-sandboxed even with unusual credentials', () => {
-  const untagged = {
-    file: 'pipeline-contact-intent.json',
-    json: {
-      name: 'pipeline-contact-intent',
-      tags: [],
-      nodes: [{ name: 'Write', credentials: { postgres: { id: 'x', name: 'Supabase Write (service role)' } } }],
-    },
-  };
-  assert.deepEqual(auditWorkflows([untagged]), []);
-});
-
-test('only match-contact may reference the Zoho credential', () => {
-  const violating = sandboxedWorkflow('sub-classify-contact-intent', ['Anthropic API', 'Zoho Read-Only (MCP)']);
-  const failures = auditWorkflows([violating]);
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], /Zoho Read-Only \(MCP\)/);
-
-  const allowed = sandboxedWorkflow('sub-match-contact', ['Anthropic API', 'Zoho Read-Only (MCP)']);
-  assert.deepEqual(auditWorkflows([allowed]), []);
+test('reads the MCP get_workflow_details shape too', () => {
+  const { failures, checked } = auditWorkflows([wf('error-alert-email', ['Alert SMTP'], { wrapped: true })]);
+  assert.deepEqual(failures, []);
+  assert.equal(checked, 1);
 });
