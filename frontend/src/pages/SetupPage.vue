@@ -120,8 +120,8 @@
                available before joining -- reps can prepare a slide or set up
                a booth iPad ahead of the event. -->
           <!-- Sales accounts only: repSlug is only ever generated for them
-               (profiles-create/-update). Admin and Solutions Success get
-               reps' codes from the Admin page instead. -->
+               (profiles-create/-update). Admin and Solutions Success get the
+               "Rep QR slides" list below instead. -->
           <template v-if="sessionStore.user?.repSlug">
             <q-separator />
             <q-card-section>
@@ -147,6 +147,44 @@
               </div>
             </q-card-section>
           </template>
+
+          <!-- Admin and Solutions Success: they hold no QR of their own but are who
+               sends each rep theirs, so the reps' slides are listed here (and per
+               rep in Admin -> Team). Nothing here depends on a conference. -->
+          <template v-if="canManageEvents">
+            <q-separator />
+            <q-card-section>
+              <div class="row items-start no-wrap">
+                <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
+                <div class="col">
+                  <div class="text-subtitle2 text-weight-bold">Rep QR slides</div>
+                  <div class="text-body2 text-grey-8">
+                    Every Sales rep has their own reusable QR code slide. Download one to send it to them.
+                    A rep's QR only works once they've joined a conference.
+                  </div>
+                  <q-list v-if="salesReps.length" dense separator class="q-mt-sm">
+                    <q-item v-for="rep in salesReps" :key="rep.id" class="q-px-none">
+                      <q-item-section>
+                        <q-item-label>{{ rep.name }}</q-item-label>
+                      </q-item-section>
+                      <q-item-section side>
+                        <q-btn
+                          outline dense no-caps color="primary" icon="download" label="Download" class="q-px-sm"
+                          :loading="downloadingSlideFor === rep.id"
+                          @click="downloadRepSlide(rep)"
+                        />
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                  <div v-else class="text-body2 q-mt-sm">
+                    No Sales reps yet. Add one in
+                    <router-link to="/admin" class="text-primary">Admin</router-link>.
+                  </div>
+                </div>
+              </div>
+            </q-card-section>
+          </template>
+
 
           <q-separator />
           <q-card-section>
@@ -279,12 +317,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Dialog, Notify, Platform } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
-import { generateConnectSlidePng, intakeUrlForRep } from '@/utils/generateConnectSlide';
+import { downloadRepConnectSlide } from '@/utils/generateConnectSlide';
+import type { Profile } from '@/types/review';
 
 interface ActiveEventOption {
   id: string;
@@ -412,12 +451,34 @@ async function downloadMySlide() {
   if (!sessionStore.user?.repSlug) return;
   generatingMySlide.value = true;
   try {
-    await generateConnectSlidePng({
-      intakeUrl: intakeUrlForRep(sessionStore.user.repSlug),
-      repName: sessionStore.user.name,
-    });
+    await downloadRepConnectSlide({ name: sessionStore.user.name, repSlug: sessionStore.user.repSlug });
   } finally {
     generatingMySlide.value = false;
+  }
+}
+
+// Admin / Solutions Success don't have a QR of their own (only Sales accounts
+// get a rep_slug), but they're who gets each rep theirs to send -- so Setup
+// lists the Sales reps with a download each, instead of leaving them to know
+// it lives in Admin -> Team. profiles-list is staff-only, so it's only fetched
+// for them.
+const profiles = ref<Profile[]>([]);
+const salesReps = computed(() => profiles.value.filter((p) => p.role === 'sales' && p.repSlug));
+// Keyed by rep id -- a specific row's download.
+const downloadingSlideFor = ref<string | null>(null);
+
+async function loadProfiles() {
+  const { data } = await api.get<Profile[]>('/profiles-list');
+  profiles.value = data;
+}
+
+async function downloadRepSlide(rep: Profile) {
+  if (!rep.repSlug) return;
+  downloadingSlideFor.value = rep.id;
+  try {
+    await downloadRepConnectSlide({ name: rep.name, repSlug: rep.repSlug });
+  } finally {
+    downloadingSlideFor.value = null;
   }
 }
 
@@ -444,4 +505,8 @@ onMounted(() => {
   void eventStore.fetchActive();
   void loadActiveEvents();
 });
+
+// A watch, not an onMounted check: an admin can flip "View as" while this page
+// is open, and canManageEvents (effectiveRole) changes under it.
+watch(canManageEvents, (staff) => { if (staff) void loadProfiles(); }, { immediate: true });
 </script>

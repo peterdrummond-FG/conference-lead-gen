@@ -209,3 +209,10 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
 export function intakeUrlForRep(repSlug: string): string {
   return `${window.location.origin}/connect/${repSlug}`;
 }
+
+// The one place a rep's slide gets built from their profile, so Setup (own QR
+// and the staff list) and Admin -> Team can't drift apart on what a download
+// contains. Callers pass a Profile or SessionUser; nothing else is needed.
+export async function downloadRepConnectSlide(rep: { name: string; repSlug: string }): Promise<void> {
+  await generateConnectSlidePng({ intakeUrl: intakeUrlForRep(rep.repSlug), repName: rep.name });
+}

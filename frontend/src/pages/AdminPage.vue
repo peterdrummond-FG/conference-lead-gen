@@ -128,18 +128,21 @@
               >
                 <q-icon name="warning" size="14px" /> Not at a conference, so their QR code won't work yet
               </q-item-label>
+
+              <!-- Labelled rather than an icon in the corner: this is how an
+                   admin gets a rep their slide to send, and an unlabelled QR
+                   glyph beside edit/delete wasn't findable. -->
+              <div v-if="p.role === 'sales' && p.repSlug" class="q-mt-sm">
+                <q-btn
+                  outline dense no-caps color="primary" icon="download" label="Download QR slide"
+                  class="q-px-sm" :loading="downloadingSlideFor === p.id"
+                  @click="downloadRepSlide(p)"
+                />
+              </div>
             </q-item-section>
 
             <q-item-section side top>
               <div class="row no-wrap">
-                <q-btn
-                  v-if="p.role === 'sales' && p.repSlug"
-                  flat round dense icon="qr_code_2" color="primary"
-                  :loading="downloadingSlideFor === p.id"
-                  @click="downloadRepSlide(p)"
-                >
-                  <q-tooltip>Download {{ p.name }}'s QR</q-tooltip>
-                </q-btn>
                 <q-btn flat round dense icon="edit" color="grey-7" aria-label="Edit" @click="openEditPerson(p)">
                   <q-tooltip>Edit name or phone</q-tooltip>
                 </q-btn>
@@ -304,7 +307,7 @@ import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
-import { generateConnectSlidePng, intakeUrlForRep } from '@/utils/generateConnectSlide';
+import { downloadRepConnectSlide } from '@/utils/generateConnectSlide';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import type { Profile, Role } from '@/types/review';
 
@@ -626,10 +629,7 @@ async function downloadRepSlide(rep: Profile) {
   if (!rep.repSlug) return;
   downloadingSlideFor.value = rep.id;
   try {
-    await generateConnectSlidePng({
-      intakeUrl: intakeUrlForRep(rep.repSlug),
-      repName: rep.name,
-    });
+    await downloadRepConnectSlide({ name: rep.name, repSlug: rep.repSlug });
   } finally {
     downloadingSlideFor.value = null;
   }
