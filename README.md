@@ -35,8 +35,10 @@ review → export.
    split pane) or the original **Classic** card grid, switched from the ⋮ menu.
    High-confidence matches with a real matched account may auto-approve. A
    rep's notes travel with the lead into the CSV's Description column.
-5. **Export** — `/export` produces a CSV; leads are marked synced only once the
-   browser confirms it actually received the file.
+5. **Export** — `/export` produces a CSV. The server reserves the leads when the
+   file is generated and marks them synced only after the person exporting
+   confirms the file downloaded ("Did the file download?"); "Download again"
+   reuses the same file from memory until they do.
 
 Voice memos are transcribed locally (Whisper CLI) and attributed to the right
 contact(s) — a memo can cover more than one person — then classified

@@ -16,7 +16,7 @@
         You're not linked to an event yet, so there's nowhere to file these.
         Link yourself to one on the Review page first.
       </q-banner>
-      <div v-else class="text-caption text-grey q-mb-md">
+      <div v-else class="text-caption text-grey-8 q-mb-md">
         Filing under <span class="text-weight-medium">{{ targetEventName }}</span>
       </div>
 
@@ -42,14 +42,15 @@
           no-caps
           unelevated
           label="Send"
+          class="notes-btn notes-send"
           icon-right="send"
           :loading="sending"
           :disable="!text.trim() || !targetEventName"
           @click="submit"
         />
         <template v-else>
-          <q-btn color="primary" no-caps unelevated label="Paste another note" icon="add" @click="reset" />
-          <q-btn flat no-caps color="primary" label="Open Review" to="/review" />
+          <q-btn color="primary" no-caps unelevated label="Paste another note" icon="add" class="notes-btn" @click="reset" />
+          <q-btn flat no-caps color="primary" label="Open Review" to="/review" class="notes-btn" />
         </template>
       </div>
 
@@ -264,6 +265,14 @@ if (!eventStore.loaded) void eventStore.fetchActive();
 .notes-column {
   max-width: 720px;
   margin: 0 auto;
+}
+
+/* Send is the page's one job; it was a small pill at the left edge of a phone. */
+.notes-btn { min-height: 48px; }
+.notes-send { min-width: 140px; }
+@media (max-width: 599px) {
+  /* q-gutter-sm adds an 8px left margin to each child, so a bare 100% overshoots. */
+  .notes-send { flex: 1 0 calc(100% - 8px); }
 }
 
 .notes-excerpt {
