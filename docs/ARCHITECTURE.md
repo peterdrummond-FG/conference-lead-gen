@@ -331,6 +331,13 @@ Rules worth knowing before changing Smart:
   "Zoho Account Id (once created)" / "Account name" fields or the "Show match
   reasoning" link any more: linking a new account is the import step's job, and
   the boxed "AI guess, unverified" summary made the reasoning link redundant.
+- Notes: the "Notes" field and the "Add note" button both write
+  `interaction_notes` (typed text and voice-memo transcripts share it; Add note
+  appends a dated line and saves at once). `export-csv` puts it first in the
+  Zoho **Description** column as `Notes: ...`, ahead of the confidence lines and
+  the AI match reasoning (`contacts.notes`). Before 2026-09-29 it was not
+  exported at all. The Review tooltips promise this, so change both together,
+  and redeploy `export-csv` when the export changes.
 - Bulk selection (Rejected tab) is counted only over what is on screen.
 - Logic tests: `cd frontend && npm test`.
 

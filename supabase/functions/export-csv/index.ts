@@ -29,9 +29,17 @@ function channelLabel(c: any): string {
   return "";
 }
 
+// The rep's own notes (typed on Review, plus transcribed voice memos — both
+// live in interaction_notes) lead the Description. They were never exported
+// before: this column carried only the confidence lines and the AI match
+// reasoning (contacts.notes), so a note a rep wrote for Sales never reached
+// Zoho. Review's Notes tooltip promises it does, so keep the two in step.
+// Starting with the literal "Notes:" also means a note that begins with =, +,
+// - or @ can't be read as a formula (csvField only checks the first character).
 // deno-lint-ignore no-explicit-any
 function buildDescription(c: any): string {
   const parts: string[] = [];
+  if (c.interaction_notes?.trim()) parts.push(`Notes: ${c.interaction_notes.trim()}`);
   if (c.extraction_confidence) parts.push(`Extraction confidence: ${c.extraction_confidence}`);
   if (c.match_confidence) parts.push(`Match confidence: ${c.match_confidence}`);
   if (c.notes?.trim()) parts.push(c.notes);

@@ -266,3 +266,16 @@ export function groupByEvent(list: ContactListItem[], recency: Map<string, numbe
   }
   return [...groups.values()].sort((a, b) => (recency.get(b.eventId) ?? 0) - (recency.get(a.eventId) ?? 0));
 }
+
+// ── Notes ────────────────────────────────────────────────────────────────
+
+export const MAX_NEW_NOTE_LENGTH = 1000;
+
+// Adds one dated line to the end of a lead's notes, keeping whatever is there
+// (typed text and transcribed voice memos share this one field). The date is
+// the rep's own local day: "Sep 29: Left a voicemail".
+export function appendNote(existing: string | null | undefined, text: string, when: Date = new Date()): string {
+  const line = `${when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${text.trim()}`;
+  const base = (existing ?? '').trimEnd();
+  return base ? `${base}\n${line}` : line;
+}
