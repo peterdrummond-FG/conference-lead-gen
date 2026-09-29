@@ -296,3 +296,38 @@ beyond display, and it's a client-side filter over the already-loaded list
 param. `export-csv` carries it through as its own `Follow Up Done` column —
 no Zoho field is mapped to it yet, so it rides along unmapped until Sales
 picks one.
+
+### Review's two views (Smart and Classic)
+
+`/review` renders one of two views, chosen from the ⋮ menu in the page header
+and remembered per browser (`localStorage`, default **Smart**):
+
+- **Classic** (`ReviewClassic.vue` + `ReviewContactCard.vue`) — the original
+  masonry card grid, unchanged apart from carrying the menu.
+- **Smart** (`ReviewSmart.vue`, `components/smart/`) — a list of compact rows
+  with a plain-language flag for why a lead needs a look (or a green Ready),
+  live tab counts, search and sort, one-tap Approve / Reject with a 6-second
+  Undo, and "Approve N ready". On a desktop (≥1024px) the list sits beside a
+  sticky editor pane (J / K move, A approves, R rejects); below that the same
+  editor is a bottom sheet.
+
+Rules worth knowing before changing Smart:
+
+- **Ready** (`utils/reviewSmart.ts`, `isReady`) means: match finished, no
+  possible duplicate, has an email or phone, and has a school or district.
+  Bulk approve only ever sends ready ids; the server still skips any pending
+  ones and the response is read and reported.
+- Smart loads all three statuses at once (six requests for a rep: current and
+  past scope) so tab counts are live and approve/reject/undo move a lead
+  between tabs locally. No backend change was needed.
+- A rep sees their current event first, then past events as collapsible
+  sections ordered by each event's most recent lead. `contacts-list` carries
+  no event date, so that proxy is computed over every status, not the visible
+  tab, to keep the order stable when switching tabs.
+- Reps get "New / Existing school / district" and the contact-already-in-Zoho
+  banner and candidate picker; the match score, reasoning, opportunity line and
+  the "Zoho Account Id" link fields are Admin / Solutions Success only
+  (`isSales` in `ReviewLeadEditor.vue`, i.e. the effective role).
+- Bulk selection (Rejected tab) is counted only over what is on screen.
+- Logic tests: `cd frontend && npm test`.
+
