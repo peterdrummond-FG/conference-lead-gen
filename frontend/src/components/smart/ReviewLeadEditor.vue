@@ -226,9 +226,23 @@
             outlined
             type="textarea"
             class="le-s6"
-            label="Interaction notes (from voice memos)"
+            label="Notes"
+            stack-label
+            placeholder="Add a note about your conversation…"
+            hint="Typed notes and voice memos both land here. Included in the Zoho import."
             input-style="height: 84px; min-height: 64px; max-height: 220px"
-          />
+          >
+            <template #append>
+              <q-icon name="info_outline" size="18px" color="grey-7" tabindex="0" aria-label="About notes">
+                <q-tooltip anchor="top middle" self="bottom middle" max-width="260px">Everything in Notes, including voice memos, is included in the Zoho import so Sales can see it.</q-tooltip>
+              </q-icon>
+            </template>
+          </q-input>
+          <div class="le-s6 le-notes-actions">
+            <q-btn flat no-caps dense color="primary" icon="note_add" label="Add note" class="le-note-btn" @click="showNoteDialog = true" />
+            <span class="le-notes-hint">Adds a dated line and saves right away.</span>
+          </div>
+          <AddNoteDialog v-model="showNoteDialog" :name="name" @save="appendNote" />
         </div>
       </div>
     </div>
@@ -259,6 +273,7 @@ import { reactive, computed, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import LeadChip from '@/components/smart/LeadChip.vue';
+import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
 import DuplicateResolutionDialog from '@/components/DuplicateResolutionDialog.vue';
 import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { useContactPhoto } from '@/composables/useContactPhoto';
@@ -266,7 +281,7 @@ import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/u
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { DisplayPatch } from '@/composables/useSmartReview';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
-import { accountBadge, accountDetailLabel, fullName, leadFlags, type LeadFlag } from '@/utils/reviewSmart';
+import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, leadFlags, type LeadFlag } from '@/utils/reviewSmart';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -298,6 +313,7 @@ const badge = computed(() => accountBadge(props.contact));
 const showFullImage = ref(false);
 const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
+const showNoteDialog = ref(false);
 
 const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
@@ -494,6 +510,16 @@ function approveNow() {
   });
 }
 
+// Adds a dated line to the notes and saves it immediately, like Heat and
+// Followed up. It builds on the DRAFT, not the saved value, so a note the rep
+// was midway through typing isn't lost — and sets the draft to the same text, so
+// the notes field isn't left looking edited once the save lands.
+function appendNote(text: string) {
+  const combined = appendNoteText(draft.interactionNotes, text);
+  draft.interactionNotes = combined;
+  emit('update', { id: props.contact.id, payload: { interactionNotes: combined } });
+}
+
 function rejectClick() {
   emit('reject', props.contact.id);
 }
@@ -546,7 +572,7 @@ function issueIcon(key: LeadFlag['key']) {
 
 // Read by the page: the unsaved-edits guard before switching leads, and the
 // A / R keyboard shortcuts, which must take exactly the same path as a tap.
-defineExpose({ isDirty, approveClick, rejectClick });
+defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 </script>
 
 <style scoped>
@@ -647,6 +673,9 @@ defineExpose({ isDirty, approveClick, rejectClick });
 .le-s4 { grid-column: span 4; }
 .le-s6 { grid-column: span 6; }
 .le-suggest { margin-top: -6px; }
+.le-notes-actions { display: flex; align-items: center; gap: 8px; margin-top: -4px; }
+.le-note-btn { min-height: 36px; }
+.le-notes-hint { font-size: 12px; color: #6B7680; }
 
 .le-foot { padding: 10px 16px 12px; border-top: 1px solid rgba(0, 0, 0, 0.08); background: #fff; }
 .le-foot-note { font-size: 13px; color: #3D4750; margin-bottom: 8px; }

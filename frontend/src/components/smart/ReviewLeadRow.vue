@@ -49,6 +49,9 @@
           :disable="busy"
           @update:model-value="(v: boolean) => $emit('followedUp', v)"
         />
+        <q-btn flat no-caps dense color="primary" icon="note_add" label="Add note" class="lr-note-btn" :disable="busy" @click="$emit('addNote')">
+          <q-tooltip anchor="top middle" self="bottom middle" max-width="240px">Adds a dated note. Notes are included in the Zoho import.</q-tooltip>
+        </q-btn>
       </div>
 
       <div v-if="tab === 'needs_review' && !compact" class="lr-actions">
@@ -75,6 +78,9 @@
           :disable="busy"
           @update:model-value="(v: boolean) => $emit('followedUp', v)"
         />
+        <q-btn flat no-caps dense color="primary" icon="note_add" label="Add note" class="lr-note-btn" :disable="busy" @click="$emit('addNote')">
+          <q-tooltip anchor="top middle" self="bottom middle" max-width="240px">Adds a dated note. Notes are included in the Zoho import.</q-tooltip>
+        </q-btn>
         <q-btn flat no-caps dense class="lr-heat" :class="contact.contactIntent ? `heat-${contact.contactIntent}` : ''" :disable="busy" :aria-label="`Heat: ${intentLabel || 'not set'}`">
           <q-icon name="local_fire_department" size="18px" class="q-mr-xs" />{{ intentLabel || 'Set heat' }}
           <q-menu auto-close anchor="bottom right" self="top right">
@@ -124,6 +130,7 @@ defineEmits<{
   reject: [];
   restore: [];
   followedUp: [value: boolean];
+  addNote: [];
   intent: [value: 'hot' | 'warm' | 'cold' | null];
   'update:selected': [value: boolean];
 }>();
@@ -212,7 +219,9 @@ const heatOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
 .lr-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .lr-btn { min-height: 44px; }
 .lr-btn-main { flex: 1; }
-.lr-actions-follow { justify-content: space-between; }
+.lr-actions-follow { flex-wrap: wrap; gap: 0 8px; }
+.lr-note-btn { min-height: 44px; padding: 0 8px; }
+.lr-heat { margin-left: auto; }
 .lr-follow { min-height: 44px; }
 .lr-heat { min-height: 44px; padding: 0 10px; color: #4A555F; }
 .lr-heat.heat-hot { color: #B23B3B; background: #FBEAEA; }

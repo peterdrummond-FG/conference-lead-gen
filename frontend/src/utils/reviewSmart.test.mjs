@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  accountBadge, eventRecency, groupByEvent, isReady, leadFlags, readyIds, searchLeads, sortLeads,
+  accountBadge, appendNote, eventRecency, groupByEvent, isReady, leadFlags, readyIds, searchLeads, sortLeads,
 } from './reviewSmart.ts';
 
 function lead(over = {}) {
@@ -152,4 +152,12 @@ test('grouping keeps every lead exactly once', () => {
   const list = [lead({ id: '1', eventId: 'a' }), lead({ id: '2', eventId: 'b' }), lead({ id: '3', eventId: 'a' })];
   const groups = groupByEvent(list, eventRecency(list));
   assert.equal(groups.reduce((n, g) => n + g.leads.length, 0), 3);
+});
+
+test('appendNote adds a dated line and keeps what was there', () => {
+  const d = new Date(2026, 8, 29, 12);
+  assert.equal(appendNote(null, '  Left a voicemail ', d), 'Sep 29: Left a voicemail');
+  assert.equal(appendNote('', 'Hi', d), 'Sep 29: Hi');
+  assert.equal(appendNote('Wants a demo.\n', 'Called back', d), 'Wants a demo.\nSep 29: Called back');
+  assert.equal(appendNote('Sep 28: first', 'second', d), 'Sep 28: first\nSep 29: second');
 });

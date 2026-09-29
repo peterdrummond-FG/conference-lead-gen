@@ -215,6 +215,8 @@
       </aside>
     </div>
 
+    <AddNoteDialog v-model="noteDialogOpen" :name="noteTarget ? fullName(noteTarget) : ''" @save="onSaveNote" />
+
     <!-- Phone / tablet: the same editor as a bottom sheet. -->
     <q-dialog v-if="!isDesktop" :model-value="sheetOpen" position="bottom" persistent full-width @escape-key="closeSheet">
       <q-card v-if="activeLead" class="rs-sheet">
@@ -249,12 +251,13 @@ import ReviewViewMenu from '@/components/ReviewViewMenu.vue';
 import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
+import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
 import { useSmartReview, type DisplayPatch } from '@/composables/useSmartReview';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
-  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, eventRecency, groupByEvent, readyIds, searchLeads, sortLeads,
+  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, readyIds, searchLeads, sortLeads,
   type ReviewStatus, type SortKey,
 } from '@/utils/reviewSmart';
 
@@ -488,9 +491,30 @@ const rowHandlers = {
   onReject: (id: string) => void thenAdvance(id, () => reject(id)),
   onRestore: (id: string) => void thenAdvance(id, () => restore(id)),
   onFollowedUp: (id: string, value: boolean) => void update(id, { followedUp: value }),
+  onAddNote: (id: string) => { noteTargetId.value = id; noteDialogOpen.value = true; },
   onIntent: (id: string, value: 'hot' | 'warm' | 'cold' | null) => void update(id, { contactIntent: value }),
   onSelect: (id: string, value: boolean) => { if (value) deleteSel.add(id); else deleteSel.delete(id); },
 };
+
+// ── Add note ─────────────────────────────────────────────────────────────
+
+const noteDialogOpen = ref(false);
+const noteTargetId = ref<string | null>(null);
+const noteTarget = computed(() => (noteTargetId.value ? find(noteTargetId.value) ?? null : null));
+
+// If that lead is open in the editor, the note goes through the editor so it
+// builds on any text the rep is midway through typing there. Saving straight
+// from the saved value would let the editor's older draft overwrite it later.
+function onSaveNote(text: string) {
+  const id = noteTargetId.value;
+  const lead = id ? find(id) : undefined;
+  if (!id || !lead) return;
+  if (activeLead.value?.id === id && editorRef.value) {
+    editorRef.value.appendNote(text);
+    return;
+  }
+  void update(id, { interactionNotes: appendNote(lead.interactionNotes, text) });
+}
 
 // ── Bulk actions ─────────────────────────────────────────────────────────
 
