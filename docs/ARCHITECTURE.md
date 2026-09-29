@@ -142,38 +142,58 @@ prose back; put detail in "How it works".
 
 ### Welcome tour
 
-A new staff account sees a three-screen welcome, then a spotlight walkthrough of
-the real pages (Setup, Connect, Review, and Export / Admin for admin and
-Solutions Success). The wording, step list and per-role filtering are plain data
-in `frontend/src/utils/onboardingTour.ts`; `stores/tour-store.ts` tracks where
-someone is, and `components/onboarding/` draws it. Things to preserve:
+A new staff account sees a three-screen welcome, then a walkthrough (Setup,
+setting up their phone, what attendees see, Review, and Export / Admin for admin
+and Solutions Success). The wording, step list and per-role filtering are plain
+data in `frontend/src/utils/onboardingTour.ts`; `stores/tour-store.ts` tracks
+where someone is, and `components/onboarding/` draws it. Things to preserve:
 
+- **A step is a spotlight or an illustration, and the difference is
+  reliability.** A `spotlight` step points at a real element that is always on
+  its page for a brand-new account (a nav tab, a header button, a Setup card). An
+  `illustrated` step draws its own picture (`components/onboarding/mocks/`), so it
+  can't depend on the page behind it or on any data. The first version broke
+  both ways: the Connect step pointed at the attendee form, which only renders
+  once a conference is joined (a new user saw "Join a conference first" inside
+  the highlight), and the sample lead was injected into Review's list, which
+  pushed the list down and left the highlight behind. Anything that needs a
+  mock-up is illustrated; the test keeps an explicit short list of allowed
+  spotlight targets.
+- **The highlight follows its target every frame.** `useTourTarget` reads the
+  element's position on each animation frame (and every 50 ms as a fallback, for
+  browsers that throttle frames), waits for fonts and for the element to hold
+  still before showing the card, and clamps the window to the screen. Measuring
+  once was the bug: the header's icon buttons change width when the icon font
+  loads, so the highlight sat a button to the left of what it described.
 - **"Seen it" is the account's, not the device's.** `profiles.onboarded_at`,
   returned by `me` as `onboarded` and written by `profiles-complete-onboarding`
   (own row only, idempotent). The migration backfilled every account that
   existed, so only accounts created afterwards start it. The tour starts only on
   an explicit `onboarded === false`, and `me` answers `true` if its lookup
   errors: a hiccup must never show it to someone who finished.
-- **The sample lead is a picture, never data.** `SAMPLE_LEAD` is drawn by
-  `TourSampleLead` and never enters `flatLeads`, a count, a filter or a bulk
+- **The sample lead is a picture, never data.** `SAMPLE_LEAD` is drawn inside the
+  illustrated card and is on no Review page, list, count, filter or bulk
   selection, because "Approve N ready" acts on lead ids and this one doesn't
   exist. A test checks it really is Ready under `reviewSmart.isReady`.
-- **A missing target is a plain card, not a stuck tour.** Steps point at
-  `data-tour="…"` attributes; if one isn't on the page (Review's Classic view has
-  none of Smart's), the card is centred and explains in words. A test fails if a
-  step names a target no source file carries.
+- **The pictures quote the real thing, and tests hold them to it.** The form
+  mock's labels must appear in `IntakePage.vue`; the text-message reply must
+  appear in `twilio-webhook`; the number comes from `utils/smsNumber.ts`, which
+  Setup uses too.
+- **The tour never offers its own "text now" button.** Texting SETUP is consent,
+  and the opt-in disclosure lives once, on Setup, directly under the real button.
+  The "Try it now" step spotlights that real button and disclosure instead. A
+  test fails if the disclosure wording or an `sms:` link appears in the tour.
+- **A missing target is a plain card, not a stuck tour.** If a spotlight target
+  never appears (Review's Classic view has none of Smart's markers), the card is
+  centred and says so.
 - **The wording is for a rep at a booth.** A test fails if technical vocabulary
   (`BANNED_WORDS`) appears in anything the tour shows.
 - **Never for attendees or a locked kiosk.** The splash and overlay only mount
   for a signed-in user on an unlocked device, and never start while an admin is
   previewing someone else ("View as").
-- **The tour's last step points at the top-bar "?" button** (`data-tour="tour-replay"`),
-  and its copy says "from this button". On a phone the top bar keeps that "?" as
-  its own icon and folds Lock and Log out into one labelled account menu
-  (`MainLayout.vue`); don't hide the "?" inside that menu without changing the
-  step's wording.
-- **The copy makes promises about Setup and Review.** If Smart's Ready rule or
-  Setup's flow changes, update `onboardingTour.ts` in the same change.
+- **The copy makes promises about Setup and Review.** If Smart's Ready rule,
+  Setup's flow or the text-in replies change, update `onboardingTour.ts` in the
+  same change.
 
 ### Connect (the attendee form)
 
