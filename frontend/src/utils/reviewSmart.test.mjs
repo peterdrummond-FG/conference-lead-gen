@@ -42,11 +42,22 @@ test('school-only or raw-text org still counts as an organisation', () => {
   assert.equal(isReady(lead({ schoolDistrictId: null, districtName: null, schoolDistrictNameRaw: 'Metro ISD' })), true);
 });
 
-test('ambiguous match informs but does not block', () => {
-  const c = lead({ matchStatus: 'ambiguous' });
+test('ambiguous match with candidates informs but does not block', () => {
+  const c = lead({ matchStatus: 'ambiguous', candidateMatches: [{ type: 'account', zohoId: 'z', name: 'Rivera County', score: 0.8 }] });
   assert.equal(isReady(c), true);
   assert.equal(leadFlags(c)[0].key, 'unclear');
+  assert.equal(leadFlags(c)[0].label, 'Pick a Zoho match');
   assert.equal(leadFlags(c)[0].blocking, false);
+  assert.equal(accountBadge(c).label, 'Pick a Zoho match');
+});
+
+test('ambiguous match with no candidates shows no pill and no flag, and stays approvable', () => {
+  for (const candidateMatches of [null, []]) {
+    const c = lead({ matchStatus: 'ambiguous', candidateMatches });
+    assert.equal(isReady(c), true);
+    assert.deepEqual(leadFlags(c), []);
+    assert.equal(accountBadge(c), null);
+  }
 });
 
 test('only needs_review leads can be ready, and readyIds filters', () => {

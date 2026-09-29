@@ -54,9 +54,11 @@ export function leadFlags(c: ContactListItem): LeadFlag[] {
     flags.push({ key: 'no-org', label: 'No school or district', tone: 'orange', blocking: true });
   }
   // Ambiguous is approvable today (it exports as a new lead), so it informs
-  // rather than blocks; the candidate picker in the editor resolves it.
-  if (c.matchStatus === 'ambiguous') {
-    flags.push({ key: 'unclear', label: 'Match unclear', tone: 'blue', blocking: false });
+  // rather than blocks. It only earns a flag when there is something to pick:
+  // with no candidates there is nothing for the rep to do, so a pill would
+  // just be noise (the editor still explains it in words).
+  if (c.matchStatus === 'ambiguous' && c.candidateMatches?.length) {
+    flags.push({ key: 'unclear', label: 'Pick a Zoho match', tone: 'blue', blocking: false });
   }
   return flags;
 }
@@ -96,7 +98,8 @@ export function accountBadge(c: ContactListItem): { label: string; tone: Tone } 
       if (!hasOrg(c)) return null;
       return { label: hasSchool ? 'New school' : 'New district', tone: 'blue' };
     case 'ambiguous':
-      return { label: 'Match unclear', tone: 'orange' };
+      // Same rule as the flag: no candidates, nothing to pick, no pill.
+      return c.candidateMatches?.length ? { label: 'Pick a Zoho match', tone: 'orange' } : null;
     default:
       return { label: capitalize(c.matchStatus), tone: 'grey' };
   }

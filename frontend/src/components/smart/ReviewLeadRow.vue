@@ -131,7 +131,7 @@ defineEmits<{
 const name = computed(() => fullName(props.contact));
 const flags = computed(() => leadFlags(props.contact));
 const ready = computed(() => isReady(props.contact));
-// "Match unclear" is already the account badge — don't say it twice.
+// "Pick a Zoho match" is already the account badge — don't say it twice.
 const shownFlags = computed(() => flags.value.filter((f) => !(f.key === 'unclear' && badge.value)));
 const badge = computed(() => accountBadge(props.contact));
 const intentLabel = computed(() => (props.contact.contactIntent ? props.contact.contactIntent.charAt(0).toUpperCase() + props.contact.contactIntent.slice(1) : ''));
