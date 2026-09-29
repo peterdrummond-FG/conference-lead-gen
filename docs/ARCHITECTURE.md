@@ -110,7 +110,11 @@ joining anything; only the SMS *status* is per conference. The text-in card's
 phone steps and its opt-in disclosure are likewise never gated on joining:
 texting `SETUP` is self-contained (`twilio-webhook` finds or starts the
 conference by name and binds the phone itself), so a rep may never touch this
-page. The disclosure ("By texting this code, …") is a single copy, always
+page. A rep who *has* joined one in the app is not asked: `SETUP` matches their
+`profiles.phone_number`, and if `current_event_id` is a still-active event it
+binds the phone to it and replies "already set up — reply CHANGE" (CHANGE, from a
+bound phone, restarts the name search). Only `SETUP` does this; a folder code is
+never resolved through the profile. The disclosure ("By texting this code, …") is a single copy, always
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
