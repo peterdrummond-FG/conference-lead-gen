@@ -150,6 +150,39 @@ const ExtractedVoiceMemoContact = z
     message: 'extractedContact requires a title, districtName, or schoolName',
   });
 
+// A person the rep met who matches NO captured contact, returned only when the
+// memo did attribute to at least one candidate (SKILL.md Step 8). On
+// 2026-09-29 a memo named two people without cards and both vanished, because a
+// memo that matched anyone was marked linked and never looked at again. But a
+// NAME is not evidence the rep met someone ("he knows Kaitlyn" is a note about
+// the lead, not a new lead), so creation needs both a conversation and
+// something said about the person. No title/district/school is required: how it
+// went, or how interested they were, is enough.
+//
+// spokeWithRep/detailsStated are z.literal(true), not booleans: the model has to
+// assert both, and a person it can't honestly assert them for has no valid
+// shape to be returned in. That forces the claim; it can't verify it, which is
+// why the refine below also demands a non-empty verbatim span the caller stores.
+const UnplacedVoiceMemoContact = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().max(100).default(''),
+  email: z.string().max(320).default(''),
+  phone: z.string().max(40).default(''),
+  title: z.string().max(200).default(''),
+  districtName: z.string().max(200).default(''),
+  schoolName: z.string().max(200).default(''),
+  interactionNotes: z.string().max(4000).default(''),
+  spokeWithRep: z.literal(true),
+  detailsStated: z.literal(true),
+  extractionConfidence: confidence,
+}).refine((c) => c.interactionNotes.trim().length > 0, {
+  message: 'unplacedContacts needs the verbatim span the rep said about this person',
+});
+
+// One memo must not be able to queue unbounded downstream LLM work: every
+// contact created enters matching, which is two LLM calls apiece.
+export const MAX_UNPLACED_PER_MEMO = 10;
+
 export const AttributionOutput = z.object({
   results: z
     .array(
@@ -169,6 +202,7 @@ export const AttributionOutput = z.object({
   // the transcript qualified — see SKILL.md Step 7. Omitted (not null)
   // otherwise.
   extractedContact: ExtractedVoiceMemoContact.optional(),
+  unplacedContacts: z.array(UnplacedVoiceMemoContact).max(MAX_UNPLACED_PER_MEMO).default([]),
 });
 
 // One paste must not be able to queue unbounded downstream LLM work: every

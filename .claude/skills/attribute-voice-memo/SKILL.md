@@ -77,6 +77,10 @@ from the caller, not something to attempt on your own initiative.
    clean up, or invent wording that isn't in the transcript. If the same
    person is referenced in two separate places, concatenate those spans in
    transcript order, joined with `" ... "`.
+   **Include every sentence that mentions someone else in connection with this
+   candidate** ("he knows Kaitlyn Taylor", "Tyler's boss Sam") — the whole
+   thought stays in the candidate's excerpt, third party's name and any details
+   included. See Step 8 for when a named person is instead someone new.
 4. **Ambiguity rule — do not guess.** If two or more candidates have the same
    or a confusably similar name and nothing in the transcript disambiguates
    which one is meant, or a reference doesn't clearly match any one
@@ -110,6 +114,48 @@ from the caller, not something to attempt on your own initiative.
    (`"high"`/`"medium"`/`"low"`, reflecting how clearly the transcript states
    these fields — this is a different judgment from any `results` entry,
    since there is no existing record to corroborate against here).
+
+8. **New people the rep met (`unplacedContacts`).** Applies **only when at
+   least one candidate received an `excerpt`** in Steps 2-6 — a memo that
+   placed nobody is Step 7's case, and this step then stays silent. The rep
+   knows more than the app does, so a person the rep actually dealt with gets
+   a contact even though no card was captured for them. But a name is not
+   evidence of that: **most people named in a memo are not new leads.** List a
+   person only when **both** hold:
+   - **The rep says they spoke with, met or followed up with this person
+     themselves** ("great conversation with Kaylin", "I also talked to Peter").
+     Someone who appears only in relation to a candidate or to someone else —
+     "he knows Kaitlyn", "Tyler's boss", "referred by Dana", "she works with
+     Sam", "his old principal" — is a *mention*, not a person the rep met.
+   - **The memo says something about that person themselves** — their role,
+     district or school, contact details, how the conversation went, or how
+     interested they are. A bare name with nothing said about them does not
+     qualify, even if the rep did talk to them.
+
+   A mention is never an `unplacedContact`, however much detail comes with
+   it: "he knows Kaitlyn, she's the superintendent at Maple Ridge" is a note
+   about Tyler. Keep that whole sentence inside Tyler's `excerpt` (Step 3),
+   including the mentioned person's name and details, so nothing said is lost.
+   **When you cannot tell** whether someone is a person the rep met or only a
+   mention, treat them as a mention: leave them out of `unplacedContacts` and
+   keep the words in the candidate's `excerpt`. A missed contact is added by
+   hand in seconds; an invented one has to be found and rejected.
+   - Never list a candidate, a spelling variant of one, or anyone you already
+     gave an `excerpt` or `notFound` to. A person whose name confusably
+     matches two candidates (Step 4) is a *candidate*, not unplaced.
+   - Never list someone only referred to by pronoun or role ("the principal")
+     with no name.
+   - `interactionNotes` is the verbatim span about that person (Step 3's
+     rules) and must not be empty. When one sentence covers several people
+     ("both of them are superintendents"), each gets that same span.
+   - Fill `title`, `districtName`, `schoolName`, `email`, `phone` only from
+     what the transcript states, else `""` — never guess. A role stated about
+     a group is stated about each member. `lastName` may be `""`.
+   - Set `spokeWithRep` and `detailsStated` to `true`: they are your explicit
+     statement that both conditions above hold. If you cannot honestly set
+     both, the person does not belong in this list.
+   - `extractionConfidence` is how clearly the transcript states who this is.
+   - At most 10; if there are more, keep the first ten in transcript order.
 
 ## Output
 
@@ -156,3 +202,35 @@ Only add a top-level `extractedContact` key (per Step 7) when
 Omit the `extractedContact` key entirely (not `null`) whenever
 `extractFallbackContact` was `false`/absent, or it was `true` but the
 transcript didn't qualify.
+
+Add a top-level `unplacedContacts` array (Step 8) only when at least one
+candidate got an `excerpt` and the memo names someone the rep met and says
+something about. Same field shape as `extractedContact`, minus its
+sufficiency rule, plus the two flags:
+
+```json
+{
+  "results": [
+    { "contactId": "d3c0aa3c-cb1f-4988-993e-14860cebd1bb", "excerpt": "Tyler was really helpful. He knows Kaitlyn Taylor from his old district." }
+  ],
+  "unplacedContacts": [
+    {
+      "firstName": "Peter",
+      "lastName": "Drummond",
+      "email": "",
+      "phone": "",
+      "title": "Superintendent",
+      "districtName": "",
+      "schoolName": "",
+      "interactionNotes": "Also had a fantastic conversation with Peter Drummond. He's a superintendent and seemed very interested in signing up for an event.",
+      "spokeWithRep": true,
+      "detailsStated": true,
+      "extractionConfidence": "medium"
+    }
+  ]
+}
+```
+
+Here Kaitlyn Taylor is only mentioned as someone Tyler knows, so she stays
+inside Tyler's `excerpt` and is not listed. Omit `unplacedContacts` (or use
+`[]`) when Step 8 doesn't apply or finds no one.

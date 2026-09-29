@@ -242,10 +242,35 @@ attempt (`.claude/skills/attribute-voice-memo/SKILL.md`, validated by
 `local-agent/schemas.mjs`'s `AttributionOutput`). A qualifying transcript is
 POSTed to a new Edge Function, `contacts-from-voice-memo` (sibling of
 `contacts-from-note`, keyed on the inbound message id instead of a note
-submission, deduped by a partial unique index on `(source_message_id) WHERE
-source = 'voice_memo'`), which inserts a `source='voice_memo'` contact —
+submission, deduped by a partial unique index on `(source_message_id, lower(first_name),
+lower(last_name)) WHERE source = 'voice_memo'` — was `(source_message_id)` alone until
+2026-09-29), which inserts a `source='voice_memo'` contact —
 `match_status='pending'`, so it flows into `research-contact`/`match-contact`
 through the ordinary pending-contact loop with no special-casing needed.
+
+**People a memo names who matched nobody.** The paragraph above covers a memo
+that placed no one. The other case was found 2026-09-29: a memo naming four
+people, two with cards and two without, attached to the two and was marked
+`linked`, and the other two vanished — attribution only ever sorted a memo
+among contacts that already existed, and a `linked` memo is never revisited.
+Now, when at least one candidate gets an excerpt, `attribute-voice-memo` also
+returns `unplacedContacts` (SKILL.md Step 8) — but only for a person the rep
+**spoke with and said something about**. A name merely mentioned in relation to
+a lead ("he knows Kaitlyn, she's the superintendent at Maple Ridge") is not a
+new lead: that whole sentence stays in the lead's own excerpt, and anything the
+model can't classify is treated the same way (a missed contact is added by hand
+in seconds; a stray one has to be found and rejected). The schema makes the
+model assert `spokeWithRep` and `detailsStated` (both `literal(true)`) and
+supply a non-empty verbatim span; that forces the claim but cannot verify it,
+so the judgment itself lives in the prompt. `linkTranscriptToContacts` creates
+each through the same `contacts-from-voice-memo` function, gated on a candidate
+really having been attached (in code), capped at `MAX_UNPLACED_PER_MEMO` (10),
+re-checked against the candidate list so the model can't mint a second Tyler,
+and skipped-and-logged per person on failure. That function's dedupe key became
+memo + name (`20260929180000_voice_memo_multi_contact.sql`), since one memo can
+now create several. The memo stays `linked`, with the new contacts' ids added to
+`matched_contact_ids`. The n8n `pipeline-voice-transcription` does **not** handle
+`unplacedContacts` yet — port it before that pipeline is cut over.
 
 `inbound_messages.link_status` gained a fourth value, `contact_created`,
 distinct from `linked` (attached to an *existing* candidate) — deliberately

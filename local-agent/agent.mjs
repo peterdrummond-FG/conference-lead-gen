@@ -34,6 +34,7 @@ import { runSkill, runClaudeRaw, extractJson } from './skill-runner.mjs';
 import { transcribeAudio } from './whisper-runner.mjs';
 import {
   AttributionOutput,
+  MAX_UNPLACED_PER_MEMO,
   CardExtractionOutput,
   IntentOutput,
   MatchOutput,
@@ -835,7 +836,7 @@ async function linkTranscriptToContacts(message, transcript, prefetched, attempt
     })),
     ...(attemptFallbackExtraction ? { extractFallbackContact: true } : {}),
   };
-  const { results, extractedContact } = await runSkill('attribute-voice-memo', skillInput, AGENT_WORKDIR, {
+  const { results, extractedContact, unplacedContacts } = await runSkill('attribute-voice-memo', skillInput, AGENT_WORKDIR, {
     schema: AttributionOutput,
   });
   const attributed = (results ?? []).filter((r) => typeof r.excerpt === 'string' && r.excerpt.length > 0);
@@ -865,7 +866,57 @@ async function linkTranscriptToContacts(message, transcript, prefetched, attempt
     .map((r) => ({ contact: byId.get(r.contactId), excerpt: r.excerpt }))
     .filter((x) => x.contact); // defensive: ignore an id the skill echoed that wasn't in the candidate list
   const matchedContactIds = await attachExcerpts(toAttach);
-  return { matchedContactIds, ranAttribution: true, createdContactId: null };
+  // The memo placed someone, so recordLinkResult will mark it 'linked' and it
+  // is never looked at again. A person the rep met who has no card would be
+  // lost with it (found 2026-09-29: a memo naming four people, two with cards,
+  // dropped the other two without a trace). SKILL.md Step 8 says who qualifies:
+  // someone the rep spoke with AND described -- NOT someone merely named in
+  // relation to a candidate ("he knows Kaitlyn"), whose sentence stays in the
+  // candidate's own excerpt. Gated on toAttach.length here, in code, not only in
+  // the skill: a memo that placed nobody must go through the retry path and the
+  // extractFallbackContact rule instead, because its people may simply not have
+  // had their cards processed yet.
+  const createdIds = toAttach.length > 0 ? await createUnplacedContacts(message.id, candidates, unplacedContacts ?? []) : [];
+  return { matchedContactIds: [...matchedContactIds, ...createdIds], ranAttribution: true, createdContactId: null };
+}
+
+// Two spoken names are the same person when the first names agree and the last
+// names agree or either is blank ("Kaylin" vs "Kaylin Taylor"). Deliberately
+// loose: a memo saying just "Morgan" must not mint a second Morgan next to the
+// Morgan Goering card the rep already captured.
+function sameSpokenPerson(a, b) {
+  const norm = (v) => String(v ?? '').trim().toLowerCase();
+  if (norm(a.firstName) !== norm(b.firstName)) return false;
+  const la = norm(a.lastName);
+  const lb = norm(b.lastName);
+  return la === '' || lb === '' || la === lb;
+}
+
+// Creates one contact per person the rep met (and described) who matches no
+// captured contact. The model already excluded candidates (SKILL.md Step 8);
+// this re-checks, because a model that re-lists Tyler Tucker would otherwise
+// mint a duplicate Tyler. The schema already required spokeWithRep,
+// detailsStated and a non-empty span for every entry; nothing here can verify
+// them, only refuse an entry that lacks them. contacts-from-voice-memo dedupes on memo + name, so a retry
+// after a crash creates nothing twice. One person's failure is logged and
+// skipped rather than thrown, like attachExcerpts: it must not discard the
+// people already created.
+async function createUnplacedContacts(messageId, candidates, unplaced) {
+  const createdIds = [];
+  const accepted = [];
+  for (const person of unplaced.slice(0, MAX_UNPLACED_PER_MEMO)) {
+    const asPerson = { firstName: person.firstName, lastName: person.lastName };
+    if (candidates.some((c) => sameSpokenPerson(asPerson, { firstName: c.first_name, lastName: c.last_name }))) continue;
+    if (accepted.some((a) => sameSpokenPerson(asPerson, a))) continue;
+    accepted.push(asPerson);
+    try {
+      const created = await postVoiceMemoContact(messageId, person);
+      createdIds.push(created.id);
+    } catch (err) {
+      log(`voice-memo unplaced contact creation FAIL for ${messageId} (${person.firstName} ${person.lastName}): ${err.message ?? err}`);
+    }
+  }
+  return createdIds;
 }
 
 // Applies one linkTranscriptToContacts result to its row: records any new

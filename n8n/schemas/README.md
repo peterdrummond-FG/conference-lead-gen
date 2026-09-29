@@ -68,6 +68,13 @@ the control; it just isn't the only thing shaping the output.
 - `attribution.schema.json` rejects an extra key on a result (Zod silently
   dropped it). "No other keys" is the simplest proven way to say "exactly one
   of `excerpt` or `notFound`". It fails safe: the memo stays pending.
+- `unplacedContacts` (added 2026-09-29) is deliberately *not* subject to that
+  rule: it lists people the rep met and said something about who matched no
+  captured contact. A name mentioned only in relation to a lead is not listed.
+  Every entry must carry `spokeWithRep: true`, `detailsStated: true` and a
+  non-empty `interactionNotes`. Only the local-agent uses it so far;
+  `pipeline-voice-transcription` and the deployed `skill-attribute-voice-memo`
+  workflow predate it and must be regenerated and ported before voice cuts over.
 - `extractedContact`'s "title, districtName, or schoolName must be non-blank"
   rule (mirroring the Zod `.refine()` in `schemas.mjs`) is encoded as
   `anyOf: [{required:['title'], properties:{title:{minLength:1}}}, ...]` per

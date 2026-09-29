@@ -68,6 +68,45 @@ been replaced, the replacement is noted here instead of rewriting history.
   Node process did) and a narrowly-scoped `n8n_circuit_breaker` role. Purely
   additive; does not touch `local-agent`/`watch-cards.command`, which remain
   the live system until the n8n migration's later phases cut over.
+  **Dead as of 2026-09-24.** Only the archived first n8n build ever used it;
+  `local-agent` never did. The rebuild dropped circuit breakers: n8n calls the
+  Anthropic API with a key, so a 429 lasts seconds, not the hours a Claude
+  subscription limit did. Transient errors are handled by retry/backoff and
+  attempt refunds instead (`n8n/README.md`). `circuit_breaker` and the
+  `n8n_circuit_breaker` role can be dropped by a later migration.
+
+## n8n rebuild (2026-09-25)
+
+- **`20260925190525_contact_note_write_rpcs.sql`** adds
+  `append_contact_interaction_notes` and `set_contact_intent_if_current`, both
+  service-role only. They replace two n8n writes that put a contact's full
+  `interaction_notes` in the request URL as a guard, which fails (414) once
+  notes grow long. The append is also atomic and idempotent, so it can't lose a
+  reviewer's concurrent edit. Nothing calls either function until the n8n
+  pipelines are cut over.
+- **Not yet applied:** `n8n/cutover-migrations/` holds the Database Webhook
+  triggers and a `finalize_contact_match` guard (`match_status = 'pending'`).
+  They're kept out of this directory so nothing applies them early. When each
+  one is applied, move it here under its recorded version.
+
+## match-contact without Zoho (2026-09-29)
+
+- **`20260929170000_match_candidate_accounts_fn.sql`** adds
+  `match_candidate_accounts(states, district_tokens, school_tokens, limit)`,
+  service-role only. It is how `pipeline-match-contact` hands
+  `skill-match-contact` a list of real Zoho Accounts (from the
+  `school_districts`/`schools` copy) when the Zoho MCP endpoint is unusable.
+  Applied through the Supabase MCP under its own version stamp, so the
+  timestamp in this file name is not the recorded one.
+
+- **`20260929180000_voice_memo_multi_contact.sql`** replaces the partial unique
+  index `contacts_voice_memo_source_message_id_idx` (one `voice_memo` contact
+  per memo) with `contacts_voice_memo_source_message_person_idx` (one per memo
+  *and person*). The 2026-09-28 migration's comment that a memo "can only ever
+  produce at most one contact" no longer holds: a memo now also creates a
+  contact for every person the rep met and described who matches no
+  captured card (`contacts-from-voice-memo`, `unplacedContacts`). Applied through the
+  Supabase MCP under its own version stamp.
 
 ## Voice-memo link-state and OCR-retry (2026-09-22 audit)
 
