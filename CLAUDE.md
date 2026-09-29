@@ -152,6 +152,13 @@ Supabase CLI on this machine.
   `events-active`'s own fallback branch already had it; `contacts-create`'s
   `eventSlug` branch didn't.
 
+- **Seeing a conference is not being linked to it.** `events-active`'s
+  no-linked-user fallback returns the most recently activated event for
+  display, but a rep's QR resolves its conference from their own
+  `current_event_id` and `contacts-create` rejects a scan when that's empty.
+  UI that says "you're at X" must key off the session's `currentEventId`
+  (Setup's `joinedEvent`), never `eventStore.activeEvent`.
+
 ## Before shipping a feature
 
 **Read `docs/ENGINEERING-LESSONS.md` first.** It generalises every bug the

@@ -46,7 +46,8 @@ npm run typecheck   # vue-tsc --noEmit  (runs in CI)
 | `/privacy`, `/terms` | **public** — required by the Twilio A2P 10DLC campaign |
 | `/review` | any logged-in role; a `sales` rep sees only their own contacts |
 | `/notes` | any logged-in role; paste a typed note |
-| `/setup` | any logged-in role |
+| `/setup` | any logged-in role — a two-step rep checklist: join a conference, then pick capture tools (QR, text-in, booth iPad) |
+| `/admin` | `admin` / `solutionsSuccess` only — start/end conferences, manage the team and each rep's "Working at" conference |
 | `/export` | `admin` / `solutionsSuccess` only |
 
 Routing is `history` mode, not hash. `vercel.json` rewrites everything to

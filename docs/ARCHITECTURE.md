@@ -86,6 +86,23 @@ fixed in the same change. `events-active`'s own fallback branch already had
 the check; it just hadn't been true everywhere. Grep for `.eq("slug",` /
 `.eq("event_id",` on a client-supplied value before adding a new one.
 
+### Setup and Admin
+
+`/setup` (any role) is the guided rep flow; `/admin` (`admin` /
+`solutionsSuccess`) is where conferences and people are managed. Two things to
+preserve:
+
+- **"Joined" is `sessionStore.user.currentEventId`, not `eventStore.activeEvent`.**
+  `events-active` falls back to the most recent event for display when nothing
+  is linked, so the two differ exactly when a rep is about to have a broken QR.
+  Joining is a write (`profiles-set-current-event`); it is never inferred.
+- **Placing a rep at a conference has one control per audience** — Setup's
+  Join/Switch for yourself, Admin → Team's "Working at" for someone else. Both
+  end in the same field; don't add a third surface.
+
+The QR (per rep) and kiosk PIN (per login) are deliberately available before
+joining anything; only the SMS status is per conference.
+
 ### Invoking a skill
 
 Every `claude -p` call goes through `local-agent/skill-runner.mjs`, which

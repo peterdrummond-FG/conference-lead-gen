@@ -15,7 +15,7 @@
         <div v-else-if="!eventStore.activeEvent" key="unset" class="text-center">
           <q-icon name="event_busy" color="grey-5" size="56px" />
           <div class="intake-thanks-title q-mt-md">No event set up yet</div>
-          <div class="intake-subtitle q-mb-0">Sign in and pick today's event in Setup.</div>
+          <div class="intake-subtitle q-mb-0">Sign in and join today's conference in Setup.</div>
         </div>
 
         <div v-else key="form">

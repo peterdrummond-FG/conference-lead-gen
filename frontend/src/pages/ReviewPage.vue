@@ -124,10 +124,11 @@
         label="Sync status"
       />
 
-      <!-- Self-service event linking — a rep has no Setup access, so this
-           is the only place they can set their own current event. Hidden
-           while an admin is previewing someone else's view (that's what
-           Setup's own per-rep control is for). -->
+      <!-- Self-service event linking from where a rep is already working
+           (Setup's Step 1 is the guided way to join; this is the quick
+           link/unlink, and the only place to unlink). Hidden while an admin
+           is previewing someone else's view -- the Admin page's per-rep
+           "Working at" picker is the control for setting someone else's. -->
       <template v-if="salesScope === 'current' && !sessionStore.viewingAs">
         <div class="text-caption text-grey">
           {{ sessionStore.user?.currentEventName ? `Working: ${sessionStore.user.currentEventName}` : 'Not linked to an event' }}
