@@ -33,6 +33,9 @@
         </div>
       </div>
 
+    </div>
+
+    <div class="le-scroll">
       <div class="le-intent" role="group" aria-label="How the conversation went">
         <span class="le-intent-label">Heat</span>
         <div class="le-intent-seg">
@@ -59,9 +62,6 @@
           @update:model-value="toggleFollowedUp"
         />
       </div>
-    </div>
-
-    <div class="le-scroll">
       <!-- Why this lead is here, with the fix next to it. Each line names one
            thing to do — visible text, not a tooltip on a disabled button. -->
       <div v-if="contact.reviewStatus === 'needs_review' && flags.length" class="le-issues">
@@ -595,7 +595,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-nav { display: flex; align-items: center; gap: 0; margin: -4px -8px 0 0; flex: none; }
 .le-pos { font-size: 12px; color: #5B6670; margin-right: 4px; white-space: nowrap; }
 
-.le-intent { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.le-intent { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 0 8px; margin-bottom: 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
 .le-intent-label { font-size: 13px; color: #5B6670; }
 .le-intent-seg { display: inline-flex; border: 1px solid rgba(0, 0, 0, 0.24); border-radius: 8px; overflow: hidden; }
 .le-intent-btn {
@@ -690,8 +690,13 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   .le-head { padding: 10px 12px 8px; }
   .le-scroll { padding: 8px 12px 12px; }
   .le-foot { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
+  /* Heat label and its three choices share one line; Followed up sits under
+     them. The choices are 40px tall — still a comfortable tap, and it gives the
+     fields more of the sheet. */
+  .le-intent { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; }
   .le-intent-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
-  .le-intent-btn { height: 44px; }
+  .le-intent-btn { height: 40px; }
+  .le-follow { grid-column: 1 / -1; margin-left: 0; }
 
   .le-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   /* The photo becomes a one-line strip: enough to tap open, and the fields
@@ -713,7 +718,6 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   .le-form :deep(.q-field--dense .q-field__control),
   .le-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
 
-  .le-follow { flex: 1 0 100%; margin-left: 0; }
   .le-approve { flex: 1; }
   .le-foot-row .q-btn { flex: 1 1 auto; }
 }

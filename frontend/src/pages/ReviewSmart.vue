@@ -100,8 +100,8 @@
                 <div class="rs-sec-name">{{ currentTitle }}</div>
                 <div class="rs-sec-sub">Current event<template v-if="currentLeads.length"> · {{ currentLeads.length }} {{ currentLeads.length === 1 ? 'lead' : 'leads' }}</template></div>
               </div>
+              <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(currentLeads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
               <div class="rs-sec-actions">
-                <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(currentLeads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
                 <!-- Linking lives here, with the event it changes, rather than
                      as a loose control in the page header. Hidden while an
                      admin previews a rep — Admin's per-rep picker sets that. -->
@@ -141,9 +141,7 @@
                     <span class="rs-sec-sub">{{ g.leads.length }} {{ g.leads.length === 1 ? 'lead' : 'leads' }}</span>
                   </span>
                 </button>
-                <div class="rs-sec-actions">
-                  <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(g.leads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
-                </div>
+                <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(g.leads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
               </div>
               <ReviewLeadList
                 v-if="isPastOpen(g.eventId, i)"
@@ -692,7 +690,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 /* ── Sections ── */
 .rs-section + .rs-section { margin-top: 12px; }
-.rs-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 0 2px 6px; }
+.rs-sec-head { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 2px 6px; }
+.rs-sec-head > .rs-sec-title, .rs-sec-head > .rs-sec-toggle { flex: 1; min-width: 0; }
 .rs-sec-title { display: flex; flex-direction: column; min-width: 0; text-align: left; }
 .rs-sec-name { font-size: 16px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
 .rs-sec-sub { font-size: 13px; color: #5B6670; }
@@ -712,7 +711,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
   cursor: pointer;
 }
 .rs-sec-toggle:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 6px; }
-.rs-ready-btn { min-height: 40px; padding: 0 12px; }
+.rs-ready-btn { min-height: 40px; padding: 0 12px; flex: none; }
 .rs-link-btn { min-height: 40px; }
 .rs-past { margin-top: 20px; }
 .rs-past-title { margin: 0 0 4px; font-size: 13px; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: #5B6670; }
@@ -727,8 +726,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 @media (max-width: 599px) {
   .rs-page { padding: 10px 12px 28px; }
-  .rs-follow-toggle { width: 100%; }
+
+  /* Filters sit two to a row instead of one full-width select per row; the
+     follow-up toggle and Conference select take a whole row. */
+  .rs-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rs-filters .rs-select { min-width: 0; }
+  .rs-follow-toggle { grid-column: 1 / -1; width: 100%; }
   .rs-follow-toggle :deep(.q-btn) { flex: 1; }
+  .rs-filters .rs-select:first-of-type:nth-last-of-type(3) { grid-column: 1 / -1; }
+
+  /* Section title and its menu share the first line; "Approve N ready" gets a
+     full-width line of its own instead of squeezing the title into three. */
+  .rs-sec-head { flex-wrap: wrap; row-gap: 4px; }
+  .rs-sec-head > .rs-sec-actions { order: 2; }
+  .rs-sec-head > .rs-ready-btn { order: 3; flex: 1 0 100%; min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
