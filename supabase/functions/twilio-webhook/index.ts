@@ -155,6 +155,68 @@ function extFromContentType(ct: string): string | null {
   return EXT_BY_CONTENT_TYPE[ct.split(";")[0].trim().toLowerCase()] ?? null;
 }
 
+// 2026-09-29: a rep's first "SETUP" got no reply. Twilio logged error 11200:
+// a 12 s gap opened between two Supabase calls inside one request (the DB
+// itself was idle and answered a timed replay in ~8 ms), and Twilio abandons a
+// webhook after 15 s -- so the reply was never sent even though every write
+// had already landed. The stall was transient and left nothing in the function
+// logs to say which call it was. Two defences, both aimed at keeping the
+// reply inside Twilio's budget:
+//
+// - step(): a per-call cap with one retry, for the awaited calls the reply
+//   genuinely depends on. Only used on idempotent operations (selects,
+//   upserts, deletes keyed on phone_number) -- a timed-out first attempt keeps
+//   running in the background, so a retry of a non-idempotent write (insert,
+//   events_activate) could double-apply. Also logs any slow call so the next
+//   stall names itself.
+// - background(): audit-row writes that only record what happened move to
+//   after the reply is sent. inbound_messages rows that GATE something
+//   (the text_note idempotency check, media rows whose id is needed next) are
+//   deliberately still awaited inline.
+const STEP_TIMEOUT_MS = 4000;
+
+class StepTimeout extends Error {}
+
+async function step<T>(label: string, make: () => PromiseLike<T>): Promise<T> {
+  for (let attempt = 1;; attempt++) {
+    const started = performance.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        Promise.resolve(make()),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new StepTimeout(label)), STEP_TIMEOUT_MS);
+        }),
+      ]);
+      const ms = Math.round(performance.now() - started);
+      if (ms > 1000 || attempt > 1) console.warn(`twilio-webhook slow step: ${label} took ${ms}ms (attempt ${attempt})`);
+      return result;
+    } catch (err) {
+      if (!(err instanceof StepTimeout) || attempt >= 2) throw err;
+      console.warn(`twilio-webhook step timed out after ${STEP_TIMEOUT_MS}ms, retrying: ${label}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+// Fire-and-forget that EdgeRuntime keeps alive past the response. A unique
+// violation is the expected shape of a Twilio retry of an already-logged
+// MessageSid, so it isn't worth an error line.
+function background(label: string, work: () => PromiseLike<unknown>): void {
+  const task = (async () => {
+    try {
+      // deno-lint-ignore no-explicit-any
+      const result = (await work()) as any;
+      if (result?.error && result.error.code !== "23505") console.error(`twilio-webhook background ${label} failed`, result.error);
+    } catch (err) {
+      console.error(`twilio-webhook background ${label} threw`, err);
+    }
+  })();
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil(task);
+}
+
 function normalizeBody(text: string): string {
   return text.toLowerCase().trim().replace(/\s+/g, " ");
 }
@@ -209,10 +271,14 @@ Deno.serve(async (req) => {
   // refreshes the 60-minute idle clock session-notifications watches and
   // cancels a pending reminder so the next idle stretch can trigger a
   // fresh one. No-ops (0 rows) for a phone that isn't bound to anything.
-  await supabase
-    .from("phone_event_bindings")
-    .update({ last_activity_at: new Date().toISOString(), expiry_notified_at: null })
-    .eq("phone_number", from);
+  // Backgrounded: nothing in the reply depends on it, and it used to sit in
+  // front of every request. Racing a later bind upsert is harmless -- it only
+  // touches last_activity_at/expiry_notified_at, which that upsert also sets.
+  background("activity refresh", () =>
+    supabase
+      .from("phone_event_bindings")
+      .update({ last_activity_at: new Date().toISOString(), expiry_notified_at: null })
+      .eq("phone_number", from));
 
   // No media: either a step in an in-progress "setup a new conference"
   // conversation, a folder-code bind attempt, or the phrase that starts a
@@ -220,15 +286,16 @@ Deno.serve(async (req) => {
   if (numMedia === 0) {
     const normalized = normalizeBody(body);
 
-    const { data: rawSession } = await supabase
-      .from("conference_setup_sessions")
-      .select("step, candidates, updated_at")
-      .eq("phone_number", from)
-      .maybeSingle();
+    const { data: rawSession } = await step("session select", () =>
+      supabase
+        .from("conference_setup_sessions")
+        .select("step, candidates, updated_at")
+        .eq("phone_number", from)
+        .maybeSingle());
 
     const isStale = !!rawSession && Date.now() - new Date(rawSession.updated_at).getTime() > SESSION_STALE_MS;
     if (isStale) {
-      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
+      await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
     }
     const session = isStale ? null : rawSession;
 
@@ -236,20 +303,22 @@ Deno.serve(async (req) => {
     // after not seeing a reply) restarts the flow rather than being read as
     // the conference name/selection the current step was expecting.
     if (session && START_TRIGGER_PHRASES.has(normalized)) {
-      await supabase.from("conference_setup_sessions").upsert({
-        phone_number: from,
-        step: "awaiting_name",
-        candidates: null,
-        updated_at: new Date().toISOString(),
-      });
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
+      await step("conference_setup_sessions upsert", () =>
+        supabase.from("conference_setup_sessions").upsert({
+          phone_number: from,
+          step: "awaiting_name",
+          candidates: null,
+          updated_at: new Date().toISOString(),
+        }));
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "completed",
+          body,
+        }));
       return twiml("Starting over — what's the name of the conference? Type as much as you remember.");
     }
 
@@ -259,15 +328,16 @@ Deno.serve(async (req) => {
       const picked = Number.isInteger(choice) ? candidates[choice - 1] : undefined;
 
       if (!picked) {
-        await supabase.from("inbound_messages").insert({
-          twilio_message_sid: sid,
-          from_phone: from,
-          to_phone: to,
-          kind: "conference_setup",
-          status: "failed",
-          body,
-          error: "reply did not match a candidate number",
-        });
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: "reply did not match a candidate number",
+          }));
         return twiml(`That's not one of the options — just reply with the number (ie. 2) from the list above. If it's none of these reply "SETUP" to start over`);
       }
 
@@ -276,20 +346,22 @@ Deno.serve(async (req) => {
       // activated and we couldn't: ask for the state instead of failing --
       // see the awaiting_state branch below.
       if (picked.kind === "campaign" && !picked.state) {
-        await supabase.from("conference_setup_sessions").upsert({
-          phone_number: from,
-          step: "awaiting_state",
-          candidates: [picked],
-          updated_at: new Date().toISOString(),
-        });
-        await supabase.from("inbound_messages").insert({
-          twilio_message_sid: sid,
-          from_phone: from,
-          to_phone: to,
-          kind: "conference_setup",
-          status: "completed",
-          body,
-        });
+        await step("conference_setup_sessions upsert", () =>
+          supabase.from("conference_setup_sessions").upsert({
+            phone_number: from,
+            step: "awaiting_state",
+            candidates: [picked],
+            updated_at: new Date().toISOString(),
+          }));
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "completed",
+            body,
+          }));
         return twiml(`I can't tell what state "${picked.name}" is in, text the full state name the conference is in here so I can set it up.`);
       }
 
@@ -309,42 +381,45 @@ Deno.serve(async (req) => {
           // uses -- see 20260917100000_event_reps_and_activation_guard.sql.
           console.error("events_activate failed (SMS setup)", activateError);
           const friendly = activationFailureReply(picked.name, activateError);
-          await supabase.from("inbound_messages").insert({
-            twilio_message_sid: sid,
-            from_phone: from,
-            to_phone: to,
-            kind: "conference_setup",
-            status: "failed",
-            body,
-            error: friendly,
-          });
+          background("audit row", () =>
+            supabase.from("inbound_messages").insert({
+              twilio_message_sid: sid,
+              from_phone: from,
+              to_phone: to,
+              kind: "conference_setup",
+              status: "failed",
+              body,
+              error: friendly,
+            }));
           return twiml(friendly);
         }
         eventId = activated.id;
         eventName = activated.name;
       }
 
-      await supabase.from("phone_event_bindings").upsert({
-        phone_number: from,
-        event_id: eventId,
-        updated_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-        expiry_notified_at: null,
-        // Switching events resets the confirmation watermark so a stale
-        // value from a prior event can't skip confirming this event's
-        // first batch of contacts.
-        contacts_confirmed_through: new Date().toISOString(),
-      });
-      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        event_id: eventId,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
+      await step("phone_event_bindings upsert", () =>
+        supabase.from("phone_event_bindings").upsert({
+          phone_number: from,
+          event_id: eventId,
+          updated_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+          expiry_notified_at: null,
+          // Switching events resets the confirmation watermark so a stale
+          // value from a prior event can't skip confirming this event's
+          // first batch of contacts.
+          contacts_confirmed_through: new Date().toISOString(),
+        }));
+      await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          event_id: eventId,
+          kind: "conference_setup",
+          status: "completed",
+          body,
+        }));
       const reply = picked.kind === "campaign"
         ? `${eventName} (${picked.state}) is activated and you're linked to it. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`
         : `You're linked to ${eventName}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready.`;
@@ -356,15 +431,16 @@ Deno.serve(async (req) => {
       const state = matchValidState(body);
 
       if (!state) {
-        await supabase.from("inbound_messages").insert({
-          twilio_message_sid: sid,
-          from_phone: from,
-          to_phone: to,
-          kind: "conference_setup",
-          status: "failed",
-          body,
-          error: "reply did not match a US state name",
-        });
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: "reply did not match a US state name",
+          }));
         return twiml("I didn't recognize that as a US state — reply with the full name (like Texas or Ohio).");
       }
 
@@ -376,36 +452,39 @@ Deno.serve(async (req) => {
       if (activateError) {
         console.error("events_activate failed (SMS setup, state supplied)", activateError);
         const friendly = activationFailureReply(candidate.name, activateError);
-        await supabase.from("inbound_messages").insert({
-          twilio_message_sid: sid,
-          from_phone: from,
-          to_phone: to,
-          kind: "conference_setup",
-          status: "failed",
-          body,
-          error: friendly,
-        });
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: friendly,
+          }));
         return twiml(friendly);
       }
 
-      await supabase.from("phone_event_bindings").upsert({
-        phone_number: from,
-        event_id: activated.id,
-        updated_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-        expiry_notified_at: null,
-        contacts_confirmed_through: new Date().toISOString(),
-      });
-      await supabase.from("conference_setup_sessions").delete().eq("phone_number", from);
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        event_id: activated.id,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
+      await step("phone_event_bindings upsert", () =>
+        supabase.from("phone_event_bindings").upsert({
+          phone_number: from,
+          event_id: activated.id,
+          updated_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+          expiry_notified_at: null,
+          contacts_confirmed_through: new Date().toISOString(),
+        }));
+      await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          event_id: activated.id,
+          kind: "conference_setup",
+          status: "completed",
+          body,
+        }));
       return twiml(`${activated.name} (${state}) is activated and you're linked to it. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`);
     }
 
@@ -427,32 +506,35 @@ Deno.serve(async (req) => {
       }));
 
       if (candidates.length === 0) {
-        await supabase.from("inbound_messages").insert({
+        background("audit row", () =>
+          supabase.from("inbound_messages").insert({
+            twilio_message_sid: sid,
+            from_phone: from,
+            to_phone: to,
+            kind: "conference_setup",
+            status: "failed",
+            body,
+            error: "no fuzzy match found",
+          }));
+        return twiml(`I couldn't find a close match for "${body}". Try typing more of the official name — the state or city helps too.`);
+      }
+
+      await step("conference_setup_sessions upsert", () =>
+        supabase.from("conference_setup_sessions").upsert({
+          phone_number: from,
+          step: "awaiting_selection",
+          candidates,
+          updated_at: new Date().toISOString(),
+        }));
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
           twilio_message_sid: sid,
           from_phone: from,
           to_phone: to,
           kind: "conference_setup",
-          status: "failed",
+          status: "completed",
           body,
-          error: "no fuzzy match found",
-        });
-        return twiml(`I couldn't find a close match for "${body}". Try typing more of the official name — the state or city helps too.`);
-      }
-
-      await supabase.from("conference_setup_sessions").upsert({
-        phone_number: from,
-        step: "awaiting_selection",
-        candidates,
-        updated_at: new Date().toISOString(),
-      });
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
+        }));
 
       // A not-yet-active campaign always reads "I'll set it up when you pick
       // it" regardless of whether a state could be parsed from its name --
@@ -466,20 +548,22 @@ Deno.serve(async (req) => {
     }
 
     if (START_TRIGGER_PHRASES.has(normalized)) {
-      await supabase.from("conference_setup_sessions").upsert({
-        phone_number: from,
-        step: "awaiting_name",
-        candidates: null,
-        updated_at: new Date().toISOString(),
-      });
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        kind: "conference_setup",
-        status: "completed",
-        body,
-      });
+      await step("conference_setup_sessions upsert", () =>
+        supabase.from("conference_setup_sessions").upsert({
+          phone_number: from,
+          step: "awaiting_name",
+          candidates: null,
+          updated_at: new Date().toISOString(),
+        }));
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "conference_setup",
+          status: "completed",
+          body,
+        }));
       return twiml("What's the name of the conference? (as much as you remember)");
     }
 
@@ -508,16 +592,17 @@ Deno.serve(async (req) => {
 
       if (binding && body.length > 0) {
         if (!fitsOneSmsSegment(body)) {
-          await supabase.from("inbound_messages").insert({
-            twilio_message_sid: sid,
-            from_phone: from,
-            to_phone: to,
-            event_id: binding.event_id,
-            kind: "text_note",
-            status: "failed",
-            body,
-            error: "text exceeds a single SMS segment",
-          });
+          background("audit row", () =>
+            supabase.from("inbound_messages").insert({
+              twilio_message_sid: sid,
+              from_phone: from,
+              to_phone: to,
+              event_id: binding.event_id,
+              kind: "text_note",
+              status: "failed",
+              body,
+              error: "text exceeds a single SMS segment",
+            }));
           return twiml("That's too long for one text. Keep it to one short line about one person, or use the Notes page in the app for anything longer or for multiple people.");
         }
 
@@ -549,38 +634,41 @@ Deno.serve(async (req) => {
         return twiml("Got it — that contact's logged and will show up in Review in a few minutes.");
       }
 
-      await supabase.from("inbound_messages").insert({
-        twilio_message_sid: sid,
-        from_phone: from,
-        to_phone: to,
-        kind: "unrecognized",
-        status: "failed",
-        body,
-        error: "text did not match a known event folder code",
-      });
+      background("audit row", () =>
+        supabase.from("inbound_messages").insert({
+          twilio_message_sid: sid,
+          from_phone: from,
+          to_phone: to,
+          kind: "unrecognized",
+          status: "failed",
+          body,
+          error: "text did not match a known event folder code",
+        }));
       return twiml("I didn't recognize that. If you have your event's folder code, text it to link your phone. If not, text SETUP and I'll help you find your conference by name.");
     }
 
-    await supabase.from("phone_event_bindings").upsert({
-      phone_number: from,
-      event_id: event.id,
-      updated_at: new Date().toISOString(),
-      last_activity_at: new Date().toISOString(),
-      expiry_notified_at: null,
-      // Switching events resets the confirmation watermark so a stale
-      // value from a prior event can't skip confirming this event's
-      // first batch of contacts.
-      contacts_confirmed_through: new Date().toISOString(),
-    });
-    await supabase.from("inbound_messages").insert({
-      twilio_message_sid: sid,
-      from_phone: from,
-      to_phone: to,
-      event_id: event.id,
-      kind: "folder_code_bind",
-      status: "completed",
-      body,
-    });
+    await step("phone_event_bindings upsert", () =>
+      supabase.from("phone_event_bindings").upsert({
+        phone_number: from,
+        event_id: event.id,
+        updated_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        expiry_notified_at: null,
+        // Switching events resets the confirmation watermark so a stale
+        // value from a prior event can't skip confirming this event's
+        // first batch of contacts.
+        contacts_confirmed_through: new Date().toISOString(),
+      }));
+    background("audit row", () =>
+      supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        event_id: event.id,
+        kind: "folder_code_bind",
+        status: "completed",
+        body,
+      }));
     return twiml(`You're linked to ${event.name}. Text a photo of a business card (and an optional voice memo right after) whenever you're ready.`);
   }
 
@@ -592,15 +680,16 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (!binding) {
-    await supabase.from("inbound_messages").insert({
-      twilio_message_sid: sid,
-      from_phone: from,
-      to_phone: to,
-      kind: "unrecognized",
-      status: "failed",
-      body,
-      error: "no event binding for this phone number",
-    });
+    background("audit row", () =>
+      supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        kind: "unrecognized",
+        status: "failed",
+        body,
+        error: "no event binding for this phone number",
+      }));
     return twiml("Your phone isn't linked to an event yet. Text your folder code, or text SETUP to find your conference by name — then send card photos.");
   }
 
