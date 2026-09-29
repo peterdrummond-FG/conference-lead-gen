@@ -167,6 +167,11 @@ someone is, and `components/onboarding/` draws it. Things to preserve:
 - **Never for attendees or a locked kiosk.** The splash and overlay only mount
   for a signed-in user on an unlocked device, and never start while an admin is
   previewing someone else ("View as").
+- **The tour's last step points at the top-bar "?" button** (`data-tour="tour-replay"`),
+  and its copy says "from this button". On a phone the top bar keeps that "?" as
+  its own icon and folds Lock and Log out into one labelled account menu
+  (`MainLayout.vue`); don't hide the "?" inside that menu without changing the
+  step's wording.
 - **The copy makes promises about Setup and Review.** If Smart's Ready rule or
   Setup's flow changes, update `onboardingTour.ts` in the same change.
 

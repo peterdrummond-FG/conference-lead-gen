@@ -33,7 +33,7 @@
         <!-- Locks this physical device down to just the public Connect
              screen — for a shared kiosk iPad/laptop an attendee will be
              handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
-        <q-btn flat dense no-caps icon="lock" color="grey-7" :label="isPhone ? undefined : 'Lock kiosk'" aria-label="Lock kiosk" @click="onLockKiosk">
+        <q-btn v-if="!isPhone" flat dense no-caps icon="lock" color="grey-7" label="Lock kiosk" aria-label="Lock kiosk" @click="onLockKiosk">
           <q-tooltip>Lock this device to Connect only</q-tooltip>
         </q-btn>
 
@@ -44,8 +44,32 @@
         </q-btn>
 
         <q-separator vertical spaced />
-        <q-btn flat dense icon="logout" round color="grey-7" aria-label="Log out" @click="onLogout">
+        <q-btn v-if="!isPhone" flat dense icon="logout" round color="grey-7" aria-label="Log out" @click="onLogout">
           <q-tooltip>Log out</q-tooltip>
+        </q-btn>
+
+        <!-- Phones: Lock kiosk and Log out were two bare icons (the lock is a real
+             "hand this device to attendees" action, and a first tap on it explained
+             nothing), and together with the tour's ? they squeezed the logo down to
+             "CKH Co…". One labelled menu instead. The ? stays on its own because the
+             tour's last step points at it. -->
+        <q-btn v-else flat dense round icon="account_circle" color="grey-8" aria-label="Account menu">
+          <q-menu auto-close anchor="bottom right" self="top right">
+            <q-list style="min-width: 240px">
+              <q-item clickable @click="onLockKiosk">
+                <q-item-section avatar><q-icon name="lock" /></q-item-section>
+                <q-item-section>
+                  <q-item-label>Lock this device</q-item-label>
+                  <q-item-label caption>For a shared booth iPad or laptop</q-item-label>
+                </q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item clickable @click="onLogout">
+                <q-item-section avatar><q-icon name="logout" /></q-item-section>
+                <q-item-section>Log out</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
         </q-btn>
       </q-toolbar>
     </q-header>
