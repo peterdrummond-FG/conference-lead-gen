@@ -355,6 +355,33 @@ result," that's the finding.
 
 ---
 
+## 15. A promise in the UI has to be true in the pipeline behind it
+
+**What happened.** While adding an "Add note" button to Review, the plan was a
+tooltip: "this note will end up in Zoho." Before writing it, we read
+`export-csv`. Its Description column was built from `contacts.notes` — the AI's
+match reasoning — and never read `interaction_notes`, the field reps type into
+and voice memos land in. Reps' notes had never reached Zoho. Nothing had ever
+said they did, so nobody had looked; the tooltip would have been the first
+statement of a guarantee, and it would have been false. (The match reasoning,
+meanwhile, *was* being exported, and had just been hidden from the screen.)
+
+Same family as #3: prose without a control. Here the "prose" is interface text.
+
+**The rule.** Interface copy is a claim about the system. When it says what
+happens to the user's data ("saved", "included in the import", "sent to
+Sales"), read the code that does it before shipping the sentence, and either
+make the pipeline true or change the sentence. Keep the two next to each other
+in a comment so the next change to one sees the other.
+
+A related habit from the same work: a count or selection the UI shows has to be
+the count the action uses. Classic's bulk approve counted every ticked card,
+including ones hidden by a page or filter change, and discarded the server's
+`skipped` list — the screen said one thing, the request did another. Count
+what's on screen, and report what the server says it did.
+
+---
+
 ## Checklist before shipping a feature
 
 - [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
@@ -374,6 +401,10 @@ result," that's the finding.
 - [ ] Any "can't confidently resolve this" path leaves an explicit, visible
       pending state — never a best-guess default a reviewer can't tell apart
       from a real result
+- [ ] Any UI copy that says what happens to data ("included in the import",
+      "saved") was checked against the code that does it
+- [ ] Any bulk action acts only on what's visibly selected and reports what the
+      server actually did (approved vs skipped)
 - [ ] Any new poll-loop retry uses the claim-based shape
       (`claim_pending_contacts`/`claim_unlinked_audio_messages`), not a
       time-window-from-receipt or in-process cooldown state

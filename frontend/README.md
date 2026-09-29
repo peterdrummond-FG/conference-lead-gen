@@ -35,6 +35,7 @@ Functions gateway's own JWT check. The real privilege boundary is
 npm run dev         # quasar dev, HMR
 npm run build       # production build -> dist/spa
 npm run typecheck   # vue-tsc --noEmit  (runs in CI)
+npm test            # node --test on src/utils/*.test.mjs (Review's Smart-view logic)
 ```
 
 ## Routes
@@ -44,7 +45,7 @@ npm run typecheck   # vue-tsc --noEmit  (runs in CI)
 | `/login` | public; the default landing page |
 | `/intake`, `/booth`, `/session` | **public** — the attendee form and its QR aliases |
 | `/privacy`, `/terms` | **public** — required by the Twilio A2P 10DLC campaign |
-| `/review` | any logged-in role; a `sales` rep sees only their own contacts |
+| `/review` | any logged-in role; a `sales` rep sees only their own contacts. Two views, **Smart** (default) and **Classic**, switched from the ⋮ menu and remembered per browser |
 | `/notes` | any logged-in role; paste a typed note |
 | `/setup` | any logged-in role — a two-step rep checklist: join a conference, then pick capture tools (QR, text-in, booth iPad) |
 | `/admin` | `admin` / `solutionsSuccess` only — start/end conferences, manage the team and each rep's "Working at" conference |

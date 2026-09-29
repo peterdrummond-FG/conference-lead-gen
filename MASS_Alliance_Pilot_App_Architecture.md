@@ -208,7 +208,7 @@ every call.
 | `contacts-create` | Saves a form row, runs the within-event duplicate check synchronously, then leaves it `pending` for `local-agent`'s matching loop to pick up (below) — the response returns immediately, before matching completes |
 | `districts-list` / `schools-list` | Type-ahead lookups |
 | `districts-create` / `schools-create` | Add-new, called when someone types something not already in the list. **No dedup-by-name and no client-supplied `state`** — always inserts, and `state` is always derived server-side from an event (an `eventId` param, or the currently-active event), matching the original `.NET` contract exactly (an earlier pass at this port had invented different behavior here — caught and fixed in Stage 15) |
-| `GET /review` (Quasar page) | The clearinghouse — a list view, not a step-through queue, so reviewers can tackle records in any order and bulk-approve a batch of high-confidence ones in one action. Each row shows: source photo (if any) next to editable fields, extraction confidence, a "possible duplicate of [name]" flag when `LocalDuplicateOfContactId` is set, an editable `InteractionNotes` field, and — when `MatchConfidence = medium` — a picker showing `CandidateMatches` to resolve against. Approve / Edit / Reject per row or in bulk |
+| `GET /review` (Quasar page) | The clearinghouse — a list view, not a step-through queue, so reviewers can tackle records in any order and bulk-approve a batch of high-confidence ones in one action. Each row shows: source photo (if any) next to editable fields, extraction confidence, a "possible duplicate of [name]" flag when `LocalDuplicateOfContactId` is set, an editable `InteractionNotes` field, and — when `MatchConfidence = medium` — a picker showing `CandidateMatches` to resolve against. Approve / Edit / Reject per row or in bulk. *(2026-09-29: this describes the **Classic** view. `/review` now defaults to **Smart** — flagged rows, one-tap approve, search, a desktop split pane — with Classic one menu tap away; see `docs/ARCHITECTURE.md`, "Review's two views". The Zoho Account Id / Account name link fields and the "Show match reasoning" link were removed from both views.)* |
 | `contacts-list` / `contacts-duplicates` | List with filters, and the duplicate-pair lookup for the review UI |
 | `contacts-patch` | Updates a row's fields, resolves a candidate match, and/or updates status |
 | `contacts-bulk-approve` / `contacts-bulk-delete` / `contacts-merge-duplicates` | Bulk review actions |
@@ -243,7 +243,12 @@ time:
   link hasn't been confirmed yet.
 - **Lead Source** is always the active Event's name.
 - **Description** carries forward extraction/match confidence notes, same as
-  the first batch.
+  the first batch. Since 2026-09-29 it leads with the rep's own notes as
+  `Notes: …` (`interaction_notes`: typed notes plus voice-memo transcripts) —
+  before that they were never exported, and only the AI match reasoning
+  (`contacts.notes`) was. Review's Notes tooltip promises this, so the two
+  change together. A separate `Follow Up Done` column (not in the list above)
+  carries the rep's Followed up toggle.
 
 The export screen also shows a running count — approved and in this file,
 still in `needs_review`, and blocked on a manual Account creation — so nothing
@@ -903,6 +908,32 @@ past that threshold.
   …123000, …124500) and a reworked `campaigns-list`, which needs redeploying.
   The end-date parser shipped broken (Postgres `\b` is backspace) and was caught
   by running it over all 578 dated names — see CLAUDE.md.
+
+- **Review gets a Smart view (2026-09-29).** `/review` now opens on **Smart**;
+  the previous card grid is kept as **Classic** (⋮ menu, remembered per
+  browser). Smart is a list of compact rows that say why a lead needs a look —
+  checking match, possible duplicate, no email or phone, no school or district —
+  or show **Ready**, with live tab counts, search and sort, one-tap Approve /
+  Reject with Undo, "Approve N ready" (Ready = match finished, no duplicate, an
+  email or phone, a school or district), and Followed up / Add note / Heat from
+  the row. A rep sees their current conference first and past ones as
+  collapsible sections, newest first; on a desktop the list sits beside an
+  editor pane (J / K / A / R keys), on a phone the editor is a bottom sheet. Reps
+  get plain "New / Existing school / district" wording and the candidate picker
+  ("Pick a Zoho match", hidden when there are none); the match score, opportunity
+  line and detailed account wording stay Admin / Solutions Success only. The
+  Zoho Account Id / Account name link fields and "Show match reasoning" were
+  removed from both views. Front-end only for the view itself — Smart loads all
+  three statuses so no new Edge Function was needed. Two Classic bulk-approve
+  bugs were fixed alongside it (selection could include cards hidden by a page
+  or filter change; the `{ approved, skipped }` response was discarded).
+
+- **Rep notes now reach Zoho (2026-09-29).** Adding a proper Notes field and an
+  "Add note" button surfaced that `export-csv` had never exported
+  `interaction_notes` — its Description column held only the confidence lines and
+  the AI match reasoning. It now leads with `Notes: …`. **`export-csv` must be
+  redeployed** (`node scripts/deploy-functions.mjs export-csv`) for the CSV to
+  match what Review's tooltip says.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
