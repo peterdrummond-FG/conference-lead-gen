@@ -114,6 +114,7 @@ bash scripts/check-deployed-functions.sh
 # Tests
 cd local-agent && npm test
 cd frontend && npm run typecheck
+cd frontend && npm test              # Review Smart-view logic (utils/reviewSmart)
 
 # Retention purge (audit S12)
 cd local-agent && node --env-file=.env purge-expired-media.mjs --dry-run
@@ -165,6 +166,22 @@ Supabase CLI on this machine.
   only by running the function over the whole `campaigns` table and counting
   parsed ranges — reading the SQL looked fine. Validate a parser against the
   real data, not a sample, and count the successes.
+
+- **A UI promise has to be true in the pipeline behind it.** Review's Notes
+  tooltip says notes are "included in the Zoho import". When it was written,
+  `export-csv` built the Description column from `contacts.notes` (the AI match
+  reasoning) and never read `interaction_notes`, so a rep's notes never reached
+  Zoho. Found by reading the export before writing the tooltip. If you change
+  what `export-csv` emits, update Review's tooltips (`ReviewLeadEditor.vue`,
+  `AddNoteDialog.vue`, `ReviewLeadRow.vue`) too — and redeploy `export-csv`.
+
+- **Review has two views, and Smart's rules live in one file.** `/review`
+  switches between Classic (`ReviewClassic.vue`, deliberately left as it was)
+  and Smart (`ReviewSmart.vue`). Smart's readiness / flag / sort / search /
+  grouping logic is `frontend/src/utils/reviewSmart.ts` with tests; "Ready"
+  (one-tap approve, "Approve N ready") means match finished, no possible
+  duplicate, an email or phone, and a school or district. Change the rule there,
+  not in a component. Details: `docs/ARCHITECTURE.md`, "Review's two views".
 
 ## Before shipping a feature
 

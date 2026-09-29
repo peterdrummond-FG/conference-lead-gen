@@ -288,12 +288,16 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 
 `contacts.followed_up` (`20260928130000_add_contact_followed_up.sql`) is a
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
-any skill or auto-classification — a rep toggles it directly on the Review
-card (collapsed or expanded, any tab) via `contacts-patch`. The Approved
-tab's "Follow-up status" dropdown is the only place it drives behavior
-beyond display, and it's a client-side filter over the already-loaded list
-(same mechanism as the existing conference filter), not a server query
-param. `export-csv` carries it through as its own `Follow Up Done` column —
+any skill or auto-classification — a rep toggles it directly via
+`contacts-patch`, and it saves as they tap. In Classic that's on the card
+(collapsed or expanded, any tab); in Smart it's on every To review and Approved
+row and beside Heat in the editor header (see "Review's two views" below). The
+Approved tab's follow-up filter is the only place it drives behavior beyond
+display — Classic's "Follow-up status" dropdown, Smart's All / To follow up /
+Followed up toggle plus a default "Follow up first" sort — and it's a
+client-side filter over the already-loaded list (same mechanism as the
+conference filter), not a server query param. `export-csv` carries it through
+as its own `Follow Up Done` column —
 no Zoho field is mapped to it yet, so it rides along unmapped until Sales
 picks one.
 
@@ -307,9 +311,11 @@ and remembered per browser (`localStorage`, default **Smart**):
 - **Smart** (`ReviewSmart.vue`, `components/smart/`) — a list of compact rows
   with a plain-language flag for why a lead needs a look (or a green Ready),
   live tab counts, search and sort, one-tap Approve / Reject with a 6-second
-  Undo, and "Approve N ready". On a desktop (≥1024px) the list sits beside a
-  sticky editor pane (J / K move, A approves, R rejects); below that the same
-  editor is a bottom sheet.
+  Undo, "Approve N ready", tap-to-call / tap-to-email, and Followed up, Add
+  note and (on Approved) Heat straight from the row. On a desktop (≥1024px)
+  the list sits beside a sticky editor pane (J / K move, A approves, R
+  rejects); below that the same editor is a bottom sheet. Leaving a lead with
+  unsaved edits asks first.
 
 Rules worth knowing before changing Smart:
 
@@ -324,6 +330,10 @@ Rules worth knowing before changing Smart:
   sections ordered by each event's most recent lead. `contacts-list` carries
   no event date, so that proxy is computed over every status, not the visible
   tab, to keep the order stable when switching tabs.
+- Empty states are deliberate: "You're all caught up" only when To review is
+  empty and the rep has other leads; a rep with no leads at all is told to join
+  a conference (with a Link button); a search or filter with no hits offers to
+  clear it.
 - Reps get "New / Existing school / district" and the contact-already-in-Zoho
   banner and candidate picker; the match score, opportunity line and full
   "Account: ..." wording are Admin / Solutions Success only (`isSales` in
@@ -331,6 +341,9 @@ Rules worth knowing before changing Smart:
   "Zoho Account Id (once created)" / "Account name" fields or the "Show match
   reasoning" link any more: linking a new account is the import step's job, and
   the boxed "AI guess, unverified" summary made the reasoning link redundant.
+  An ambiguous match shows **"Pick a Zoho match"** only when there are
+  candidates to pick from; with none there is no pill and no flag (the editor
+  still explains it in words, and the lead stays approvable as a new lead).
 - Notes: the "Notes" field and the "Add note" button both write
   `interaction_notes` (typed text and voice-memo transcripts share it; Add note
   appends a dated line and saves at once). `export-csv` puts it first in the
@@ -338,6 +351,11 @@ Rules worth knowing before changing Smart:
   the AI match reasoning (`contacts.notes`). Before 2026-09-29 it was not
   exported at all. The Review tooltips promise this, so change both together,
   and redeploy `export-csv` when the export changes.
-- Bulk selection (Rejected tab) is counted only over what is on screen.
+- Followed up sits beside Heat in the editor header (not the footer); both save
+  as you tap, while the text fields still need Save (or Approve, which carries
+  pending edits on the same PATCH).
+- Bulk selection (Rejected tab) is counted only over what is on screen. The
+  same was fixed in Classic, whose bulk approve also now reads and reports the
+  `{ approved, skipped }` response instead of discarding it.
 - Logic tests: `cd frontend && npm test`.
 

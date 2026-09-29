@@ -30,8 +30,11 @@ review → export.
 3. **Match** — `match-contact` classifies against live Zoho data:
    `existing_contact` / `new_contact_existing_account` / `new_account` /
    `ambiguous`. Read-only; it never creates a Zoho record.
-4. **Review** — a human approves, edits or rejects on `/review`. High-confidence
-   matches with a real matched account may auto-approve.
+4. **Review** — a human approves, edits or rejects on `/review`, in either the
+   **Smart** view (default: flagged rows, one-tap approve, search, a desktop
+   split pane) or the original **Classic** card grid, switched from the ⋮ menu.
+   High-confidence matches with a real matched account may auto-approve. A
+   rep's notes travel with the lead into the CSV's Description column.
 5. **Export** — `/export` produces a CSV; leads are marked synced only once the
    browser confirms it actually received the file.
 
