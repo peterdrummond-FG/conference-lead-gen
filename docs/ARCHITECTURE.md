@@ -102,9 +102,12 @@ preserve:
 
 Only Sales accounts have a QR (`rep_slug`); admin and Solutions Success are who
 send each rep theirs, so Setup lists the Sales reps with a Download each for
-them and Admin → Team has a labelled button per rep. All of these build the
-slide through `downloadRepConnectSlide` in `utils/generateConnectSlide.ts` —
-add new callers there rather than re-assembling the URL. The QR (per rep) and
+them and Admin → Team has a control per rep. All of these use
+`components/QrSaveButtons.vue`, which offers two artworks — the 16:9 slide and
+a 9:16 phone-screen code a rep holds up to be scanned — through
+`downloadRepConnectSlide` in `utils/generateConnectSlide.ts`. On a phone they
+open the share sheet (Save Image → Photos; see `utils/saveImage.ts`). Add new
+callers there rather than re-assembling the URL. The QR (per rep) and
 kiosk PIN (per login) are deliberately available before
 joining anything; only the SMS *status* is per conference. The text-in card's
 phone steps and its opt-in disclosure are likewise never gated on joining:

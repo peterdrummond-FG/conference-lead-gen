@@ -1,4 +1,6 @@
 import QRCode from 'qrcode';
+import { Dialog, Notify, Platform } from 'quasar';
+import { saveImageBlob } from '@/utils/saveImage';
 import ckhLogoUrl from '@/assets/brand/ckh-logo.png';
 
 // Pulled from capturingkidshearts.org's live site (header/button color and
@@ -76,15 +78,22 @@ function roundedRect(
   height: number,
   radius: number,
 ): void {
+  // Hand-rolled because ctx.roundRect needs Safari 16 / Chrome 99 and throws a
+  // TypeError on older iPhones, which made the download button do nothing.
   ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
   ctx.fill();
 }
 
-async function renderQrCanvas(url: string): Promise<HTMLCanvasElement> {
+async function renderQrCanvas(url: string, size = QR_SIZE): Promise<HTMLCanvasElement> {
   const qrCanvas = document.createElement('canvas');
   await QRCode.toCanvas(qrCanvas, url, {
-    width: QR_SIZE,
+    width: size,
     margin: 1,
     color: { dark: CKH_NAVY, light: '#FFFFFF' },
   });
@@ -181,22 +190,118 @@ export async function renderConnectSlide(
   return canvas;
 }
 
-// Builds the slide and triggers a browser download — this is the PNG a rep
-// drops onto a PowerPoint slide or opens full-screen on a booth iPad,
-// replacing the old printable table-top flyer.
-export async function generateConnectSlidePng(details: ConnectSlideDetails): Promise<void> {
-  const canvas = await renderConnectSlide(details);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) throw new Error('Could not render the connect slide to a PNG.');
+// 9:16 portrait, the shape of a phone screen held up to someone else. Unlike
+// the slide this is meant to be shown at arm's length on a handset, so the QR
+// takes most of the width and everything else is kept to what fits under it.
+const PHONE_WIDTH = 1080;
+const PHONE_HEIGHT = 1920;
+const PHONE_PLATE = { width: 760, height: 262, padding: 45, y: 150 };
+const PHONE_QR_CARD = { size: 900, y: 640 };
+const PHONE_QR_SIZE = 780;
 
-  // Same reasoning as the CSV export in ExportPage.vue — jsPDF's doc.save()
-  // used to hide this step for us.
+// Draws the phone-screen QR onto an offscreen canvas.
+export async function renderPhoneQrCode(details: ConnectSlideDetails): Promise<HTMLCanvasElement> {
+  const [logo, qrCanvas] = await Promise.all([
+    getLogo(),
+    renderQrCanvas(details.intakeUrl, PHONE_QR_SIZE),
+  ]);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = PHONE_WIDTH;
+  canvas.height = PHONE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get a 2D canvas context for the phone QR code.');
+
+  const centerX = PHONE_WIDTH / 2;
+  ctx.fillStyle = CKH_NAVY;
+  ctx.fillRect(0, 0, PHONE_WIDTH, PHONE_HEIGHT);
+
+  // Same white plate as the slide, for the same reason: the logo's navy half
+  // and grey tagline vanish on the navy field.
+  ctx.fillStyle = '#FFFFFF';
+  roundedRect(ctx, centerX - PHONE_PLATE.width / 2, PHONE_PLATE.y, PHONE_PLATE.width, PHONE_PLATE.height, 28);
+  const logoWidth = PHONE_PLATE.width - PHONE_PLATE.padding * 2;
+  const logoHeight = logoWidth * LOGO_ASPECT;
+  ctx.drawImage(
+    logo,
+    centerX - logoWidth / 2,
+    PHONE_PLATE.y + (PHONE_PLATE.height - logoHeight) / 2,
+    logoWidth,
+    logoHeight,
+  );
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#FFFFFF';
+  fitFontSize(ctx, 'CONNECT WITH US', PHONE_WIDTH - 160, 84, 48);
+  ctx.fillText('CONNECT WITH US', centerX, 540);
+  ctx.fillStyle = CKH_GOLD;
+  ctx.fillRect(centerX - 100, 572, 200, 5);
+
+  // QR card, QR drawn at native size so it stays crisp when scanned off a screen.
+  ctx.fillStyle = '#FFFFFF';
+  roundedRect(ctx, centerX - PHONE_QR_CARD.size / 2, PHONE_QR_CARD.y, PHONE_QR_CARD.size, PHONE_QR_CARD.size, 36);
+  ctx.drawImage(
+    qrCanvas,
+    centerX - PHONE_QR_SIZE / 2,
+    PHONE_QR_CARD.y + (PHONE_QR_CARD.size - PHONE_QR_SIZE) / 2,
+    PHONE_QR_SIZE,
+    PHONE_QR_SIZE,
+  );
+
+  const below = PHONE_QR_CARD.y + PHONE_QR_CARD.size;
+  ctx.fillStyle = MUTED_BLUE;
+  ctx.font = `400 40px ${FONT_STACK}`;
+  ctx.fillText('Scan with your phone camera', centerX, below + 100);
+  const urlText = details.intakeUrl.replace(/^https?:\/\//, '');
+  ctx.fillStyle = '#FFFFFF';
+  fitFontSize(ctx, urlText, PHONE_WIDTH - 160, 44, 24);
+  ctx.fillText(urlText, centerX, below + 170);
+
+  return canvas;
+}
+
+export type QrArtwork = 'slide' | 'phone';
+
+const ARTWORK: Record<QrArtwork, { render: typeof renderConnectSlide; file: string; title: string }> = {
+  slide: { render: renderConnectSlide, file: 'ckh-connect-slide', title: 'CKH Connect QR slide' },
+  phone: { render: renderPhoneQrCode, file: 'ckh-connect-qr-phone', title: 'CKH Connect QR code' },
+};
+
+// Builds the PNG. On a phone the rep wants it in Photos, which a browser can
+// only reach through the share sheet; on desktop it is a normal download.
+// See saveImage.ts for why <a download> alone is not enough on mobile.
+export async function generateConnectSlidePng(
+  details: ConnectSlideDetails,
+  kind: QrArtwork = 'slide',
+): Promise<void> {
+  const art = ARTWORK[kind];
+  const canvas = await art.render(details);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not render the QR image to a PNG.');
+
+  const filename = `${art.file}-${details.repName.toLowerCase().replace(/\s+/g, '-')}.png`;
+  const outcome = await saveImageBlob(blob, filename, {
+    mobile: Platform.is.mobile === true,
+    title: art.title,
+  });
+  if (outcome === 'manual') showSaveByHand(blob, art.title);
+}
+
+// Last resort where the share sheet is unavailable (in-app browsers, older
+// WebViews) or refused: show the slide itself. Press-and-hold on an image saves
+// it to Photos in every mobile browser.
+function showSaveByHand(blob: Blob, alt: string): void {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `ckh-connect-slide-${details.repName.toLowerCase().replace(/\s+/g, '-')}.png`;
-  link.click();
-  URL.revokeObjectURL(url);
+  Dialog.create({
+    title: 'Save to Photos',
+    message:
+      '<div class="q-mb-sm">Press and hold the image, then choose <b>Save to Photos</b> ' +
+      '(or <b>Download image</b>).</div>' +
+      `<img src="${url}" alt="${alt}" style="width:100%;border-radius:8px" />`,
+    html: true,
+    ok: { label: 'Done', flat: true, noCaps: true },
+  }).onDismiss(() => URL.revokeObjectURL(url));
 }
 
 // Short, memorable, per-rep URL (routes.ts redirects this into
@@ -213,6 +318,16 @@ export function intakeUrlForRep(repSlug: string): string {
 // The one place a rep's slide gets built from their profile, so Setup (own QR
 // and the staff list) and Admin -> Team can't drift apart on what a download
 // contains. Callers pass a Profile or SessionUser; nothing else is needed.
-export async function downloadRepConnectSlide(rep: { name: string; repSlug: string }): Promise<void> {
-  await generateConnectSlidePng({ intakeUrl: intakeUrlForRep(rep.repSlug), repName: rep.name });
+export async function downloadRepConnectSlide(
+  rep: { name: string; repSlug: string },
+  kind: QrArtwork = 'slide',
+): Promise<void> {
+  try {
+    await generateConnectSlidePng({ intakeUrl: intakeUrlForRep(rep.repSlug), repName: rep.name }, kind);
+  } catch (err) {
+    // The callers only had try/finally, so a failure used to be a spinner that
+    // quietly stopped. Say so, and keep the cause for support.
+    console.error('QR slide save failed', err);
+    Notify.create({ type: 'negative', message: "Couldn't create the QR image. Please try again." });
+  }
 }

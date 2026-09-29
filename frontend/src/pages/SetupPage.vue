@@ -142,9 +142,8 @@
                   <div v-if="!joinedEvent" class="text-caption text-orange-9 q-mt-xs">
                     Scans only work once you've joined a conference above.
                   </div>
-                  <q-btn
-                    outline no-caps color="primary" icon="download" label="Download QR (PNG)"
-                    class="q-mt-sm" :loading="generatingMySlide" @click="downloadMySlide"
+                  <qr-save-buttons
+                    :rep="{ name: sessionStore.user.name, repSlug: sessionStore.user.repSlug }" class="q-mt-sm"
                   />
                 </div>
               </div>
@@ -162,7 +161,7 @@
                 <div class="col">
                   <div class="text-subtitle2 text-weight-bold">Rep QR slides</div>
                   <div class="text-body2 text-grey-8">
-                    Every Sales rep has a reusable QR slide. Download one to send it to them. It only
+                    Every Sales rep has a reusable QR slide. Download one to send it to them, as a slide or a phone-screen code. It only
                     works once they've joined a conference.
                   </div>
                   <q-list v-if="salesReps.length" dense separator class="q-mt-sm">
@@ -171,11 +170,7 @@
                         <q-item-label>{{ rep.name }}</q-item-label>
                       </q-item-section>
                       <q-item-section side>
-                        <q-btn
-                          outline dense no-caps color="primary" icon="download" label="Download" class="q-px-sm"
-                          :loading="downloadingSlideFor === rep.id"
-                          @click="downloadRepSlide(rep)"
-                        />
+                        <qr-save-buttons :rep="{ name: rep.name, repSlug: rep.repSlug! }" dense />
                       </q-item-section>
                     </q-item>
                   </q-list>
@@ -343,7 +338,7 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
-import { downloadRepConnectSlide } from '@/utils/generateConnectSlide';
+import QrSaveButtons from '@/components/QrSaveButtons.vue';
 import type { Profile } from '@/types/review';
 
 interface ActiveEventOption {
@@ -377,7 +372,6 @@ const joiningId = ref<string | null>(null);
 // Distinguishes "still fetching" from "genuinely none running" -- without it
 // Step 1 flashes "No conference is running yet" on every page load.
 const eventsLoaded = ref(false);
-const generatingMySlide = ref(false);
 
 // effectiveRole (not sessionStore.user?.role) so admin's "View as" preview
 // (MainLayout's switcher) reshapes this page into what the previewed role
@@ -477,23 +471,6 @@ async function onStarted(payload: { joined: boolean; name: string }) {
   });
 }
 
-// The sales rep's own reusable QR — shown once they have a repSlug at all
-// (profiles-create/-update always generates one for a sales account). It's
-// tied to the rep, not a conference, so it's downloadable before joining one;
-// only a *scan* needs the rep to be linked (contacts-create rejects it
-// otherwise), which the QR card says. Found 2026-09-28: an earlier draft of
-// this page hid the whole of Step 2, QR and PIN included, until a conference
-// was joined, which blocked preparing a slide ahead of the event.
-async function downloadMySlide() {
-  if (!sessionStore.user?.repSlug) return;
-  generatingMySlide.value = true;
-  try {
-    await downloadRepConnectSlide({ name: sessionStore.user.name, repSlug: sessionStore.user.repSlug });
-  } finally {
-    generatingMySlide.value = false;
-  }
-}
-
 // Admin / Solutions Success don't have a QR of their own (only Sales accounts
 // get a rep_slug), but they're who gets each rep theirs to send -- so Setup
 // lists the Sales reps with a download each, instead of leaving them to know
@@ -501,22 +478,10 @@ async function downloadMySlide() {
 // for them.
 const profiles = ref<Profile[]>([]);
 const salesReps = computed(() => profiles.value.filter((p) => p.role === 'sales' && p.repSlug));
-// Keyed by rep id -- a specific row's download.
-const downloadingSlideFor = ref<string | null>(null);
 
 async function loadProfiles() {
   const { data } = await api.get<Profile[]>('/profiles-list');
   profiles.value = data;
-}
-
-async function downloadRepSlide(rep: Profile) {
-  if (!rep.repSlug) return;
-  downloadingSlideFor.value = rep.id;
-  try {
-    await downloadRepConnectSlide({ name: rep.name, repSlug: rep.repSlug });
-  } finally {
-    downloadingSlideFor.value = null;
-  }
 }
 
 // Setting a PIN is also offered by MainLayout's Lock kiosk button, but only
