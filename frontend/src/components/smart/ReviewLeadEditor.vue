@@ -229,19 +229,6 @@
             label="Interaction notes (from voice memos)"
             input-style="height: 84px; min-height: 64px; max-height: 220px"
           />
-
-          <!-- Admin and Solutions Success only: the CRM plumbing a rep never
-               needs (a Zoho id to paste, the model's own reasoning). -->
-          <div v-if="!isSales && contact.matchStatus === 'new_account'" class="le-s6 le-link-account">
-            <q-input v-model="newAccountId" dense outlined label="Zoho Account Id (once created)" />
-            <q-input v-model="newAccountName" dense outlined label="Account name" />
-            <q-btn dense flat no-caps color="primary" label="Link" :disable="!newAccountId || !newAccountName" @click="linkNewAccount" />
-          </div>
-
-          <div v-if="!isSales && contact.notes" class="le-s6 text-caption">
-            <a href="#" @click.prevent="showNotes = !showNotes">{{ showNotes ? 'Hide match reasoning' : 'Show match reasoning' }}</a>
-            <div v-if="showNotes" class="q-mt-xs text-grey-8">{{ contact.notes }}</div>
-          </div>
         </div>
       </div>
     </div>
@@ -311,7 +298,6 @@ const badge = computed(() => accountBadge(props.contact));
 const showFullImage = ref(false);
 const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
-const showNotes = ref(false);
 
 const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
@@ -334,9 +320,6 @@ const draft = reactive({
 // invalidates whatever was picked downstream of it.
 watch(() => draft.state, (_n, old) => { if (old) draft.district = null; });
 watch(() => draft.district, (_n, old) => { if (old) draft.school = null; });
-
-const newAccountId = ref('');
-const newAccountName = ref('');
 
 function filterStates(val: string, update: (cb: () => void) => void) {
   update(() => { stateOptions.value = filterStateOptions(val); });
@@ -466,20 +449,6 @@ function notAMatch() {
       ? 'Match cleared. This contact now needs review.'
       : 'Match cleared. Kept the matched account, no specific contact.',
   });
-}
-
-function linkNewAccount() {
-  emit('update', {
-    id: props.contact.id,
-    payload: {
-      matchedZohoAccountId: newAccountId.value,
-      matchedZohoAccountName: newAccountName.value,
-      matchStatus: 'new_contact_existing_account',
-      matchConfidence: 'high',
-    },
-  });
-  newAccountId.value = '';
-  newAccountName.value = '';
 }
 
 const intentOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
@@ -678,7 +647,6 @@ defineExpose({ isDirty, approveClick, rejectClick });
 .le-s4 { grid-column: span 4; }
 .le-s6 { grid-column: span 6; }
 .le-suggest { margin-top: -6px; }
-.le-link-account { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 
 .le-foot { padding: 10px 16px 12px; border-top: 1px solid rgba(0, 0, 0, 0.08); background: #fff; }
 .le-foot-note { font-size: 13px; color: #3D4750; margin-bottom: 8px; }
@@ -715,7 +683,6 @@ defineExpose({ isDirty, approveClick, rejectClick });
   .le-s2, .le-s4 { grid-column: span 6; }
   .le-form :deep(.q-field--dense .q-field__control),
   .le-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
-  .le-link-account { grid-template-columns: 1fr; }
 
   .le-follow { flex: 1 0 100%; }
   .le-approve { flex: 1; }

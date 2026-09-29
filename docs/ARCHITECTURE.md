@@ -325,9 +325,12 @@ Rules worth knowing before changing Smart:
   no event date, so that proxy is computed over every status, not the visible
   tab, to keep the order stable when switching tabs.
 - Reps get "New / Existing school / district" and the contact-already-in-Zoho
-  banner and candidate picker; the match score, reasoning, opportunity line and
-  the "Zoho Account Id" link fields are Admin / Solutions Success only
-  (`isSales` in `ReviewLeadEditor.vue`, i.e. the effective role).
+  banner and candidate picker; the match score, opportunity line and full
+  "Account: ..." wording are Admin / Solutions Success only (`isSales` in
+  `ReviewLeadEditor.vue`, i.e. the effective role). Neither view has the old
+  "Zoho Account Id (once created)" / "Account name" fields or the "Show match
+  reasoning" link any more: linking a new account is the import step's job, and
+  the boxed "AI guess, unverified" summary made the reasoning link redundant.
 - Bulk selection (Rejected tab) is counted only over what is on screen.
 - Logic tests: `cd frontend && npm test`.
 

@@ -38,6 +38,19 @@
         <span v-else-if="contact.phone" class="lr-none">No email</span>
       </div>
 
+      <!-- A rep who was quick on the follow-up can mark it here without
+           opening the lead. Shown on the compact desktop rows too: it saves
+           straight away, so it doesn't need the pane. -->
+      <div v-if="tab === 'needs_review'" class="lr-actions lr-actions-follow">
+        <q-checkbox
+          :model-value="contact.followedUp"
+          label="Followed up"
+          class="lr-follow"
+          :disable="busy"
+          @update:model-value="(v: boolean) => $emit('followedUp', v)"
+        />
+      </div>
+
       <div v-if="tab === 'needs_review' && !compact" class="lr-actions">
         <q-btn flat no-caps color="negative" icon="close" label="Reject" class="lr-btn" :disable="busy" @click="$emit('reject')" />
         <q-btn
@@ -54,7 +67,7 @@
         <q-btn v-else outline no-caps color="primary" label="Review" class="lr-btn lr-btn-main" @click="$emit('open')" />
       </div>
 
-      <div v-else-if="tab === 'approved'" class="lr-actions lr-actions-follow">
+      <div v-if="tab === 'approved'" class="lr-actions lr-actions-follow">
         <q-checkbox
           :model-value="contact.followedUp"
           label="Followed up"
@@ -78,7 +91,7 @@
         </q-btn>
       </div>
 
-      <div v-else-if="tab === 'rejected' && !compact" class="lr-actions">
+      <div v-if="tab === 'rejected' && !compact" class="lr-actions">
         <q-btn outline no-caps color="primary" icon="undo" label="Restore" class="lr-btn lr-btn-main" :disable="busy" @click="$emit('restore')" />
       </div>
     </div>
