@@ -204,7 +204,7 @@ every call.
 | `events-active` | The currently active event, for both the frontend and (indirectly) the watcher/local-agent |
 | `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds the Admin page's Conferences list (formerly Setup's "Reps & events" table) alongside `events-list-active` (which stays active-only) |
 | `events-complete` (added 2026-09-28) | Admin/Solutions-Success only. Ends a conference for everyone: `events_complete()` flips `is_active` off and clears `current_event_id` on every profile still linked to it, in one transaction — see the note in section 10 |
-| `GET /intake` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new" |
+| `GET /connect` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new" |
 | `contacts-create` | Saves a form row, runs the within-event duplicate check synchronously, then leaves it `pending` for `local-agent`'s matching loop to pick up (below) — the response returns immediately, before matching completes |
 | `districts-list` / `schools-list` | Type-ahead lookups |
 | `districts-create` / `schools-create` | Add-new, called when someone types something not already in the list. **No dedup-by-name and no client-supplied `state`** — always inserts, and `state` is always derived server-side from an event (an `eventId` param, or the currently-active event), matching the original `.NET` contract exactly (an earlier pass at this port had invented different behavior here — caught and fixed in Stage 15) |
@@ -502,7 +502,7 @@ itself.
 - `admin`/`solutionsSuccess` see everything; only they can export or manage
   accounts. `profiles-update` refuses a self role-change.
 - Public by design: `contacts-create`, `districts-list`, `schools-list`,
-  `events-active` — everything `/intake` needs before anyone logs in.
+  `events-active` — everything `/connect` needs before anyone logs in.
 
 `events-active` returns `folderCode` and the rep assignments **only to a
 logged-in caller**. That code is the SMS bind token: anyone holding it can bind
@@ -559,7 +559,7 @@ Now:
 
 ### Known remaining gap
 
-**The kiosk lock is still client-side.** Locking hides the app behind `/intake`
+**The kiosk lock is still client-side.** Locking hides the app behind `/connect`
 by setting a `localStorage` flag, while the rep's session stays live
 underneath — so clearing that key from the device's own console restores full
 access without needing the PIN. The per-user PIN

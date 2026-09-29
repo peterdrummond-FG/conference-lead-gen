@@ -5,7 +5,7 @@
         <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
         <q-tabs class="nav-pills" indicator-color="transparent" no-caps dense>
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
-          <q-route-tab to="/intake" label="Intake" />
+          <q-route-tab to="/connect" label="Connect" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
           <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" />
@@ -30,11 +30,11 @@
         </q-btn-dropdown>
         <div v-else class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
 
-        <!-- Locks this physical device down to just the public Intake
+        <!-- Locks this physical device down to just the public Connect
              screen — for a shared kiosk iPad/laptop an attendee will be
              handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
         <q-btn flat dense no-caps icon="lock" color="grey-7" :label="isPhone ? undefined : 'Lock kiosk'" aria-label="Lock kiosk" @click="onLockKiosk">
-          <q-tooltip>Lock this device to Intake only</q-tooltip>
+          <q-tooltip>Lock this device to Connect only</q-tooltip>
         </q-btn>
 
         <q-separator vertical spaced />
@@ -179,7 +179,7 @@ const settingPin = ref(false);
 
 function performLock() {
   kioskModeStore.lock();
-  void router.push('/intake');
+  void router.push('/connect');
 }
 
 function onLockKiosk() {

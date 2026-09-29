@@ -57,7 +57,7 @@ api.interceptors.response.use(
     // A stale/expired/revoked session shows up as a 401 from a staff-gated
     // function — treat that as "you're logged out," same as a fresh visit.
     // Intake/booth/session never call a staff-gated endpoint, so this path
-    // is staff-only; redirect to /login, not /intake.
+    // is staff-only; redirect to /login, not /connect.
     if (error.response?.status === 401 && router && router.currentRoute.value.path !== '/login') {
       // Lazy import avoids a module-load-order cycle with session-store.ts
       // (which itself imports `api` from this file) — mirrors how
