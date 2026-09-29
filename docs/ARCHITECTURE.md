@@ -125,6 +125,24 @@ rejects an id that isn't there. Keep it that way: the name becomes the Zoho Lead
 Source. Ending stays admin/Solutions Success. Both Setup and Admin open the same
 `StartConferenceDialog`.
 
+The search behind it is `campaigns-list` → the `conference_search()` database
+function, not a plain `select` on `campaigns`. Conference names start
+`YYYY MM.DD[-DD] (ST)`, so sorting by name puts December ahead of this week's
+conference; `conference_search` instead lists conferences that **haven't ended**
+(window on the parsed *end* date, plus one day's grace) nearest first when the
+query is blank, and matches substring-or-fuzzy otherwise, ranking unfinished
+conferences first. Each row carries `liveEventId` (already running → the client
+offers **Join**, never a second `events_activate`) and a `state` read from the
+name's `(ST)` code, which the client prefills and asks for only when it's absent
+or not a real postal code (e.g. `(TW)`). The name shown in the list is tidied
+(`utils/conferenceName.ts`); the confirm step always shows the full exact name
+because that is the Lead Source.
+
+On a phone the dialog is one full-screen sheet with a plain scrolling list and a
+native `<select>` for the state. Don't reintroduce a `q-select` (with
+`use-input`) inside it: on a phone Quasar renders each as its own full-screen
+popup over the dialog.
+
 ### Invoking a skill
 
 Every `claude -p` call goes through `local-agent/skill-runner.mjs`, which

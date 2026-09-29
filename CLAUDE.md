@@ -159,6 +159,13 @@ Supabase CLI on this machine.
   UI that says "you're at X" must key off the session's `currentEventId`
   (Setup's `joinedEvent`), never `eventStore.activeEvent`.
 
+- **In a Postgres regex, `\b` is a backspace, not a word boundary — use `\y`.**
+  `conference_end_date_from_name` shipped with `\b` and silently parsed *zero*
+  of 441 real multi-day names (every range fell back to its start date). Found
+  only by running the function over the whole `campaigns` table and counting
+  parsed ranges — reading the SQL looked fine. Validate a parser against the
+  real data, not a sample, and count the successes.
+
 ## Before shipping a feature
 
 **Read `docs/ENGINEERING-LESSONS.md` first.** It generalises every bug the
