@@ -90,14 +90,20 @@
             </template>
 
             <div v-else class="text-body2">
-              No conference is running yet.
-              {{ canManageEvents ? 'Start one in Admin to get going.' : 'Ask an admin to start one.' }}
+              No conference is running yet. Start the one you're at to get going.
             </div>
 
+            <!-- Any role: a rep on their phone can start the conference they're at
+                 (they always could by texting SETUP; events-activate now allows it
+                 from here too). Offered whenever the list has loaded, including
+                 alongside the list, since the conference a rep is at is often the
+                 one nobody has started yet. -->
             <q-btn
-              v-if="eventsLoaded && canManageEvents"
-              flat no-caps color="primary" icon="add" label="Start a new conference" class="q-mt-sm"
-              to="/admin"
+              v-if="eventsLoaded"
+              flat no-caps color="primary" icon="add"
+              :label="activeEvents.length ? `Don't see yours? Start a new conference` : 'Start a new conference'"
+              class="q-mt-sm"
+              @click="pickingNew = true"
             />
           </q-card-section>
         </q-card>
@@ -312,6 +318,8 @@
           </q-card-section>
         </q-card>
       </template>
+
+      <StartConferenceDialog v-model="pickingNew" @started="onStarted" />
     </div>
   </q-page>
 </template>
@@ -322,6 +330,7 @@ import { Dialog, Notify, Platform } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
+import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
 import { downloadRepConnectSlide } from '@/utils/generateConnectSlide';
 import type { Profile } from '@/types/review';
 
@@ -349,6 +358,8 @@ const sessionStore = useSessionStore();
 // True while a rep who's already joined a conference has asked to switch to
 // another live one.
 const changing = ref(false);
+// Whether the "Start a conference" dialog is open.
+const pickingNew = ref(false);
 // Id of the conference whose Join/Switch button is mid-request.
 const joiningId = ref<string | null>(null);
 // Distinguishes "still fetching" from "genuinely none running" -- without it
@@ -360,8 +371,8 @@ const generatingMySlide = ref(false);
 // (MainLayout's switcher) reshapes this page into what the previewed role
 // would see. Purely a display change: every write here is still gated
 // server-side by the real caller's own JWT.
-// Starting a conference is an admin/solutionsSuccess action, done on the Admin
-// page -- Setup only points there when nothing is running.
+// Admin/solutionsSuccess extras on Setup (the Rep QR slides list). Starting a
+// conference is open to every role -- see StartConferenceDialog.
 const canManageEvents = computed(() => (
   sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
@@ -438,6 +449,16 @@ async function joinEvent(event: ActiveEventOption) {
   } finally {
     joiningId.value = null;
   }
+}
+
+// events-activate also links the caller to the conference they just started, so
+// Step 1 flips to "joined" -- but only if the session, the active list and
+// eventStore.activeEvent (smsBound/folderCode) are all refreshed; a fetchActive
+// alone left Step 1 asking them to join something they'd just created.
+async function onStarted() {
+  await Promise.all([sessionStore.fetchMe(), eventStore.fetchActive(), loadActiveEvents()]);
+  changing.value = false;
+  Notify.create({ type: 'positive', message: 'Conference started. You\'re now at it.' });
 }
 
 // The sales rep's own reusable QR — shown once they have a repSlug at all

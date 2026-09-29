@@ -1,5 +1,8 @@
 // GET ?search=  -> Campaign[]
-// Staff-gated (used by /setup).
+// Any logged-in role (used by Setup's "Start a conference" -- a sales rep can
+// start one too, exactly as they already can by texting SETUP, which searches
+// this same campaign cache). Read-only, capped at 50 rows, and it returns only
+// conference names/ids, so there is nothing here worth withholding from a rep.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -11,7 +14,7 @@ Deno.serve(async (req) => {
   if (req.method !== "GET") return errorResponse(req, 405, "Method not allowed");
   const user = await requireUser(req);
   if (!user) return errorResponse(req, 401, "Unauthorized");
-  if (!hasRole(user, ["admin", "solutionsSuccess"])) return errorResponse(req, 403, "Forbidden");
+  if (!hasRole(user, ["admin", "solutionsSuccess", "sales"])) return errorResponse(req, 403, "Forbidden");
 
   const url = new URL(req.url);
   const search = url.searchParams.get("search")?.trim() ?? "";
