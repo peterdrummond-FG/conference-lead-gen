@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     if (error) return errorResponse(req, 500, error.message);
     data = linked;
   } else {
-    // Legacy fallback for a bare /setup or /intake with no slug and no
+    // Legacy fallback for a bare /setup or /connect with no slug and no
     // linked user -- picks whichever active event was activated last rather
     // than crashing now that more than one row can be is_active.
     const { data: mostRecent, error } = await supabase

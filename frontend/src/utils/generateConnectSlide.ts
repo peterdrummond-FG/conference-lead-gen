@@ -200,7 +200,7 @@ export async function generateConnectSlidePng(details: ConnectSlideDetails): Pro
 }
 
 // Short, memorable, per-rep URL (routes.ts redirects this into
-// /intake?repSlug=...) — the QR itself is always scanned, but the slide also
+// /connect?repSlug=...) — the QR itself is always scanned, but the slide also
 // spells the URL out for anyone who can't scan, so it needs to be typeable
 // on a phone keyboard. Stage 20: one of these per rep, reused across every
 // conference they work, rather than one per (event, rep) — which event a

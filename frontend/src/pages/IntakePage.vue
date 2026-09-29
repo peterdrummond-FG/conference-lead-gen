@@ -166,7 +166,7 @@ const initialChannel = route.query.channel === 'booth' || route.query.channel ==
 // /connect/<slug>/<repId>, pre-Stage-20) — multiple conferences can be
 // active at once, so this, not "the" active event, is what both
 // events-active and contacts-create resolve against. Missing for a
-// bare/legacy /intake link, or for a Stage 20 rep QR (repSlug below).
+// bare/legacy /connect link, or for a Stage 20 rep QR (repSlug below).
 const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventSlug : undefined;
 
 // A rep's own reusable QR (routes.ts pulls it off /connect/<repSlug>) — the

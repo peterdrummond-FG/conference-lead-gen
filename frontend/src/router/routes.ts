@@ -24,7 +24,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'terms', component: () => import('@/pages/TermsOfUsePage.vue') },
       { path: 'setup', component: () => import('@/pages/SetupPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       { path: 'admin', component: () => import('@/pages/AdminPage.vue'), meta: { roles: ['admin', 'solutionsSuccess'] as Role[] } },
-      { path: 'intake', component: () => import('@/pages/IntakePage.vue') },
+      { path: 'connect', component: () => import('@/pages/IntakePage.vue') },
+      // The page's old name. Kept so a bookmarked or printed /intake link (and
+      // any query it carries: eventSlug, repSlug, channel) still lands on it.
+      { path: 'intake', redirect: (to) => ({ path: '/connect', query: to.query }) },
       // Pre-Stage-20 QR codes — one per event per rep
       // (/connect/<eventSlug>/<repId>), kept working so anything already
       // printed still captures leads. "connect" echoes the slide's own
@@ -32,7 +35,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'connect/:slug/:repId',
         redirect: (to) => ({
-          path: '/intake',
+          path: '/connect',
           query: { eventSlug: String(to.params.slug ?? ''), repId: String(to.params.repId ?? '') },
         }),
       },
@@ -50,16 +53,16 @@ const routes: RouteRecordRaw[] = [
         redirect: (to) => {
           const raw = String(to.params.slugChannel ?? '');
           const channelMatch = /^(.+)-(booth|session)$/.exec(raw);
-          if (channelMatch) return { path: '/intake', query: { eventSlug: channelMatch[1], channel: channelMatch[2] } };
-          return { path: '/intake', query: { repSlug: raw } };
+          if (channelMatch) return { path: '/connect', query: { eventSlug: channelMatch[1], channel: channelMatch[2] } };
+          return { path: '/connect', query: { repSlug: raw } };
         },
       },
       // Pre-slug aliases, kept so any slide already printed/downloaded
       // before this change still works — falls back to whichever event was
       // activated most recently (ambiguous once more than one is active,
-      // same as a bare /intake visit).
-      { path: 'booth', redirect: { path: '/intake', query: { channel: 'booth' } } },
-      { path: 'session', redirect: { path: '/intake', query: { channel: 'session' } } },
+      // same as a bare /connect visit).
+      { path: 'booth', redirect: { path: '/connect', query: { channel: 'booth' } } },
+      { path: 'session', redirect: { path: '/connect', query: { channel: 'session' } } },
       { path: 'review', component: () => import('@/pages/ReviewPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
       // Reached from Review's "+ Contacts from note" button rather than the
       // header nav — it's a capture action a rep takes from where they're

@@ -43,7 +43,7 @@ npm test            # node --test on src/utils/*.test.mjs (Review's Smart-view l
 | Route | Access |
 |---|---|
 | `/login` | public; the default landing page |
-| `/intake`, `/booth`, `/session` | **public** — the attendee form and its QR aliases |
+| `/connect`, `/booth`, `/session` | **public** — the attendee form and its QR aliases |
 | `/privacy`, `/terms` | **public** — required by the Twilio A2P 10DLC campaign |
 | `/review` | any logged-in role; a `sales` rep sees only their own contacts. Two views, **Smart** (default) and **Classic**, switched from the ⋮ menu and remembered per browser |
 | `/notes` | any logged-in role; paste a typed note |

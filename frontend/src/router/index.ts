@@ -61,7 +61,7 @@ export default defineRouter((/* { store, ssrContext } */) => {
     // physically at this screen only ever sees Intake, regardless of who's
     // signed in underneath.
     const kioskModeStore = useKioskModeStore();
-    if (kioskModeStore.locked && to.path !== '/intake') return '/intake';
+    if (kioskModeStore.locked && to.path !== '/connect') return '/connect';
 
     const sessionStore = useSessionStore();
     await sessionStore.initialize();

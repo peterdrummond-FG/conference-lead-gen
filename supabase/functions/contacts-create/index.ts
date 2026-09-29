@@ -27,7 +27,7 @@
 // (20260915120000_event_slug_and_concurrent_events.sql), so this — not "the"
 // active event — is what decides which event a submission belongs to. Falls
 // back to the most-recently-activated active event only when no slug (and
-// no repSlug) is present at all (a bare/legacy /intake link), which is
+// no repSlug) is present at all (a bare/legacy /connect link), which is
 // ambiguous by construction once more than one event is active.
 //
 // repSlug (Stage 20 — 20260916212541_add_profiles_rep_slug.sql) is a rep's
