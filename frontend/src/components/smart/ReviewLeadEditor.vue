@@ -58,7 +58,6 @@
           class="le-follow"
           @update:model-value="toggleFollowedUp"
         />
-        <span class="le-intent-hint">Saves as you tap. Tap a heat choice again to clear it.</span>
       </div>
     </div>
 
@@ -598,7 +597,6 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 
 .le-intent { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .le-intent-label { font-size: 13px; color: #5B6670; }
-.le-intent-hint { font-size: 12px; color: #6B7680; }
 .le-intent-seg { display: inline-flex; border: 1px solid rgba(0, 0, 0, 0.24); border-radius: 8px; overflow: hidden; }
 .le-intent-btn {
   border: 0;
@@ -694,7 +692,6 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   .le-foot { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
   .le-intent-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
   .le-intent-btn { height: 44px; }
-  .le-intent-hint { display: none; }
 
   .le-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   /* The photo becomes a one-line strip: enough to tap open, and the fields
