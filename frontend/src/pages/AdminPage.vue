@@ -1,6 +1,6 @@
 <template>
-  <q-page class="q-pa-lg flex flex-center">
-    <div style="width: 640px; max-width: 92vw" class="q-gutter-md">
+  <q-page :class="[$q.screen.lt.sm ? 'q-pa-sm' : 'q-pa-lg', 'flex', 'flex-center']">
+    <div style="width: 640px; max-width: 100%" class="q-gutter-md">
       <div>
         <div class="text-h5">Admin</div>
         <div class="text-body2 text-grey-8 q-mt-xs">
@@ -10,16 +10,16 @@
 
       <q-card>
         <q-card-section>
-          <div class="row items-center no-wrap">
-            <div class="col text-h6">Conferences</div>
-            <q-btn color="primary" no-caps icon="add" label="Start a conference" @click="pickingNew = true" />
+          <div class="admin-head">
+            <div class="text-h6">Conferences</div>
+            <q-btn color="primary" no-caps icon="add" label="Start a conference" class="admin-btn" @click="pickingNew = true" />
           </div>
-          <div class="text-caption text-grey q-mt-xs">
+          <div class="text-caption text-grey-8 q-mt-xs">
             A conference stays live until you end it. Reps join a live one from their Setup page.
           </div>
         </q-card-section>
 
-        <q-card-section v-if="!eventsLoaded" class="q-pt-none text-caption text-grey">Loading…</q-card-section>
+        <q-card-section v-if="!eventsLoaded" class="q-pt-none text-caption text-grey-8">Loading…</q-card-section>
         <q-card-section v-else-if="!eventRows.length" class="q-pt-none text-body2">
           No conferences yet. Start one to get going.
         </q-card-section>
@@ -53,7 +53,7 @@
               <template v-if="event.status === 'active'">
                 <div>
                   <q-btn
-                    flat dense no-caps size="sm" color="primary" class="q-px-none"
+                    flat dense no-caps color="primary" class="q-px-none admin-link"
                     :label="folderCodes[event.id] === undefined ? 'Show laptop folder code' : 'Hide laptop folder code'"
                     :loading="loadingFolder === event.id"
                     @click="toggleFolderCode(event)"
@@ -61,7 +61,7 @@
                 </div>
                 <div v-if="folderCodes[event.id]" class="q-mt-xs">
                   <span class="text-subtitle2 text-weight-bold">{{ folderCodes[event.id] }}</span>
-                  <div class="text-caption text-grey">
+                  <div class="text-caption text-grey-8">
                     For the card-photo watcher: create a subfolder with this exact name under its inbox folder.
                   </div>
                 </div>
@@ -69,7 +69,8 @@
             </q-item-section>
             <q-item-section v-if="event.status === 'active'" side>
               <q-btn
-                flat no-caps color="negative" label="End"
+                outline no-caps color="negative" label="End" class="admin-btn"
+                :aria-label="`End ${event.name}`"
                 :loading="completingEvent === event.id"
                 @click="confirmMarkComplete(event)"
               />
@@ -80,17 +81,17 @@
 
       <q-card>
         <q-card-section>
-          <div class="row items-center no-wrap">
-            <div class="col text-h6">Team</div>
-            <q-btn color="primary" no-caps icon="add" label="Add person" @click="openAddPerson" />
+          <div class="admin-head">
+            <div class="text-h6">Team</div>
+            <q-btn color="primary" no-caps icon="add" label="Add person" class="admin-btn" @click="openAddPerson" />
           </div>
-          <div class="text-caption text-grey q-mt-xs">
+          <div class="text-caption text-grey-8 q-mt-xs">
             {{ isAdmin ? 'Solutions Success and Sales accounts.' : 'Sales accounts.' }}
             A rep can only be at one conference at a time, and their QR code only works while they're at one.
           </div>
         </q-card-section>
 
-        <q-card-section v-if="!profilesLoaded" class="q-pt-none text-caption text-grey">Loading…</q-card-section>
+        <q-card-section v-if="!profilesLoaded" class="q-pt-none text-caption text-grey-8">Loading…</q-card-section>
         <q-card-section v-else-if="!profiles.length" class="q-pt-none text-body2">No accounts yet.</q-card-section>
         <q-list v-else separator>
           <q-separator />
@@ -117,7 +118,7 @@
                 dense
                 outlined
                 class="q-mt-sm"
-                style="max-width: 320px"
+                style="width: 100%; max-width: 320px"
                 label="Working at"
                 :loading="assigningRep === p.id"
                 @update:model-value="(v: string | null) => assignRep(p, v)"
@@ -135,7 +136,7 @@
               <div v-if="p.role === 'sales' && p.repSlug" class="q-mt-sm">
                 <q-btn
                   outline dense no-caps color="primary" icon="download" label="Download QR slide"
-                  class="q-px-sm" :loading="downloadingSlideFor === p.id"
+                  class="q-px-sm admin-link" :loading="downloadingSlideFor === p.id"
                   @click="downloadRepSlide(p)"
                 />
               </div>
@@ -143,12 +144,12 @@
 
             <q-item-section side top>
               <div class="row no-wrap">
-                <q-btn flat round dense icon="edit" color="grey-7" aria-label="Edit" @click="openEditPerson(p)">
+                <q-btn flat round padding="10px" icon="edit" color="grey-8" aria-label="Edit" @click="openEditPerson(p)">
                   <q-tooltip>Edit name or phone</q-tooltip>
                 </q-btn>
                 <q-btn
                   v-if="p.id !== sessionStore.user?.id"
-                  flat round dense icon="delete" color="grey-7" aria-label="Delete"
+                  flat round padding="10px" icon="delete" color="grey-8" aria-label="Delete"
                   @click="confirmDeleteProfile(p)"
                 />
               </div>
@@ -549,3 +550,17 @@ onMounted(() => {
   void loadProfiles();
 });
 </script>
+
+<style scoped>
+/* Title and its button share a line when they fit and wrap when they don't — the
+   no-wrap row clipped "Conferences" down to "Conference" on a phone. */
+.admin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.admin-btn { min-height: 44px; }
+.admin-link { min-height: 40px; }
+</style>
