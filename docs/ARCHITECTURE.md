@@ -100,7 +100,12 @@ preserve:
   Join/Switch for yourself, Admin → Team's "Working at" for someone else. Both
   end in the same field; don't add a third surface.
 
-The QR (per rep) and kiosk PIN (per login) are deliberately available before
+Only Sales accounts have a QR (`rep_slug`); admin and Solutions Success are who
+send each rep theirs, so Setup lists the Sales reps with a Download each for
+them and Admin → Team has a labelled button per rep. All of these build the
+slide through `downloadRepConnectSlide` in `utils/generateConnectSlide.ts` —
+add new callers there rather than re-assembling the URL. The QR (per rep) and
+kiosk PIN (per login) are deliberately available before
 joining anything; only the SMS *status* is per conference. The text-in card's
 phone steps and its opt-in disclosure are likewise never gated on joining:
 texting `SETUP` is self-contained (`twilio-webhook` finds or starts the
