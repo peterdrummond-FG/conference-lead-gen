@@ -134,11 +134,7 @@
                    admin gets a rep their slide to send, and an unlabelled QR
                    glyph beside edit/delete wasn't findable. -->
               <div v-if="p.role === 'sales' && p.repSlug" class="q-mt-sm">
-                <q-btn
-                  outline dense no-caps color="primary" icon="download" label="Download QR slide"
-                  class="q-px-sm admin-link" :loading="downloadingSlideFor === p.id"
-                  @click="downloadRepSlide(p)"
-                />
+                <qr-save-buttons :rep="{ name: p.name, repSlug: p.repSlug }" class="admin-link" />
               </div>
             </q-item-section>
 
@@ -250,7 +246,7 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
-import { downloadRepConnectSlide } from '@/utils/generateConnectSlide';
+import QrSaveButtons from '@/components/QrSaveButtons.vue';
 import type { Profile, Role } from '@/types/review';
 
 interface ActiveEventOption {
@@ -389,8 +385,6 @@ async function onStarted(payload: { joined: boolean; name: string }) {
 const profiles = ref<Profile[]>([]);
 const profilesLoaded = ref(false);
 const assigningRep = ref<string | null>(null);
-// Keyed by rep id -- a specific row's QR download.
-const downloadingSlideFor = ref<string | null>(null);
 
 const creatableRoleOptions = [
   { label: 'Solutions Success', value: 'solutionsSuccess' },
@@ -531,18 +525,6 @@ async function deleteProfile(p: Profile) {
   await api.post('/profiles-delete', { id: p.id });
   await Promise.all([loadProfiles(), loadEvents()]);
   Notify.create({ type: 'positive', message: `${p.name}'s account was deleted.` });
-}
-
-// Admin/Solutions Success downloading a specific rep's own QR without needing
-// to be logged in as that rep.
-async function downloadRepSlide(rep: Profile) {
-  if (!rep.repSlug) return;
-  downloadingSlideFor.value = rep.id;
-  try {
-    await downloadRepConnectSlide({ name: rep.name, repSlug: rep.repSlug });
-  } finally {
-    downloadingSlideFor.value = null;
-  }
 }
 
 onMounted(() => {

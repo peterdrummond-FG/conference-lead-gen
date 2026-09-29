@@ -82,6 +82,7 @@
 import { Notify } from 'quasar';
 import { ref, computed, onMounted } from 'vue';
 import { api } from '@/boot/axios';
+import { anchorDownload } from '@/utils/saveImage';
 
 interface ExportSummary {
   readyToExport: number;
@@ -108,12 +109,7 @@ async function load() {
 // instance and triggers the download from the resulting blob instead —
 // same reasoning as useContactPhoto.ts.
 function saveBlob(blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'ckh-connect-leads.csv';
-  link.click();
-  URL.revokeObjectURL(url);
+  anchorDownload(blob, 'ckh-connect-leads.csv');
 }
 
 async function download() {
