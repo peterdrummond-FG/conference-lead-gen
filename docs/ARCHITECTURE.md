@@ -86,6 +86,19 @@ fixed in the same change. `events-active`'s own fallback branch already had
 the check; it just hadn't been true everywhere. Grep for `.eq("slug",` /
 `.eq("event_id",` on a client-supplied value before adding a new one.
 
+### Which conference a Connect submission lands in
+
+`contacts-create` resolves the event and the credited rep from, in order:
+`repSlug` (a rep's reusable QR: their linked event, rep credited), `eventSlug`
+(+ optional `repId`, revalidated against `event_reps`; event must be active),
+then — for a bare call — the **signed-in caller** (the in-app Connect tab: their
+`current_event_id`, credited if `sales`). A bare call with no valid session is a
+409, never "the latest-activated event". Old `/booth` and `/session` slides land
+here, so they now show "Scan the conference QR code again" until reprinted.
+`IntakePage` mirrors this: signed in with no linked event shows "Join a
+conference first" rather than the fallback event `events-active` returns for
+display.
+
 ### Setup and Admin
 
 `/setup` (any role) is the guided rep flow; `/admin` (`admin` /
