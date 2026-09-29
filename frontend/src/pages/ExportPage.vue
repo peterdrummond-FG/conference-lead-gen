@@ -66,7 +66,6 @@
             icon="download"
             :label="exportCount > 0 ? `Export ${exportCount} ${exportCount === 1 ? 'lead' : 'leads'}` : 'Export to Zoho'"
             class="ex-btn"
-            data-tour="export-button"
             :class="{ 'full-width': $q.screen.lt.sm }"
             :loading="exporting"
             :disable="!summary || exportCount === 0"

@@ -4,17 +4,17 @@
       <div class="rs-title-row">
         <h1 class="rs-title">Review</h1>
         <div class="rs-head-actions">
-          <q-btn v-if="$q.screen.gt.xs" outline no-caps color="primary" icon="add" label="Contacts from note" to="/notes" data-tour="review-note-button">
+          <q-btn v-if="$q.screen.gt.xs" outline no-caps color="primary" icon="add" label="Contacts from note" to="/notes">
             <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
           </q-btn>
           <!-- Labelled on a phone too: a bare + gave no hint it opens the note-paste
                page, and this button is the only way to reach that page. -->
-          <q-btn v-else flat dense no-caps color="primary" icon="note_add" label="From a note" to="/notes" class="rs-note-link" data-tour="review-note-button" />
+          <q-btn v-else flat dense no-caps color="primary" icon="note_add" label="From a note" to="/notes" class="rs-note-link" />
           <ReviewViewMenu />
         </div>
       </div>
 
-      <div class="rs-tabs" role="tablist" aria-label="Review status" data-tour="review-tabs">
+      <div class="rs-tabs" role="tablist" aria-label="Review status">
         <button
           v-for="t in tabDefs"
           :key="t.value"
@@ -82,10 +82,6 @@
         </template>
       </div>
     </header>
-
-    <!-- Only while the welcome tour is explaining a Ready lead. A picture, never
-         part of `leads`, so no count, filter or bulk action can reach it. -->
-    <TourSampleLead v-if="tour.currentStep?.id === 'review-sample'" />
 
     <UnresolvedIntakePanel :view-as-rep-id="sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null" />
 
@@ -256,11 +252,9 @@ import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
 import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
-import TourSampleLead from '@/components/onboarding/TourSampleLead.vue';
 import { useSmartReview, type DisplayPatch } from '@/composables/useSmartReview';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
-import { useTourStore } from '@/stores/tour-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
   DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, readyIds, searchLeads, sortLeads,
@@ -270,7 +264,6 @@ import {
 const $q = useQuasar();
 const sessionStore = useSessionStore();
 const eventStore = useEventStore();
-const tour = useTourStore();
 const { buckets, currentIds, loaded, busy, serverFilters, load, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');

@@ -124,51 +124,6 @@ it works" is collapsed until the rep opens it, and a "You're ready to capture
 leads" card at the end points to Review and the sign-up form. Don't grow the
 prose back; put detail in "How it works".
 
-### Welcome tour
-
-A new staff account sees a three-screen welcome, then a spotlight walkthrough of
-the real pages (Setup, Connect, Review, and Export / Admin for admin and
-Solutions Success). The wording, step list and per-role filtering are plain data
-in `frontend/src/utils/onboardingTour.ts`; `stores/tour-store.ts` tracks where
-someone is, and `components/onboarding/` draws it. Things to preserve:
-
-- **"Seen it" is the account's, not the device's.** `profiles.onboarded_at`,
-  returned by `me` as `onboarded` and written by `profiles-complete-onboarding`
-  (own row only, idempotent). The migration backfilled every account that
-  existed, so only accounts created afterwards start it. The tour starts only on
-  an explicit `onboarded === false`, and `me` answers `true` if its lookup
-  errors: a hiccup must never show it to someone who finished.
-- **The sample lead is a picture, never data.** `SAMPLE_LEAD` is drawn by
-  `TourSampleLead` and never enters `flatLeads`, a count, a filter or a bulk
-  selection, because "Approve N ready" acts on lead ids and this one doesn't
-  exist. A test checks it really is Ready under `reviewSmart.isReady`.
-- **A missing target is a plain card, not a stuck tour.** Steps point at
-  `data-tour="…"` attributes; if one isn't on the page (Review's Classic view has
-  none of Smart's), the card is centred and explains in words. A test fails if a
-  step names a target no source file carries.
-- **The wording is for a rep at a booth.** A test fails if technical vocabulary
-  (`BANNED_WORDS`) appears in anything the tour shows.
-- **Never for attendees or a locked kiosk.** The splash and overlay only mount
-  for a signed-in user on an unlocked device, and never start while an admin is
-  previewing someone else ("View as").
-- **The copy makes promises about Setup and Review.** If Smart's Ready rule or
-  Setup's flow changes, update `onboardingTour.ts` in the same change.
-
-### Connect (the attendee form)
-
-`/connect` (formerly `/intake`; the old path redirects) is the public form an
-attendee fills in on their own phone or at a booth device. Two rules:
-
-- **Autofill is on only for an attendee's own phone.** `IntakePage.vue` sets
-  `autocomplete` tokens (`given-name`, `email`, `tel`, ...) when no staff member
-  is signed in on the device and the kiosk isn't locked, and `autocomplete="off"`
-  otherwise — a shared booth device's browser would otherwise offer its owner's
-  saved name, email and phone to every attendee who taps a field.
-- Phone is `type="tel"` with `inputmode="tel"` (number pad); the "email or phone,
-  one is enough" rule is stated under the fields, not only as an error after
-  Submit. Field labels and edges use the darker greys (`#5f6368` / `#8b95a1`);
-  the old `#9a9a9a` / `#d8d8d8` were about 2.7:1 and 1.4:1.
-
 ### Exporting
 
 Export is two-phase (audit Q2): `export-csv` **reserves** the exportable leads
