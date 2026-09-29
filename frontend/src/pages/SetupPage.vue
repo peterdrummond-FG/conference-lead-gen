@@ -1,6 +1,6 @@
 <template>
-  <q-page class="q-pa-lg flex flex-center">
-    <div style="width: 640px; max-width: 92vw" class="q-gutter-md">
+  <q-page :class="[$q.screen.lt.sm ? 'q-pa-sm' : 'q-pa-lg', 'flex', 'flex-center']">
+    <div style="width: 640px; max-width: 100%" class="q-gutter-md">
       <div>
         <div class="text-h5">Get ready for your conference</div>
         <div class="text-body2 text-grey-8 q-mt-xs">
@@ -34,13 +34,13 @@
           </q-card-section>
 
           <q-card-section class="q-pt-none">
-            <div v-if="!eventsLoaded" class="text-caption text-grey">Loading…</div>
+            <div v-if="!eventsLoaded" class="text-caption text-grey-8">Loading…</div>
 
             <template v-else-if="joinedEvent && !changing">
               <div class="row items-center no-wrap">
                 <div class="col">
                   <div class="text-subtitle1">{{ joinedEvent.name }}</div>
-                  <div class="text-caption text-grey">
+                  <div class="text-caption text-grey-8">
                     {{ joinedEvent.state }} · started {{ formatRelativeTime(joinedEvent.activatedAt) }}
                   </div>
                 </div>
@@ -48,9 +48,6 @@
                      with one live conference "Change" would open a list
                      containing just the one you're already in. -->
                 <q-btn v-if="activeEvents.length > 1" flat no-caps color="primary" label="Change" @click="changing = true" />
-              </div>
-              <div class="text-caption text-grey q-mt-xs">
-                Attendee scans and texted cards are credited to this conference.
               </div>
             </template>
 
@@ -100,8 +97,8 @@
                  one nobody has started yet. -->
             <q-btn
               v-if="eventsLoaded"
-              flat no-caps color="primary" icon="add"
-              :label="activeEvents.length ? `Don't see yours? Start a new conference` : 'Start a new conference'"
+              flat no-caps no-wrap color="primary" icon="add"
+              :label="!joinedEvent && activeEvents.length ? `Don't see yours? Start a new one` : 'Start a new conference'"
               class="q-mt-sm"
               @click="pickingNew = true"
             />
@@ -115,7 +112,7 @@
               <q-avatar size="26px" color="primary" text-color="white" class="q-mr-sm">2</q-avatar>
               <div class="text-subtitle1 text-weight-medium">Choose how you'll capture leads</div>
             </div>
-            <div class="text-caption text-grey q-mt-xs" style="margin-left: 34px">
+            <div class="text-caption text-grey-8 q-mt-xs" style="margin-left: 34px">
               Use one or all of these.
             </div>
           </q-card-section>
@@ -136,8 +133,8 @@
                 <div class="col">
                   <div class="text-subtitle2 text-weight-bold">Your QR code</div>
                   <div class="text-body2 text-grey-8">
-                    Attendees scan it and fill in their own details. It's yours for every conference
-                    you work, so put it on a slide or open it on an iPad, not the laptop screen.
+                    Attendees scan it and fill in their own details. It works at every conference you
+                    join, so put it on a slide or open it on an iPad.
                   </div>
                   <!-- A scan is rejected until the rep is linked to a conference
                        (contacts-create), so say so rather than letting a rep find out at
@@ -165,8 +162,8 @@
                 <div class="col">
                   <div class="text-subtitle2 text-weight-bold">Rep QR slides</div>
                   <div class="text-body2 text-grey-8">
-                    Every Sales rep has their own reusable QR code slide. Download one to send it to them.
-                    A rep's QR only works once they've joined a conference.
+                    Every Sales rep has a reusable QR slide. Download one to send it to them. It only
+                    works once they've joined a conference.
                   </div>
                   <q-list v-if="salesReps.length" dense separator class="q-mt-sm">
                     <q-item v-for="rep in salesReps" :key="rep.id" class="q-px-none">
@@ -213,18 +210,14 @@
                      conference here. Only the status badge does (smsBound is per
                      conference), which is why an earlier draft that hid this whole
                      card until joining was wrong. -->
-                <div class="text-body2 text-grey-8 q-mt-xs">
-                  You can also start right from your phone: texting SETUP lets you find your
-                  conference by name, no website needed.
-                </div>
-                <div v-if="!joinedEvent" class="text-caption text-grey q-mt-xs">
+                <div v-if="!joinedEvent" class="text-caption text-grey-8 q-mt-xs">
                   Your connection status shows here once you've joined a conference above.
                 </div>
                 <!-- Joined, but eventStore.activeEvent hasn't caught up yet (a moment after
                      joining or switching). Without this, smsStatus null would fall through to
                      the "not connected" action below for a conference whose status simply
                      isn't known yet. -->
-                <div v-else-if="smsStatus === null" class="text-caption text-grey q-mt-xs">Checking…</div>
+                <div v-else-if="smsStatus === null" class="text-caption text-grey-8 q-mt-xs">Checking…</div>
 
                 <div v-if="smsStatus === 'no-phone'" class="text-body2 text-orange-9 q-mt-sm">
                   Your account has no phone number yet, so texted cards can't be credited to you.
@@ -254,7 +247,7 @@
                      later (2026-09-11) of the two wordings the page used to carry; it is
                      the only copy now, and it covers texting SETUP and texting the
                      folder code alike -- hence "the code SETUP" in the action above. -->
-                <div class="text-caption text-grey q-mt-sm">
+                <div class="text-caption text-grey-8 q-mt-sm">
                   By texting this code, you agree to receive recurring automated text messages from
                   Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg
                   frequency varies. Reply HELP for help, STOP to cancel.
@@ -283,7 +276,7 @@
                     </li>
                     <li>Everything shows up in <span class="text-weight-bold">Review</span> a few minutes later, matched against Zoho automatically.</li>
                   </ol>
-                  <div v-if="linkedEvent?.folderCode" class="text-caption text-grey q-mt-sm">
+                  <div v-if="linkedEvent?.folderCode" class="text-caption text-grey-8 q-mt-sm">
                     Already know today's code, <span class="text-weight-bold">{{ linkedEvent.folderCode }}</span>?
                     After you've activated your SMS opt-in, you can also text it directly to {{ twilioNumber }}
                     to bind your phone to today's event instead of texting SETUP.
@@ -304,16 +297,34 @@
                   <q-badge v-else color="grey-7" label="PIN not set" />
                 </div>
                 <div class="text-body2 text-grey-8">
-                  Lock a shared device to the sign-up form so attendees can't reach anything else. You
-                  unlock it with a PIN of your own, separate from your login password.
+                  Lock a shared device to the sign-up form. You unlock it with a PIN of your own, separate
+                  from your password.
                 </div>
                 <q-btn
                   outline no-caps color="primary" class="q-mt-sm"
                   :label="sessionStore.user?.hasKioskPin ? 'Change PIN' : 'Set PIN'"
                   @click="promptKioskPin"
                 />
-                <div class="text-caption text-grey q-mt-xs">When you're ready, tap Lock kiosk in the top bar.</div>
+                <div class="text-caption text-grey-8 q-mt-xs">When you're ready, tap Lock kiosk in the top bar.</div>
               </div>
+            </div>
+          </q-card-section>
+        </q-card>
+
+        <!-- Once a conference is joined there was no "you're done here" moment, so a
+             rep finished the page not knowing where to go next. -->
+        <q-card v-if="joinedEvent">
+          <q-card-section>
+            <div class="row items-center no-wrap">
+              <q-icon name="check_circle" color="positive" size="24px" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-medium">You're ready to capture leads</div>
+            </div>
+            <div class="text-body2 text-grey-8 q-mt-xs">
+              Everything you capture shows up in Review a few minutes later.
+            </div>
+            <div class="row q-gutter-sm q-mt-sm">
+              <q-btn unelevated no-caps color="primary" icon="checklist" label="Go to Review" to="/review" class="col-12 col-sm-auto" />
+              <q-btn outline no-caps color="primary" icon="tablet_mac" label="Open the sign-up form" to="/connect" class="col-12 col-sm-auto" />
             </div>
           </q-card-section>
         </q-card>
@@ -406,10 +417,11 @@ const smsStatus = computed<'connected' | 'pending' | 'no-phone' | null>(() => {
   return linkedEvent.value.smsBound ? 'connected' : 'pending';
 });
 
-// "How it works" is open until the phone is connected, then collapses -- but
-// once the rep has toggled it themselves their choice sticks (null = untouched).
+// "How it works": the rep's own toggle wins (null = untouched).
 const stepsOverride = ref<boolean | null>(null);
-const stepsOpen = computed(() => stepsOverride.value ?? smsStatus.value !== 'connected');
+// Collapsed by default: open until the phone connected it added ~500px to a page
+// that was already three screens tall on a phone. The toggle stays visible.
+const stepsOpen = computed(() => stepsOverride.value ?? false);
 
 // Rough enough to disambiguate same-named test/duplicate conferences in the
 // picker — not a general-purpose formatter.

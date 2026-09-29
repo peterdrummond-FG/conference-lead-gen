@@ -114,6 +114,27 @@ page. The disclosure ("By texting this code, …") is a single copy, always
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
+Setup is kept short on a phone on purpose (it was three screens): a joined
+conference is one compact card, the descriptive copy is a sentence or two, "How
+it works" is collapsed until the rep opens it, and a "You're ready to capture
+leads" card at the end points to Review and the sign-up form. Don't grow the
+prose back; put detail in "How it works".
+
+### Connect (the attendee form)
+
+`/connect` (formerly `/intake`; the old path redirects) is the public form an
+attendee fills in on their own phone or at a booth device. Two rules:
+
+- **Autofill is on only for an attendee's own phone.** `IntakePage.vue` sets
+  `autocomplete` tokens (`given-name`, `email`, `tel`, ...) when no staff member
+  is signed in on the device and the kiosk isn't locked, and `autocomplete="off"`
+  otherwise — a shared booth device's browser would otherwise offer its owner's
+  saved name, email and phone to every attendee who taps a field.
+- Phone is `type="tel"` with `inputmode="tel"` (number pad); the "email or phone,
+  one is enough" rule is stated under the fields, not only as an error after
+  Submit. Field labels and edges use the darker greys (`#5f6368` / `#8b95a1`);
+  the old `#9a9a9a` / `#d8d8d8` were about 2.7:1 and 1.4:1.
+
 ### Starting a conference
 
 Any role may start one (`events-activate`, with `campaigns-list` behind the
