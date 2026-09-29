@@ -295,17 +295,6 @@
               </q-item>
             </q-list>
           </div>
-
-          <div v-if="contact.matchStatus === 'new_account'" class="rc-s6 rc-link-account">
-            <q-input v-model="newAccountId" dense outlined label="Zoho Account Id (once created)" />
-            <q-input v-model="newAccountName" dense outlined label="Account name" />
-            <q-btn dense flat no-caps color="primary" label="Link" :disable="!newAccountId || !newAccountName" @click="linkNewAccount" />
-          </div>
-
-          <div v-if="contact.notes" class="rc-s6 text-caption">
-            <a href="#" @click.prevent="showNotes = !showNotes">{{ showNotes ? 'Hide match reasoning' : 'Show match reasoning' }}</a>
-            <div v-if="showNotes" class="q-mt-xs text-grey-8">{{ contact.notes }}</div>
-          </div>
         </div>
       </div>
 
@@ -374,7 +363,6 @@ const isExpanded = defineModel<boolean>('expanded', { default: false });
 const showFullImage = ref(false);
 const showFullSheet = ref(false);
 const showDuplicateDialog = ref(false);
-const showNotes = ref(false);
 
 const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
@@ -427,9 +415,6 @@ watch(() => draft.state, (_newState, oldState) => {
 watch(() => draft.district, (_newDistrict, oldDistrict) => {
   if (oldDistrict) draft.school = null;
 });
-
-const newAccountId = ref('');
-const newAccountName = ref('');
 
 function filterStates(val: string, update: (cb: () => void) => void) {
   update(() => {
@@ -587,17 +572,6 @@ function notAMatch() {
       ? 'Match cleared — this contact now needs review.'
       : 'Match cleared — kept the matched account, no specific contact.',
   });
-}
-
-function linkNewAccount() {
-  emit('update', props.contact.id, {
-    matchedZohoAccountId: newAccountId.value,
-    matchedZohoAccountName: newAccountName.value,
-    matchStatus: 'new_contact_existing_account',
-    matchConfidence: 'high',
-  });
-  newAccountId.value = '';
-  newAccountName.value = '';
 }
 
 // A directory-page photo (see process-cards SKILL.md Step 1) still has a
@@ -905,12 +879,6 @@ function capitalize(s: string) {
 .rc-s4 { grid-column: span 4; }
 .rc-s6 { grid-column: span 6; }
 .rc-suggest { margin-top: -6px; }
-.rc-link-account {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 8px;
-  align-items: center;
-}
 
 .rc-foot {
   display: flex;
@@ -966,8 +934,7 @@ function capitalize(s: string) {
   .rc-form :deep(.q-field--dense .q-field__control),
   .rc-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
 
-  .rc-link-account { grid-template-columns: 1fr; }
-
+  
   /* Pinned so Approve / Reject are always one thumb-reach away on a card
      that is ~900px tall on a phone. Bleeds to the card edges to cover the
      fields scrolling underneath. */
