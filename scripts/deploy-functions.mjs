@@ -9,13 +9,20 @@
 // deployed leaves functions running different versions of the security
 // helpers, which is exactly the drift audit N1 was about.
 //
+// The token comes from $SUPABASE_ACCESS_TOKEN if set, otherwise (macOS) from
+// the login Keychain item "SUPABASE_ACCESS_TOKEN". Save it there once with
+//   security add-generic-password -a "$USER" -s SUPABASE_ACCESS_TOKEN -w
+// (-w with no value prompts, so it never lands in shell history). Keeping it in
+// the Keychain rather than an exported variable means it is not inherited by
+// every process the shell starts.
+//
 // Usage (the token is a real sbp_... value, not a placeholder):
-//   export SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 //   node scripts/deploy-functions.mjs             # every function
 //   node scripts/deploy-functions.mjs export-csv  # just these
 //   node scripts/deploy-functions.mjs --dry-run   # plan only, no token needed
 //
 // Get one at https://supabase.com/dashboard/account/tokens
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,16 +31,35 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const functionsDir = path.join(repoRoot, 'supabase/functions');
 const sharedDir = path.join(functionsDir, '_shared');
 
-const token = process.env.SUPABASE_ACCESS_TOKEN;
-const ref = process.env.SUPABASE_PROJECT_REF ?? 'yrvppufkerbjpvrxniot';
+// execFileSync with an argv array, not a shell string: nothing here is
+// interpolated, and the value is captured, never echoed or written to disk.
+// Returns null on any failure (not macOS, item missing, access denied) so the
+// caller can say what to do rather than crash on a stack trace.
+function tokenFromKeychain() {
+  if (process.platform !== 'darwin') return null;
+  try {
+    return execFileSync(
+      'security',
+      ['find-generic-password', '-a', process.env.USER ?? '', '-s', 'SUPABASE_ACCESS_TOKEN', '-w'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 const dryRun = process.argv.includes('--dry-run');
+// A dry run needs no token, so it must not touch the Keychain (no prompt).
+const token = process.env.SUPABASE_ACCESS_TOKEN || (dryRun ? undefined : tokenFromKeychain());
+const ref = process.env.SUPABASE_PROJECT_REF ?? 'yrvppufkerbjpvrxniot';
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
 if (!dryRun) {
   if (!token) {
     console.error(
-      'SUPABASE_ACCESS_TOKEN is not set.\n' +
-      '  export SUPABASE_ACCESS_TOKEN=sbp_...   (https://supabase.com/dashboard/account/tokens)',
+      'No Supabase access token found (checked $SUPABASE_ACCESS_TOKEN and the Keychain item "SUPABASE_ACCESS_TOKEN").\n' +
+      '  Save it once:  security add-generic-password -a "$USER" -s SUPABASE_ACCESS_TOKEN -w\n' +
+      '  or export it:  export SUPABASE_ACCESS_TOKEN=sbp_...   (https://supabase.com/dashboard/account/tokens)',
     );
     process.exit(1);
   }

@@ -101,8 +101,9 @@ something since replaced, note it in `supabase/migrations/README.md`.
 ```bash
 # Deploy Edge Functions (needs a Management API token, sbp_ + 40 hex).
 # Required after ANY change under supabase/functions/_shared/ — every
-# consumer must be redeployed to pick it up.
-export SUPABASE_ACCESS_TOKEN=sbp_...
+# consumer must be redeployed to pick it up. The script reads the token from
+# $SUPABASE_ACCESS_TOKEN or, on macOS, the Keychain item of that name (save it
+# once: security add-generic-password -a "$USER" -s SUPABASE_ACCESS_TOKEN -w).
 node scripts/deploy-functions.mjs              # all
 node scripts/deploy-functions.mjs export-csv   # some
 node scripts/deploy-functions.mjs --dry-run    # plan, no token needed
