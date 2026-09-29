@@ -27,3 +27,11 @@ body {
   border-radius: 8px;
   font-weight: 500;
 }
+
+// Room around whatever the welcome tour scrolls into view: clears the fixed
+// header above it, and the docked card on a phone. Harmless everywhere else —
+// nothing but the tour scrolls to a [data-tour] element.
+[data-tour] {
+  scroll-margin-top: 112px;
+  scroll-margin-bottom: 24px;
+}

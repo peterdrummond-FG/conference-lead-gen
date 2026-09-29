@@ -12,6 +12,11 @@ export interface SessionUser {
   currentEventName: string | null;
   repSlug: string | null;
   hasKioskPin: boolean;
+  // Has this person finished or skipped the first-time welcome tour? Optional
+  // on purpose: an older `me` response has no such field, and the tour only
+  // starts on an explicit `false`, so a missing value never shows it to
+  // everyone (see MainLayout's auto-start).
+  onboarded?: boolean;
 }
 
 // Replaces kiosk-store.ts (shared-PIN lock/unlock) and role-store.ts
@@ -48,6 +53,7 @@ export const useSessionStore = defineStore('session', {
         currentEventName: string | null;
         repSlug: string | null;
         hasKioskPin: boolean;
+        onboarded?: boolean;
       }>('/me');
       this.user = data;
     },
@@ -79,6 +85,19 @@ export const useSessionStore = defineStore('session', {
     },
     setViewingAs(profile: Profile | null) {
       this.viewingAs = profile;
+    },
+    // Marks the welcome tour as done, on screen first and on the account
+    // second. If the save fails the tour is still dismissed and simply shows
+    // again next login: seeing it twice is harmless, being stuck in it is not.
+    // A no-op once done, so finishing a replay doesn't write anything.
+    async completeOnboarding() {
+      if (!this.user || this.user.onboarded !== false) return;
+      this.user.onboarded = true;
+      try {
+        await api.post('/profiles-complete-onboarding');
+      } catch {
+        // Deliberately silent; see above.
+      }
     },
   },
 });
