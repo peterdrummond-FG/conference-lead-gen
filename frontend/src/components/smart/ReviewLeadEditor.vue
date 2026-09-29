@@ -48,7 +48,17 @@
             {{ opt.label }}
           </button>
         </div>
-        <span class="le-intent-hint">Saves as you tap. Tap again to clear.</span>
+        <!-- Beside Heat, not down in the footer: a rep who was quick on the
+             follow-up marks it here with the other "how did it go" answers.
+             Saves as you tap, like Heat. -->
+        <q-checkbox
+          v-if="contact.reviewStatus !== 'rejected'"
+          :model-value="contact.followedUp"
+          label="Followed up"
+          class="le-follow"
+          @update:model-value="toggleFollowedUp"
+        />
+        <span class="le-intent-hint">Saves as you tap. Tap a heat choice again to clear it.</span>
       </div>
     </div>
 
@@ -250,13 +260,6 @@
     <div class="le-foot">
       <div v-if="footNote" class="le-foot-note" role="status">{{ footNote }}</div>
       <div class="le-foot-row">
-        <q-checkbox
-          v-if="contact.reviewStatus !== 'rejected'"
-          :model-value="contact.followedUp"
-          label="Followed up"
-          class="le-follow"
-          @update:model-value="toggleFollowedUp"
-        />
         <q-space />
         <q-btn v-if="isDirty" outline no-caps color="primary" label="Save changes" class="le-btn" :loading="busy" @click="save" />
         <q-btn v-if="contact.reviewStatus !== 'rejected'" flat no-caps color="negative" label="Reject" class="le-btn" :disable="busy" @click="rejectClick" />
@@ -682,7 +685,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-foot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .le-btn { min-height: 44px; }
 .le-approve { min-width: 120px; }
-.le-follow { min-height: 44px; }
+.le-follow { min-height: 44px; margin-left: 4px; }
 .le-keys { margin-top: 6px; font-size: 12px; color: #6B7680; text-align: right; }
 
 @container le (max-width: 560px) {
@@ -713,7 +716,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   .le-form :deep(.q-field--dense .q-field__control),
   .le-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
 
-  .le-follow { flex: 1 0 100%; }
+  .le-follow { flex: 1 0 100%; margin-left: 0; }
   .le-approve { flex: 1; }
   .le-foot-row .q-btn { flex: 1 1 auto; }
 }
