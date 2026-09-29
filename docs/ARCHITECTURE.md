@@ -169,6 +169,27 @@ attendee fills in on their own phone or at a booth device. Two rules:
   Submit. Field labels and edges use the darker greys (`#5f6368` / `#8b95a1`);
   the old `#9a9a9a` / `#d8d8d8` were about 2.7:1 and 1.4:1.
 
+### Password reset
+
+Sign-in is Supabase Auth from the browser (`lib/supabase.ts`). "Forgot password?"
+on `/login` calls `resetPasswordForEmail` with `redirectTo` =
+`<origin>/reset-password`; that page (`ResetPasswordPage.vue`, public) reads the
+recovery session the emailed link creates and calls `supabase.auth.updateUser`
+to set the new password. It was broken until 2026-09-29: the request had no
+`redirectTo`, the link dropped people on the site root, and nothing anywhere
+let them choose a password (they were merely signed in by the recovery session
+with the password they'd forgotten). The request's response was also ignored, so
+a failure still said "Check your email".
+
+Two things live outside the repo and must be right in the Supabase dashboard
+(Authentication → URL Configuration), because `supabase/config.toml` is local dev
+only: **Site URL** must be the deployed app's URL, and
+`https://<app>/reset-password` must be in **Redirect URLs**. If it isn't, Supabase
+ignores `redirectTo` and sends the link to the Site URL, and the reset silently
+lands on the wrong page. The link works once and expires; the page says so and
+points back to sign-in. There is no admin-side "reset this person's password"
+(Admin only edits name and phone).
+
 ### Exporting
 
 Export is two-phase (audit Q2): `export-csv` **reserves** the exportable leads

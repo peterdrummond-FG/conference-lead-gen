@@ -17,6 +17,10 @@ const routes: RouteRecordRaw[] = [
       // straight on to /review.
       { path: '', redirect: '/login' },
       { path: 'login', component: () => import('@/pages/LoginPage.vue') },
+      // Where the emailed password-reset link lands (LoginPage passes it as
+      // redirectTo). Public, like /login: the person following it is signed in
+      // only by the recovery link's own session, and has no role to check yet.
+      { path: 'reset-password', component: () => import('@/pages/ResetPasswordPage.vue') },
       // Public, unauthenticated legal pages for the Twilio A2P 10DLC campaign
       // (Privacy Policy / Terms & Conditions URLs) — must stay reachable with
       // no login wall, per Twilio's review requirements.
