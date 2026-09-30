@@ -4,7 +4,7 @@
       <div>
         <div class="text-h5">Admin</div>
         <div class="text-body2 text-grey-8 q-mt-xs">
-          Start and end conferences, and manage who's on your team.
+          Activate and end conferences, and manage who's on your team.
         </div>
       </div>
 
@@ -12,7 +12,7 @@
         <q-card-section>
           <div class="admin-head">
             <div class="text-h6">Conferences</div>
-            <q-btn color="primary" no-caps icon="add" label="Start a conference" class="admin-btn" @click="pickingNew = true" />
+            <q-btn color="primary" no-caps icon="add" label="Activate a conference" class="admin-btn" @click="pickingNew = true" />
           </div>
           <div class="text-caption text-grey-8 q-mt-xs">
             A conference stays live until you end it. Reps join a live one from their Setup page.
@@ -21,7 +21,7 @@
 
         <q-card-section v-if="!eventsLoaded" class="q-pt-none text-caption text-grey-8">Loading…</q-card-section>
         <q-card-section v-else-if="!eventRows.length" class="q-pt-none text-body2">
-          No conferences yet. Start one to get going.
+          No conferences yet. Activate one to get going.
         </q-card-section>
         <q-list v-else separator>
           <q-separator />
@@ -365,7 +365,7 @@ async function markComplete(eventId: string) {
   }
 }
 
-// --- Start a conference ----------------------------------------------------
+// --- Activate a conference ----------------------------------------------------
 
 const pickingNew = ref(false);
 

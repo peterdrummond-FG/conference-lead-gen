@@ -134,11 +134,31 @@ never resolved through the profile. The disclosure ("By texting this code, …")
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
-Setup is kept short on a phone on purpose (it was three screens): a joined
-conference is one compact card, the descriptive copy is a sentence or two, "How
-it works" is collapsed until the rep opens it, and a "You're ready to capture
-leads" card at the end points to Review and the sign-up form. Don't grow the
-prose back; put detail in "How it works".
+Setup is a short list of cards, each a step with a number that becomes a green
+check when it's done: **Choose your conference** (folds to one line with a
+"Change" button, plus an "Ended N days ago" chip once its last day has passed),
+**Set up your phone** (status, the number we have on file, the Text SETUP button,
+Check connection, and the consent line), **Kiosk setup** (PIN). Then **Your QR
+code**, which is a resource rather than a step (no number, no check) so the page
+doesn't read as finished before the rep has done anything. Return visits are all
+checks and the rep taps the one to change. Keep it that way:
+
+- **One picker.** "Choose" and "Change" both open `StartConferenceDialog`, which
+  lists live conferences (Join) and upcoming ones (Activate). Setup has no inline
+  list and no separate Start button. A live conference whose name has no date
+  only shows when searched for, because the dialog's default list needs an end
+  date.
+- **Dates come from the campaign name** through the `event_dates()` SQL function
+  (the same parser the picker uses), returned by `events-list-active` as
+  `startsOn`/`endsOn`; null for an undated name. Don't add a second parser in
+  TypeScript.
+- **The QR line must stay true.** It names the joined conference; with none chosen
+  it says scans won't go through, because `contacts-create` answers 409 for a rep
+  with no `current_event_id`. It does not file the lead under the previous one.
+- **The rep's number on file** (`/me` -> `phoneNumber`) is shown so a wrong one is
+  caught; reps can't edit it, so the "?" points at their Solutions Success rep.
+- The "how it works" explanation is the welcome tour, not text on Setup. Keep the
+  page's prose to a line or two.
 
 ### Welcome tour
 

@@ -16,6 +16,11 @@
 // them the list to pick from. There is nothing sensitive in this response
 // (name/slug/state/activatedAt/repIds -- no folder_code), so no role check
 // is needed beyond being authenticated.
+//
+// startsOn / endsOn come from the campaign name via event_dates() -- the same
+// parser the conference picker uses -- and are null for a name with no date
+// (test conferences). Setup folds them into "Sep 30 to Oct 2" and shows an
+// "Ended 2 days ago" chip once endsOn has passed.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -36,12 +41,22 @@ Deno.serve(async (req) => {
     .order("activated_at", { ascending: false });
   if (error) return errorResponse(req, 500, error.message);
 
+  const { data: dates, error: datesError } = await supabase.rpc("event_dates", {
+    p_event_ids: (data ?? []).map((e) => e.id),
+  });
+  if (datesError) return errorResponse(req, 500, datesError.message);
+  const datesById = new Map(
+    (dates ?? []).map((d: { id: string; starts_on: string | null; ends_on: string | null }) => [d.id, d]),
+  );
+
   return jsonResponse(req, (data ?? []).map((e) => ({
     id: e.id,
     name: e.name,
     slug: e.slug,
     state: e.state,
     activatedAt: e.activated_at,
+    startsOn: datesById.get(e.id)?.starts_on ?? null,
+    endsOn: datesById.get(e.id)?.ends_on ?? null,
     // deno-lint-ignore no-explicit-any
     repIds: ((e.event_reps ?? []) as any[]).map((r) => r.rep_id),
   })));

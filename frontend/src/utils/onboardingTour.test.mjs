@@ -59,7 +59,7 @@ test('every step sends a role only to pages that role can open', () => {
 // once a conference is joined; the sample lead injected into Review's list), so
 // the list is deliberately short and a new entry has to be argued for here.
 const ALWAYS_THERE = new Set([
-  'setup-conference', 'setup-capture-head', 'setup-text-in', 'review-tabs',
+  'setup-conference', 'setup-text-in', 'review-tabs',
   'review-note-button', 'export-button', 'nav-admin', 'tour-replay',
 ]);
 
