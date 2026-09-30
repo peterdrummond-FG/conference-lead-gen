@@ -1,5 +1,5 @@
 <template>
-  <div class="lr" :class="{ 'is-active': active, 'is-busy': busy }" :data-lead-id="contact.id">
+  <div class="lr" :class="{ 'is-active': active, 'is-busy': busy, 'is-card': phone }" :data-lead-id="contact.id" @click="onCardClick">
     <q-checkbox
       v-if="selectable"
       :model-value="selected"
@@ -17,13 +17,15 @@
         <span class="lr-line1">
           <span class="lr-name">{{ name }}</span>
           <LeadChip v-if="contact.contactIntent && tab !== 'approved'" :tone="intentTone(contact.contactIntent)">{{ intentLabel }}</LeadChip>
+          <!-- Says "this opens". Phone only: the desktop list sits beside its pane. -->
+          <q-icon v-if="phone" name="chevron_right" size="24px" class="lr-chev" aria-hidden="true" />
         </span>
         <span v-if="orgLine(contact)" class="lr-org">{{ orgLine(contact) }}</span>
         <span v-if="showEvent || showRep" class="lr-meta">{{ [showEvent ? contact.eventName : null, showRep ? contact.repName : null].filter(Boolean).join(' · ') }}</span>
         <span v-if="contact.interactionNotes" class="lr-note" :class="{ 'lr-note-2': tab === 'approved' }">{{ contact.interactionNotes }}</span>
         <span class="lr-chips">
           <template v-if="tab === 'needs_review'">
-            <LeadChip v-if="flags.length === 0" tone="green"><q-icon name="check" size="14px" />Ready</LeadChip>
+            <LeadChip v-if="flags.length === 0" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
             <LeadChip v-for="f in shownFlags" :key="f.key" :tone="f.tone">{{ f.label }}</LeadChip>
           </template>
           <LeadChip v-if="badge" :tone="badge.tone">{{ badge.label }}</LeadChip>
@@ -53,14 +55,16 @@
             :disable="busy"
             @update:model-value="(v: boolean) => $emit('followedUp', v)"
           />
+          <!-- Adding a note lives in the open lead on a phone; the row keeps only
+               what saves in one tap. -->
           <q-btn
+            v-if="!phone"
             flat
             no-caps
             dense
             color="primary"
             icon="note_add"
-            :label="phone ? undefined : 'Add note'"
-            :round="phone"
+            label="Add note"
             aria-label="Add note"
             class="lr-note-btn"
             :disable="busy"
@@ -72,19 +76,33 @@
 
         <div class="lr-bar-right">
           <template v-if="tab === 'needs_review' && !compact">
-            <q-btn flat no-caps color="negative" icon="close" :label="phone ? undefined : 'Reject'" :round="phone" aria-label="Reject" class="lr-btn" :disable="busy" @click="$emit('reject')" />
-            <q-btn
-              v-if="ready"
-              unelevated
-              no-caps
-              color="positive"
-              icon="check"
-              label="Approve"
-              class="lr-btn lr-btn-main"
-              :loading="busy"
-              @click="$emit('approve')"
-            />
-            <q-btn v-else outline no-caps color="primary" label="Review" class="lr-btn lr-btn-main" @click="$emit('open')" />
+            <!-- Still in the pipeline: nothing to decide yet, so a bar stands where the
+                 buttons will be. The list reloads itself, which swaps them in. -->
+            <ProcessingBar v-if="processing" class="lr-proc" />
+            <!-- Phone: two round icons, no words. The ✓ is the same lead as the
+                 "Ready to approve" chip above it, so the chip explains the tick. -->
+            <template v-else-if="phone && ready">
+              <q-btn round outline color="negative" icon="close" aria-label="Reject" class="lr-icon-btn" :disable="busy" @click="$emit('reject')" />
+              <q-btn round unelevated color="positive" icon="check" aria-label="Approve" class="lr-icon-btn" :loading="busy" @click="$emit('approve')" />
+            </template>
+            <!-- Phone, not ready: no decision to make yet, so a cue for the fix. The card
+                 (and this button, for keyboard and screen-reader users) opens the lead. -->
+            <button v-else-if="phone" type="button" class="lr-cue" @click="$emit('open')">{{ cue }}</button>
+            <template v-else>
+              <q-btn flat no-caps color="negative" icon="close" label="Reject" aria-label="Reject" class="lr-btn" :disable="busy" @click="$emit('reject')" />
+              <q-btn
+                v-if="ready"
+                unelevated
+                no-caps
+                color="positive"
+                icon="check"
+                label="Approve"
+                class="lr-btn lr-btn-main"
+                :loading="busy"
+                @click="$emit('approve')"
+              />
+              <q-btn v-else outline no-caps color="primary" label="Review" class="lr-btn lr-btn-main" @click="$emit('open')" />
+            </template>
           </template>
 
           <q-btn v-else-if="tab === 'approved'" flat no-caps dense class="lr-heat" :class="contact.contactIntent ? `heat-${contact.contactIntent}` : ''" :disable="busy" :aria-label="`Heat: ${intentLabel || 'not set'}`">
@@ -113,8 +131,9 @@
 import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import LeadChip from '@/components/smart/LeadChip.vue';
+import ProcessingBar from '@/components/smart/ProcessingBar.vue';
 import type { ContactListItem } from '@/types/review';
-import { accountBadge, fullName, intentTone, isReady, leadFlags, orgLine, type ReviewStatus } from '@/utils/reviewSmart';
+import { accountBadge, fullName, intentTone, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, type ReviewStatus } from '@/utils/reviewSmart';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -130,7 +149,7 @@ const props = defineProps<{
   busy?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   open: [];
   approve: [];
   reject: [];
@@ -147,9 +166,23 @@ const phone = computed(() => $q.screen.lt.sm);
 // Nothing to show on a compact rejected row (its Restore lives in the pane).
 const showBar = computed(() => props.tab !== 'rejected' || !props.compact);
 
+// On a phone the whole card opens the lead, not just the name. The identity block
+// stays the one real <button> (keyboard, screen readers); this only widens the
+// tap. Anything interactive inside the card (phone / email links, the checkbox,
+// the ✓ / ✕) handles its own tap and must not also open the lead.
+function onCardClick(e: MouseEvent) {
+  if (!phone.value || props.selectable) return;
+  const el = e.target as HTMLElement | null;
+  if (el?.closest('a, button, input, label, .q-checkbox, .q-btn')) return;
+  emit('open');
+}
+
 const name = computed(() => fullName(props.contact));
 const flags = computed(() => leadFlags(props.contact));
 const ready = computed(() => isReady(props.contact));
+// Mid-pipeline: no Reject here (the editor explains why), only Review to open it.
+const processing = computed(() => isProcessing(props.contact));
+const cue = computed(() => leadCue(props.contact) ?? 'Open');
 // "Pick a Zoho match" is already the account badge — don't say it twice.
 const shownFlags = computed(() => flags.value.filter((f) => !(f.key === 'unclear' && badge.value)));
 const badge = computed(() => accountBadge(props.contact));
@@ -249,8 +282,38 @@ const heatOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
 .lr-note-btn { min-height: 44px; padding: 0 8px; }
 .lr-btn { min-height: 44px; }
 .lr-btn-main { min-width: 96px; }
+.lr-icon-btn { width: 40px; height: 40px; min-height: 40px; }
+.lr-proc { flex: 1; min-width: 96px; max-width: 180px; }
+.lr-cue { border: 0; background: transparent; color: #0067AC; font: inherit; font-size: 14px; font-weight: 500; min-height: 44px; padding: 0 4px; cursor: pointer; }
+.lr-cue:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 4px; }
+.lr-chev { margin-left: auto; flex: none; color: #8A949E; }
 .lr-heat { min-height: 44px; padding: 0 10px; color: #4A555F; }
 .lr-heat.heat-hot { color: #B23B3B; background: #FBEAEA; }
 .lr-heat.heat-warm { color: #9A4D00; background: #FDEEE3; }
 .lr-heat.heat-cold { color: #0067AC; background: #E3F1FA; }
+</style>
+
+<style scoped>
+/* Phone: each lead is its own card, so it reads as a thing you can open rather
+   than a line in a list. The footer is a thin rule above the row's controls. */
+@media (max-width: 599px) {
+  .lr.is-card {
+    margin: 0 0 8px;
+    padding: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-left-width: 3px;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0, 103, 172, 0.08);
+  }
+  .lr.is-card.is-active { border-left-color: var(--q-primary); }
+  .lr.is-card .lr-bar {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    flex-wrap: nowrap;
+  }
+  .lr.is-card .lr-bar-right { gap: 8px; }
+}
 </style>

@@ -3,7 +3,17 @@
     <!-- Catches every click so the page underneath can't be used mid-tour (a
          half-followed tour that navigates somewhere else is worse than none).
          Scrolling still passes through to the page. -->
-    <div class="ts-blocker" @click.stop.prevent />
+    <div v-if="!openHole" class="ts-blocker" @click.stop.prevent />
+    <!-- An interactive step ("Try it now") has to let the tap through to the very
+         button it points at. A single full-screen blocker sat over it, so the
+         button looked live and did nothing. Four panels around the hole block
+         everything else and leave the hole itself clickable. -->
+    <template v-else>
+      <div class="ts-blocker-part" :style="{ top: 0, left: 0, right: 0, height: `${box!.top}px` }" @click.stop.prevent />
+      <div class="ts-blocker-part" :style="{ top: `${box!.top + box!.height}px`, left: 0, right: 0, bottom: 0 }" @click.stop.prevent />
+      <div class="ts-blocker-part" :style="{ top: `${box!.top}px`, left: 0, width: `${box!.left}px`, height: `${box!.height}px` }" @click.stop.prevent />
+      <div class="ts-blocker-part" :style="{ top: `${box!.top}px`, left: `${box!.left + box!.width}px`, right: 0, height: `${box!.height}px` }" @click.stop.prevent />
+    </template>
 
     <div v-if="box" class="ts-hole" :style="holeStyle" />
     <div v-else class="ts-dim" />
@@ -52,6 +62,9 @@ const phone = computed(() => $q.screen.lt.sm);
 
 const selector = computed(() => (props.step.target ? `[data-tour="${props.step.target}"]` : null));
 const { box, state } = useTourTarget(selector);
+
+// Only once the window is actually on screen; until then the whole page stays blocked.
+const openHole = computed(() => !!props.step.interactive && !!box.value);
 
 const holeStyle = computed(() => (box.value
   ? {
@@ -126,6 +139,7 @@ const cardStyle = computed<Record<string, string>>(() => {
 <style scoped>
 .ts-root { position: fixed; inset: 0; }
 .ts-blocker { position: fixed; inset: 0; }
+.ts-blocker-part { position: fixed; }
 
 /* The bright window is a transparent box with a huge shadow around it, so one
    element both cuts the hole and dims everything else. No transition on

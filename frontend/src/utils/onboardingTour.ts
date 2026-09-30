@@ -7,7 +7,7 @@
 //    vocabulary (BANNED_WORDS below), and every label points at something that
 //    is actually on screen under that name.
 //  - Every claim is true of the app today. The Review step promises a green
-//    "Ready" lead, so the sample lead is checked against the same isReady()
+//    "Ready to approve" lead, so the sample lead is checked against the same isReady()
 //    rule Review uses. If that rule changes, the test fails and this copy has
 //    to be revisited (same lesson as Review's Notes tooltip: a UI promise has
 //    to be true in the pipeline behind it).
@@ -63,6 +63,10 @@ export interface TourStep {
   // One quieter line under the body, for the "what if" that not everyone needs.
   note?: string;
   roles: Role[];
+  // The spotlighted element can be tapped. Default is a dimmed, untouchable page;
+  // "Try it now" sets this because the step's whole point is to press the
+  // button it points at (the overlay used to swallow that tap).
+  interactive?: boolean;
   // A way past a section a person may already have done.
   skipTo?: { id: string; label: string };
 }
@@ -107,6 +111,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: 'setup-text-in',
     chapter: 'Set up your phone',
     title: 'Try it now',
+    interactive: true,
     body: 'On your phone, tap **Text the code SETUP** here and your message is filled in for you. On a laptop, text SETUP from your phone.',
     roles: EVERYONE,
   },
@@ -127,7 +132,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: 'review-tabs',
     chapter: 'Review',
     title: 'Your leads live here',
-    body: "Every lead you collect shows up here. New ones wait under Needs review until you've had a look.",
+    body: "Every lead you collect shows up here. New ones wait under To review until you've had a look.",
     roles: EVERYONE,
   },
   {
@@ -137,7 +142,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: null,
     chapter: 'Review',
     title: 'Ready to approve',
-    body: "A green Ready means we've found everything we need, so you can approve it in one tap. You can also add a note about your chat, and it goes to Zoho with the lead.",
+    body: "A green Ready to approve means we've found everything we need, so you can approve it in one tap. Open any lead to add a note about your chat, and it goes to Zoho with the lead.",
     roles: EVERYONE,
   },
   {
@@ -312,15 +317,15 @@ export const SMS_MOCK = {
 // What to notice on the sample lead. A list under the card rather than arrows
 // pointing into it: arrows drift the moment the row's layout changes.
 export const SAMPLE_CALLOUTS = [
-  { icon: 'check', text: "Ready means we've found everything we need." },
-  { icon: 'note_add', text: 'Add note saves a dated note, and it goes to Zoho with the lead.' },
+  { icon: 'check', text: "Ready to approve means we've found everything we need." },
+  { icon: 'note_add', text: 'Open a lead to add a dated note. It goes to Zoho with the lead.' },
   { icon: 'thumb_up', text: 'Approve when you are happy with it. One tap.' },
 ];
 
 // A made-up lead, only ever drawn by TourSampleLead. It must never be added to
-// a real list: Review's "Approve N ready" acts on ids, and this one doesn't
+// a real list: Review's "Approve all N" acts on ids, and this one doesn't
 // exist. It is written to be Ready on purpose (matched, reachable, has a
-// school), because the step explains what Ready looks like.
+// school), because the step explains what Ready to approve looks like.
 export const SAMPLE_LEAD: ContactListItem = {
   id: 'tour-sample-lead',
   firstName: 'Jordan',

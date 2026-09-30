@@ -90,93 +90,105 @@
           </q-card-section>
 
           <q-card-section class="q-pt-none">
+            <!-- Three groups split by hairlines (who you are, what you can send, where
+                 to send it), so the card reads as a sequence instead of one block of
+                 text. The numbers sit on their own line with no-wrap: at 320px
+                 the text-in number used to break after its area code. -->
+            <q-separator class="q-mb-md" />
+
             <!-- The number on file, where a wrong one can be caught before it's
                  texted from: reps can't change their own (a deliberate limit), so the
                  ? says who can. A popup, not a tooltip, because tooltips don't open
                  on a phone. -->
-            <div v-if="phoneOnFile" class="row items-center text-body2">
-              <!-- nowrap on the number: at 320px it broke mid-number ("123-" / "4567"). -->
-              <span>We have you at <span class="text-weight-bold text-no-wrap">{{ phoneOnFile }}</span></span>
-              <q-btn flat round icon="help_outline" color="grey-7" aria-label="Wrong number?">
-                <q-popup-proxy>
-                  <div class="q-pa-md" style="max-width: 260px">
-                    Wrong number? Contact your Solutions Success rep and they'll fix it.
-                  </div>
-                </q-popup-proxy>
-              </q-btn>
+            <div v-if="phoneOnFile">
+              <div class="text-caption text-grey-8">Your number</div>
+              <div class="row items-center no-wrap">
+                <span class="text-subtitle1 text-weight-bold text-no-wrap">{{ phoneOnFile }}</span>
+                <q-btn flat round icon="help_outline" color="grey-7" aria-label="Wrong number?">
+                  <q-popup-proxy>
+                    <div class="q-pa-md setup-popup">
+                      Wrong number? Contact your Solutions Success rep and they'll fix it.
+                    </div>
+                  </q-popup-proxy>
+                </q-btn>
+              </div>
             </div>
             <div v-else-if="smsStatus === 'no-phone'" class="text-body2 text-orange-10">
               Your account has no phone number yet, so texted cards can't be credited to you. Ask
               your Solutions Success rep to add yours.
             </div>
 
-            <div class="text-subtitle2 text-weight-bold q-mt-md">We'll turn anything into a contact.</div>
-            <div class="column q-gutter-y-xs q-mt-xs text-body2">
-              <div class="row items-start no-wrap">
-                <q-icon name="photo_camera" size="20px" color="primary" class="q-mr-sm q-mt-xs" />
-                <span>Photograph a business card, conference ID or contact list</span>
+            <q-separator class="q-my-md" />
+
+            <div class="text-subtitle2 text-weight-bold">We'll turn anything into a contact</div>
+            <div class="column q-gutter-y-md q-mt-xs text-body2">
+              <div class="row items-center no-wrap">
+                <span class="setup-tile q-mr-md"><q-icon name="photo_camera" size="20px" /></span>
+                <span class="col">Photograph a business card, conference ID or contact list</span>
               </div>
-              <div class="row items-start no-wrap">
-                <q-icon name="mic" size="20px" color="primary" class="q-mr-sm q-mt-xs" />
-                <span>Send a voice memo</span>
+              <div class="row items-center no-wrap">
+                <span class="setup-tile q-mr-md"><q-icon name="mic" size="20px" /></span>
+                <span class="col">Send a voice memo</span>
               </div>
-              <div class="row items-start no-wrap">
-                <q-icon name="sms" size="20px" color="primary" class="q-mr-sm q-mt-xs" />
-                <span>
-                  Text the info yourself<!--
-                  --><q-btn flat round icon="info_outline" color="grey-7" aria-label="Texting tip">
-                    <q-popup-proxy>
-                      <div class="q-pa-md" style="max-width: 260px">
-                        Due to character limits, text one contact per message for best results.
-                      </div>
-                    </q-popup-proxy>
-                  </q-btn>
-                </span>
+              <div class="row items-center no-wrap">
+                <span class="setup-tile q-mr-md"><q-icon name="sms" size="20px" /></span>
+                <span class="col">Text the info yourself</span>
+                <q-btn flat round icon="info_outline" color="grey-7" aria-label="Texting tip">
+                  <q-popup-proxy>
+                    <div class="q-pa-md setup-popup">
+                      Due to character limits, text one contact per message for best results.
+                    </div>
+                  </q-popup-proxy>
+                </q-btn>
               </div>
             </div>
 
-            <div v-if="!joinedEvent" class="text-caption text-grey-8 q-mt-md">
+            <q-separator class="q-my-md" />
+
+            <div v-if="!joinedEvent" class="text-caption text-grey-8 q-mb-sm">
               Your connection status shows here once you've chosen a conference.
             </div>
             <!-- Joined, but eventStore.activeEvent hasn't caught up yet (a moment after
                  joining or switching). Without this, smsStatus null would fall through
                  to the "not connected" action below for a conference whose status
                  simply isn't known yet. -->
-            <div v-else-if="smsStatus === null" class="text-caption text-grey-8 q-mt-md">Checking…</div>
+            <div v-else-if="smsStatus === null" class="text-caption text-grey-8 q-mb-sm">Checking…</div>
 
-            <div class="q-mt-md">
-              <div v-if="smsStatus === 'connected'" class="row items-center no-wrap text-body2">
-                <span>Text photos and voice memos to <span class="text-weight-bold">{{ twilioNumber }}</span></span>
+            <div v-if="smsStatus === 'connected'">
+              <div class="text-caption text-grey-8">Text photos and voice memos to</div>
+              <div class="setup-numberbox row items-center no-wrap q-mt-xs">
+                <span class="col text-h6 text-weight-bold text-no-wrap">{{ twilioNumber }}</span>
                 <q-btn flat round icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
               </div>
-              <div v-else class="row items-center no-wrap q-gutter-x-sm">
-                <!-- sms: only opens a composer on a phone; on a laptop the number and
-                     keyword are spelled out instead. -->
+            </div>
+            <div v-else>
+              <!-- sms: only opens a composer on a phone; on a laptop the number and
+                   keyword are spelled out instead. -->
+              <q-btn
+                v-if="isMobile"
+                unelevated class="full-width" color="primary" no-caps icon="sms" label="Text the code SETUP"
+                :href="`sms:${twilioNumberE164}?&body=SETUP`"
+              />
+              <div v-else class="text-body2">
+                From your phone, text the code <span class="text-weight-bold">SETUP</span> to
+                <span class="text-weight-bold text-no-wrap">{{ twilioNumber }}</span>.
+              </div>
+              <div class="row items-center no-wrap q-mt-xs">
                 <q-btn
-                  v-if="isMobile"
-                  color="primary" no-caps icon="sms" label="Text the code SETUP"
-                  :href="`sms:${twilioNumberE164}?&body=SETUP`"
+                  flat no-caps color="primary" icon="refresh" label="Check connection"
+                  class="q-px-sm" :loading="checking" @click="checkConnection"
                 />
-                <div v-else class="text-body2">
-                  From your phone, text the code <span class="text-weight-bold">SETUP</span> to
-                  <span class="text-weight-bold">{{ twilioNumber }}</span>.
-                </div>
+                <q-space />
                 <q-btn flat round icon="content_copy" color="primary" aria-label="Copy SETUP" @click="copy('SETUP', 'Copied SETUP.')" />
               </div>
             </div>
-
-            <q-btn
-              v-if="smsStatus !== 'connected'"
-              flat no-caps color="primary" icon="refresh" label="Check connection"
-              class="q-mt-xs q-px-sm" :loading="checking" @click="checkConnection"
-            />
 
             <!-- Consent disclosure: always visible, directly under the action that gives
                  consent (it has to be on the same screen as the sign-up -- a campaign
                  was rejected four times over this), never collapsed. It covers texting
                  SETUP and texting the folder code alike -- hence "the code SETUP" in
                  the action above. -->
-            <div class="text-caption text-grey-8 q-mt-sm">
+            <div class="text-caption text-grey-8 q-mt-md">
               By texting this code, you agree to receive recurring automated text messages from
               Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg
               frequency varies. Reply HELP for help, STOP to cancel.
@@ -479,3 +491,34 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
 // is open, and canManageEvents (effectiveRole) changes under it.
 watch(canManageEvents, (staff) => { if (staff) void loadProfiles(); }, { immediate: true });
 </script>
+
+<style scoped>
+/* q-popup-proxy opens as a bare q-dialog on a phone, and a q-dialog paints no
+   background of its own: the "Wrong number?" and "Texting tip" text floated
+   straight over the dimmed page, nearly invisible. On a laptop it is a q-menu,
+   which does paint white, so this was only ever seen on a phone. Any new
+   popup-proxy content needs a background of its own for the same reason. */
+.setup-tile {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #E8F1F9;
+  color: #0067AC;
+}
+.setup-numberbox {
+  background: #F4F6F9;
+  border-radius: 10px;
+  padding: 4px 4px 4px 12px;
+}
+.setup-popup {
+  max-width: 260px;
+  background: #fff;
+  color: #1B2630;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+</style>

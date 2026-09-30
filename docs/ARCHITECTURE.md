@@ -193,7 +193,7 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
   errors: a hiccup must never show it to someone who finished.
 - **The sample lead is a picture, never data.** `SAMPLE_LEAD` is drawn inside the
   illustrated card and is on no Review page, list, count, filter or bulk
-  selection, because "Approve N ready" acts on lead ids and this one doesn't
+  selection, because "Approve all N" acts on lead ids and this one doesn't
   exist. A test checks it really is Ready under `reviewSmart.isReady`.
 - **The pictures quote the real thing, and tests hold them to it.** The form
   mock's labels must appear in `IntakePage.vue`; the text-message reply must
@@ -479,9 +479,9 @@ and remembered per browser (`localStorage`, default **Smart**):
 - **Classic** (`ReviewClassic.vue` + `ReviewContactCard.vue`) — the original
   masonry card grid, unchanged apart from carrying the menu.
 - **Smart** (`ReviewSmart.vue`, `components/smart/`) — a list of compact rows
-  with a plain-language flag for why a lead needs a look (or a green Ready),
+  with a plain-language flag for why a lead needs a look (or a green "Ready to approve"),
   live tab counts, search and sort, one-tap Approve / Reject with a 6-second
-  Undo, "Approve N ready", tap-to-call / tap-to-email, and Followed up, Add
+  Undo, "Approve all N", tap-to-call / tap-to-email, and Followed up, Add
   note and (on Approved) Heat straight from the row. On a desktop (≥1024px)
   the list sits beside a sticky editor pane (J / K move, A approves, R
   rejects); below that the same editor is a bottom sheet. Leaving a lead with
@@ -489,10 +489,25 @@ and remembered per browser (`localStorage`, default **Smart**):
 
 Rules worth knowing before changing Smart:
 
-- **Ready** (`utils/reviewSmart.ts`, `isReady`) means: match finished, no
+- **Ready to approve** (`READY_LABEL`; `utils/reviewSmart.ts`, `isReady`) means: match finished, no
   possible duplicate, has an email or phone, and has a school or district.
   Bulk approve only ever sends ready ids; the server still skips any pending
   ones and the response is read and reported.
+- **Phone layout.** Below 600px each lead is a card: a › chevron, the whole card
+  opens the lead, and the footer holds only what saves in one tap. A ready lead
+  has a round ✕ and ✓ (no words); a lead that can't be approved has a cue from
+  `leadCue` ("Add missing info", "Resolve duplicate", "Open to retry"); a
+  processing lead has `ProcessingBar`. Add note lives in the open lead there.
+  A strip above the To review list (`summaryCounts`) says how many are ready to
+  approve, need info, or are processing, and the open lead lists the four
+  conditions of `isReady` as a checklist (`readinessChecklist`). A test keeps
+  the checklist, the chip and `isReady` in agreement: change one, change all.
+- **Processing** (`isProcessing`): a lead whose match is still `pending` and not
+  yet given up on has no Approve and no Reject, in the editor or on the row. A
+  notice ("We're still processing this contact…") takes the buttons' place, and
+  `ReviewSmart` re-fetches quietly every 8 seconds while any lead is processing,
+  which is what brings the buttons back. A *stuck* match (attempts exhausted) is
+  not processing: it keeps Reject, loses Approve, and points at Retry match.
 - Smart loads all three statuses at once (six requests for a rep: current and
   past scope) so tab counts are live and approve/reject/undo move a lead
   between tabs locally. No backend change was needed.

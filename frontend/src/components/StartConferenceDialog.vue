@@ -124,11 +124,10 @@
                regional one like "(TW)" that isn't a real postal abbreviation).
                Zoho's own data is why this exists at all: conference location is
                only a fallback signal when resolving card-photo contacts. -->
-          <label class="text-body2 text-grey-8" for="conf-state">Where is it?</label>
+          <label class="text-body2 text-grey-8" for="conf-state">Confirm the state this conference is in</label>
           <div v-if="selected.state && !changingState" class="conf-state-chip q-mt-xs">
             <div class="col">
               {{ selected.state }}
-              <span class="text-caption text-grey"> from the name</span>
             </div>
             <q-btn flat dense no-caps color="primary" label="Change" @click="changingState = true" />
           </div>

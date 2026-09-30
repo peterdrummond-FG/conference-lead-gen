@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  accountBadge, appendNote, eventRecency, groupByEvent, isReady, leadFlags, readyIds, searchLeads, sortLeads,
+  accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, summaryCounts,
 } from './reviewSmart.ts';
 
 function lead(over = {}) {
@@ -160,4 +160,59 @@ test('appendNote adds a dated line and keeps what was there', () => {
   assert.equal(appendNote('', 'Hi', d), 'Sep 29: Hi');
   assert.equal(appendNote('Wants a demo.\n', 'Called back', d), 'Wants a demo.\nSep 29: Called back');
   assert.equal(appendNote('Sep 28: first', 'second', d), 'Sep 28: first\nSep 29: second');
+});
+
+test('processing means still in the automatic pipeline, not stuck or finished', () => {
+  assert.equal(isProcessing(lead({ matchStatus: 'pending' })), true);
+  assert.equal(isProcessing(lead({ matchStatus: 'pending', matchAttempts: 2 })), true);
+  // Given up: nothing will finish it, so it must not promise "a few minutes".
+  assert.equal(isProcessing(lead({ matchStatus: 'pending', matchAttempts: 3 })), false);
+  assert.equal(isProcessing(lead({ matchStatus: 'new_account' })), false);
+  assert.equal(isProcessing(lead({ matchStatus: 'pending', reviewStatus: 'approved' })), false);
+});
+
+test('the cue names the first thing to fix, and only for a lead that can be worked on', () => {
+  assert.equal(leadCue(lead()), null); // ready: has a check and a cross instead
+  assert.equal(leadCue(lead({ matchStatus: 'pending' })), null); // processing: has a bar
+  assert.equal(leadCue(lead({ matchStatus: 'pending', matchAttempts: 3 })), 'Open to retry');
+  assert.equal(leadCue(lead({ localDuplicateOfContactName: 'Dana W.' })), 'Resolve duplicate');
+  assert.equal(leadCue(lead({ email: null, phone: null })), 'Add missing info');
+  assert.equal(leadCue(lead({ schoolDistrictId: null, districtName: null })), 'Add missing info');
+  // A duplicate comes before missing info, same order as the flags.
+  assert.equal(leadCue(lead({ localDuplicateOfContactName: 'Dana W.', email: null })), 'Resolve duplicate');
+  assert.equal(leadCue(lead({ reviewStatus: 'approved', email: null, phone: null })), null);
+});
+
+test('the summary puts every lead in exactly one bucket, agreeing with its chip', () => {
+  const list = [
+    lead({ id: 'a' }),
+    lead({ id: 'b' }),
+    lead({ id: 'c', email: null, phone: null }),
+    lead({ id: 'd', matchStatus: 'pending' }),
+    lead({ id: 'e', matchStatus: 'pending', matchAttempts: 3 }),
+    lead({ id: 'f', reviewStatus: 'approved' }),
+  ];
+  const n = summaryCounts(list);
+  assert.deepEqual(n, { ready: 2, needsInfo: 2, processing: 1 });
+  assert.equal(n.ready + n.needsInfo + n.processing, list.filter((c) => c.reviewStatus === 'needs_review').length);
+  assert.equal(n.ready, readyIds(list).length);
+});
+
+test('the checklist is all ticks exactly when the lead is ready to approve', () => {
+  const cases = [
+    lead(),
+    lead({ email: null, phone: null }),
+    lead({ schoolDistrictId: null, districtName: null }),
+    lead({ matchStatus: 'pending' }),
+    lead({ matchStatus: 'pending', matchAttempts: 3 }),
+    lead({ localDuplicateOfContactName: 'Dana W.' }),
+    lead({ email: null, phone: null, matchStatus: 'pending', localDuplicateOfContactName: 'Dana W.' }),
+  ];
+  for (const c of cases) {
+    const allOk = readinessChecklist(c).every((i) => i.state === 'ok');
+    assert.equal(allOk, isReady(c), JSON.stringify(c));
+  }
+  const waiting = readinessChecklist(lead({ matchStatus: 'pending' })).find((i) => i.key === 'match');
+  assert.equal(waiting.state, 'wait');
+  assert.equal(readinessChecklist(lead({ matchStatus: 'pending', matchAttempts: 3 })).find((i) => i.key === 'match').state, 'todo');
 });

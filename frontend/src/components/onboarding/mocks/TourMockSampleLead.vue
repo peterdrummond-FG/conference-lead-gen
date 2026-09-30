@@ -1,7 +1,7 @@
 <template>
   <!-- One made-up lead, drawn with the real Review row so it can't drift from
        what a rep will see. It is a picture, not data: it lives only inside this
-       card, never in any list, count, filter or selection, so "Approve N ready"
+       card, never in any list, count, filter or selection, so "Approve all N"
        (which acts on real lead ids) can never reach it. Inert on purpose:
        nothing in it can be focused, tapped or hovered. -->
   <div class="ml">

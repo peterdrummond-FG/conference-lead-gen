@@ -35,7 +35,11 @@
         :maxlength="MAX_NOTE_CHARS"
       />
 
-      <div class="row items-center q-gutter-sm q-mt-md">
+      <!-- Once a note is sent, the phone shows just the results: the tab bar
+           already leads to Review, and the two buttons only pushed them down the
+           screen. They stay on a laptop, where there is room (gt-xs hides the row
+           below 600px; while idle the row holds Send and always shows). -->
+      <div class="row items-center q-gutter-sm q-mt-md" :class="{ 'gt-xs': phase !== 'idle' }">
         <q-btn
           v-if="phase === 'idle'"
           color="primary"
