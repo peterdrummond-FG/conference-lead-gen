@@ -471,6 +471,24 @@ as its own `Follow Up Done` column —
 no Zoho field is mapped to it yet, so it rides along unmapped until Sales
 picks one.
 
+### Resolving a duplicate
+
+`DuplicateResolutionDialog.vue` opens from a lead flagged "possible duplicate".
+The flag means only one thing: another row has the same first and last name
+(`insert_contact_with_duplicate_check`, set once at insert). So the name can't
+say which record is right, and two real people can share one. The sheet shows
+what can: how each record was captured, OCR confidence, research and Zoho-match
+status, the card photo, and amber marks on the values the records disagree about.
+That logic is `utils/duplicateEvidence.ts` (with tests); "Suggested" is a hint
+and is withheld on a tie.
+
+Two exits: **Merge** keeps one record and rejects the rest
+(`contacts-merge-duplicates`), and **Not a duplicate** clears the flag on the
+group and changes nothing else (`contacts-mark-not-duplicate`). Nothing re-flags
+cleared rows, so the button asks first. On a phone the sheet is full screen with
+the header and both buttons pinned; only the middle scrolls. It used to scroll as
+one card, which put Merge ~1800px down.
+
 ### Review's two views (Smart and Classic)
 
 `/review` renders one of two views, chosen from the ⋮ menu in the page header
