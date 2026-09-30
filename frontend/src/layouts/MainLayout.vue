@@ -19,11 +19,11 @@
         <q-btn-dropdown v-if="sessionStore.user.role === 'admin'" flat dense no-caps icon="switch_account" color="primary" :label="isPhone ? undefined : viewingAsLabel" :aria-label="viewingAsLabel">
           <q-tooltip>View as</q-tooltip>
           <q-list>
-            <q-item clickable v-close-popup @click="sessionStore.setViewingAs(null)">
+            <q-item clickable v-close-popup @click="void sessionStore.setViewingAs(null)">
               <q-item-section>Myself (Admin)</q-item-section>
             </q-item>
             <q-separator />
-            <q-item v-for="p in profiles" :key="p.id" clickable v-close-popup @click="sessionStore.setViewingAs(p)">
+            <q-item v-for="p in profiles" :key="p.id" clickable v-close-popup @click="void sessionStore.setViewingAs(p)">
               <q-item-section>{{ p.name }} ({{ roleLabel(p.role) }})</q-item-section>
             </q-item>
           </q-list>
@@ -72,6 +72,19 @@
           </q-menu>
         </q-btn>
       </q-toolbar>
+
+      <!-- Previewing someone: say so on every page, in words, with the way back.
+           On a phone the switcher above is an icon with no label, so before this
+           an admin could be looking at a rep's Review (or approving their leads)
+           with nothing on screen saying whose view it was. -->
+      <div v-if="sessionStore.viewingAs" ref="previewBarEl" class="preview-bar" role="status">
+        <q-icon name="visibility" size="18px" class="q-mr-sm" />
+        <span class="preview-bar-text">
+          Viewing as <span class="text-weight-bold">{{ sessionStore.viewingAs.name }}</span>
+          ({{ roleLabel(sessionStore.viewingAs.role) }}). Anything you change is done as you.
+        </span>
+        <q-btn flat dense no-caps color="white" label="Back to me" class="preview-bar-btn" @click="void sessionStore.setViewingAs(null)" />
+      </div>
     </q-header>
 
     <q-page-container>
@@ -164,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useSessionStore } from '@/stores/session-store';
@@ -209,6 +222,26 @@ const canSeeExport = computed(() => (
 const canSeeAdmin = computed(() => (
   sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
+
+// The preview bar makes the header taller, and Review's sticky lead pane sits
+// a fixed distance below the header, so it would slide under the bar. Its
+// height (it wraps on a phone) is published as --preview-bar-h for that pane.
+const previewBarEl = ref<HTMLElement | null>(null);
+let previewBarObserver: ResizeObserver | null = null;
+function setPreviewBarHeight(px: number) {
+  document.documentElement.style.setProperty('--preview-bar-h', `${px}px`);
+}
+watch(previewBarEl, (el) => {
+  previewBarObserver?.disconnect();
+  previewBarObserver = null;
+  if (!el) {
+    setPreviewBarHeight(0);
+    return;
+  }
+  previewBarObserver = new ResizeObserver(() => setPreviewBarHeight(el.offsetHeight));
+  previewBarObserver.observe(el);
+});
+onBeforeUnmount(() => previewBarObserver?.disconnect());
 
 const showUnlockDialog = ref(false);
 const unlockCode = ref('');
@@ -415,6 +448,19 @@ async function onLogout() {
     min-height: 40px;
   }
 }
+
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px 0;
+  padding: 6px 8px 6px 16px;
+  background: #5B3E96;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.preview-bar-text { flex: 1; min-width: 0; }
+.preview-bar-btn { flex: none; min-height: 40px; }
 
 .kiosk-unlock-btn {
   position: fixed;

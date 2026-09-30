@@ -2,7 +2,7 @@
   <q-page class="intake-page flex flex-center">
     <div class="intake-shell">
       <transition name="fade" mode="out-in">
-        <div v-if="!eventStore.loaded" key="loading" class="text-center">
+        <div v-if="!eventStore.loaded || (previewing && !sessionStore.preview)" key="loading" class="text-center">
           <q-spinner size="40px" color="primary" />
         </div>
 
@@ -12,7 +12,7 @@
           <div class="intake-subtitle">Someone from our team will be in touch.</div>
         </div>
 
-        <div v-else-if="!eventStore.activeEvent || needsLink" key="unset" class="text-center">
+        <div v-else-if="!formEventName || needsLink" key="unset" class="text-center">
           <q-icon name="event_busy" color="grey-5" size="56px" />
           <div class="intake-thanks-title q-mt-md">{{ sessionStore.user ? 'Join a conference first' : 'No event set up yet' }}</div>
           <div class="intake-subtitle q-mb-0">
@@ -23,7 +23,14 @@
         </div>
 
         <div v-else key="form">
-          <div class="intake-title">{{ eventStore.activeEvent?.name }}</div>
+          <!-- Previewing a rep: the form as it is for them, but it can't be sent.
+               contacts-create resolves a signed-in call from the caller's own
+               token, so a lead typed here would land in the ADMIN's conference,
+               not the rep's. -->
+          <q-banner v-if="previewing" dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
+            {{ sessionStore.viewingAs?.name }}'s form. Submitting is off while you're viewing as someone.
+          </q-banner>
+          <div class="intake-title">{{ formEventName }}</div>
           <div class="intake-subtitle">Tell us a bit about yourself.</div>
 
           <q-form ref="formRef" class="intake-form" @submit.prevent="onSubmit" @focusin="onFormFocusIn">
@@ -162,7 +169,7 @@
                 class="intake-submit-btn"
                 label="Submit"
                 :loading="submitting"
-                :disable="submitting"
+                :disable="submitting || previewing"
               />
             </div>
           </q-form>
@@ -226,15 +233,27 @@ const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventS
 // (events-active/contacts-create), never anything this page decides itself.
 const repSlug = typeof route.query.repSlug === 'string' ? route.query.repSlug : undefined;
 
+// Admin "View as" on the Connect tab. It used to show the admin's own
+// conference under the rep's name (eventStore.activeEvent is always the
+// caller's), which answered "what does this rep see?" wrongly. A QR link
+// (eventSlug / repSlug) names its own conference, so only the bare tab changes.
+const previewing = computed(() => !!sessionStore.viewingAs && !eventSlug && !repSlug);
+const formEventName = computed(() => (
+  previewing.value ? sessionStore.preview?.currentEventName ?? null : eventStore.activeEvent?.name ?? null
+));
+
 // A signed-in visitor on a bare /connect (the Connect tab) submits into their
 // OWN linked conference -- contacts-create resolves it from their token.
 // events-active still returns the most recently activated event for display
 // when they have none linked, so without this the form would name a
 // conference the submit will refuse (or, before contacts-create was fixed,
 // silently file the lead under). Key off currentEventId, never activeEvent.
-const needsLink = computed(
-  () => !!sessionStore.user && !eventSlug && !repSlug && !sessionStore.user.currentEventId,
-);
+const needsLink = computed(() => {
+  if (!sessionStore.user || eventSlug || repSlug) return false;
+  // Admin "View as": whether the PREVIEWED person has a conference, not the admin.
+  if (previewing.value) return !sessionStore.preview?.currentEventId;
+  return !sessionStore.user.currentEventId;
+});
 
 const formRef = ref<QForm | null>(null);
 const identityEl = ref<HTMLElement | null>(null);
@@ -378,7 +397,7 @@ async function onSubmit() {
   // native form-submit racing the button's own :disable state could
   // otherwise start a second onSubmit while the first is still awaiting
   // validate(), posting two contacts-create calls for one submission.
-  if (submitting.value) return;
+  if (submitting.value || previewing.value) return;
   submitting.value = true;
   try {
     const valid = await formRef.value?.validate();

@@ -12,6 +12,12 @@
         you wrote about each person is kept with them.
       </div>
 
+      <!-- Admin "View as": notes-submit files under the CALLER's own conference,
+           so a note sent from here would land in the admin's, not the rep's. -->
+      <q-banner v-if="previewing" dense class="bg-grey-2 text-grey-9 q-mb-md rounded-borders">
+        {{ sessionStore.viewingAs?.name }}'s page. Sending is off while you're viewing as someone.
+      </q-banner>
+
       <q-banner v-if="!targetEventName" dense class="bg-orange-1 text-orange-9 q-mb-md rounded-borders">
         You're not linked to an event yet, so there's nowhere to file these.
         Link yourself to one on the Review page first.
@@ -49,7 +55,7 @@
           class="notes-btn notes-send"
           icon-right="send"
           :loading="sending"
-          :disable="!text.trim() || !targetEventName"
+          :disable="!text.trim() || !targetEventName || previewing"
           @click="submit"
         />
         <template v-else>
@@ -190,9 +196,14 @@ const placeholder = [
 // The same resolution notes-submit does server-side (a rep's own linked
 // event first, then the active one) — shown up front so where the note is
 // going is never a surprise, but the server never trusts this.
-const targetEventName = computed(
-  () => sessionStore.user?.currentEventName ?? eventStore.activeEvent?.name ?? null,
-);
+const previewing = computed(() => !!sessionStore.viewingAs);
+const targetEventName = computed(() => (
+  // Previewing shows the previewed person's own conference. eventStore only
+  // ever describes the caller, so it can't stand in for theirs.
+  previewing.value
+    ? sessionStore.preview?.currentEventName ?? null
+    : sessionStore.user?.currentEventName ?? eventStore.activeEvent?.name ?? null
+));
 
 function stopPolling() {
   if (pollTimer) clearTimeout(pollTimer);
@@ -200,6 +211,7 @@ function stopPolling() {
 }
 
 async function submit() {
+  if (previewing.value) return;
   sending.value = true;
   try {
     const { data } = await api.post<{ id: string }>('/notes-submit', { text: text.value });
