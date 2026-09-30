@@ -193,6 +193,26 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
+// What the layout should do about the tour right now. Pulled out of the
+// component so the cases are testable, because one of them was wrong: a 401
+// signs the person out (boot/axios.ts) but used to leave the tour "in
+// progress" in memory, so the next person to sign in on that tab resumed the
+// previous person's tour, in the previous person's role. No user means no tour.
+//  - 'reset': drop any tour in progress, without counting it as seen
+//  - 'begin': resume a refreshed tab, or start it for someone who hasn't seen it
+//  - 'none':  leave it alone
+export type TourStartAction = 'reset' | 'begin' | 'none';
+export function tourStartAction(o: {
+  hasUser: boolean;
+  kioskLocked: boolean;
+  viewingAs: boolean;
+  phase: 'idle' | 'splash' | 'tour';
+}): TourStartAction {
+  if (o.kioskLocked || !o.hasUser) return o.phase !== 'idle' ? 'reset' : 'none';
+  if (o.viewingAs || o.phase !== 'idle') return 'none';
+  return 'begin';
+}
+
 export function stepsForRole(role: Role): TourStep[] {
   return TOUR_STEPS.filter((s) => s.roles.includes(role));
 }

@@ -188,9 +188,13 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
   centred and says so.
 - **The wording is for a rep at a booth.** A test fails if technical vocabulary
   (`BANNED_WORDS`) appears in anything the tour shows.
-- **Never for attendees or a locked kiosk.** The splash and overlay only mount
-  for a signed-in user on an unlocked device, and never start while an admin is
-  previewing someone else ("View as").
+- **Never for attendees or a locked kiosk, and never outlives its user.** The
+  splash and overlay only mount for a signed-in user on an unlocked device, and
+  never start while an admin is previewing someone else ("View as").
+  `tourStartAction` (in `onboardingTour.ts`, tested) decides start / reset /
+  leave-alone; "no user" resets, because a 401 signs the person out
+  (`boot/axios.ts`) without going through Log out, and their tour would
+  otherwise be resumed by whoever signs in next on that tab.
 - **The copy makes promises about Setup and Review.** If Smart's Ready rule,
   Setup's flow or the text-in replies change, update `onboardingTour.ts` in the
   same change.

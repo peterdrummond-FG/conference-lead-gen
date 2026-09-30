@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BANNED_WORDS, CONNECT_MOCK, SAMPLE_LEAD, SMS_MOCK, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole,
+  BANNED_WORDS, CONNECT_MOCK, SAMPLE_LEAD, SMS_MOCK, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole, tourStartAction,
 } from './onboardingTour.ts';
 import { TWILIO_NUMBER_DISPLAY } from './smsNumber.ts';
 import { isReady } from './reviewSmart.ts';
@@ -154,4 +154,24 @@ test('wording stays short: no step body runs past three sentences', () => {
     const sentences = s.body.split(/[.!?]+\s/).filter(Boolean);
     assert.ok(sentences.length <= 3, `${s.id} has ${sentences.length} sentences`);
   }
+});
+
+test('signing out (or a 401) drops a tour in progress instead of leaving it for the next person', () => {
+  const base = { hasUser: true, kioskLocked: false, viewingAs: false, phase: 'idle' };
+  assert.equal(tourStartAction({ ...base, hasUser: false, phase: 'tour' }), 'reset');
+  assert.equal(tourStartAction({ ...base, hasUser: false, phase: 'splash' }), 'reset');
+  assert.equal(tourStartAction({ ...base, hasUser: false, phase: 'idle' }), 'none');
+});
+
+test('a locked kiosk never shows the tour and clears one in progress', () => {
+  const base = { hasUser: true, kioskLocked: true, viewingAs: false, phase: 'idle' };
+  assert.equal(tourStartAction(base), 'none');
+  assert.equal(tourStartAction({ ...base, phase: 'tour' }), 'reset');
+});
+
+test('an admin previewing someone else, or a tour already running, is left alone', () => {
+  const base = { hasUser: true, kioskLocked: false, viewingAs: false, phase: 'idle' };
+  assert.equal(tourStartAction({ ...base, viewingAs: true }), 'none');
+  assert.equal(tourStartAction({ ...base, phase: 'tour' }), 'none');
+  assert.equal(tourStartAction(base), 'begin');
 });

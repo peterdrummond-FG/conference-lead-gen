@@ -170,6 +170,7 @@ import { useQuasar } from 'quasar';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { useTourStore } from '@/stores/tour-store';
+import { tourStartAction } from '@/utils/onboardingTour';
 import OnboardingSplash from '@/components/onboarding/OnboardingSplash.vue';
 import TourOverlay from '@/components/onboarding/TourOverlay.vue';
 import { api } from '@/boot/axios';
@@ -299,11 +300,17 @@ watch(() => sessionStore.user?.role, (role) => {
 // it, so an older `me` response with no such field never shows it to everyone.
 function maybeStartTour() {
   const u = sessionStore.user;
-  if (kioskModeStore.locked) {
-    if (tourStore.phase !== 'idle') tourStore.reset();
+  const action = tourStartAction({
+    hasUser: !!u,
+    kioskLocked: kioskModeStore.locked,
+    viewingAs: !!sessionStore.viewingAs,
+    phase: tourStore.phase,
+  });
+  if (action === 'reset') {
+    tourStore.reset();
     return;
   }
-  if (!u || sessionStore.viewingAs || tourStore.phase !== 'idle') return;
+  if (action !== 'begin' || !u) return;
   if (tourStore.resume(u.role)) return;
   if (u.onboarded === false) tourStore.start(u.role);
 }
