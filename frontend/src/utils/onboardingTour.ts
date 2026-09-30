@@ -302,7 +302,7 @@ export const CONNECT_MOCK = {
   title: 'Sample conference',
   subtitle: 'Tell us a bit about yourself.',
   fields: ['First name *', 'Last name *', 'Email', 'Phone'],
-  hint: 'Add an email or a phone number. One is enough.',
+  hint: 'Add your email and phone number',
   optional: 'Optional',
   optionalFields: ['State', 'School district'],
   submit: 'Submit',
