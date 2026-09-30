@@ -137,6 +137,16 @@ been replaced, the replacement is noted here instead of rewriting history.
   and the new `contacts-from-voice-memo` Edge Function were added in the same
   change. See `docs/ARCHITECTURE.md`'s "Voice-memo fallback contact creation".
 
+## Event dates for Setup (2026-09-30)
+
+- **`20260930120000_event_dates_fn.sql`** adds `event_dates(uuid[])`, a thin
+  wrapper over `conference_date_from_name()` / `conference_end_date_from_name()`
+  that returns start and end dates for live events. `events-list-active` calls it
+  so Setup can show "Sep 30 to Oct 2" and an "Ended N days ago" chip without a
+  second date parser in TypeScript. Service role only (execute revoked from
+  `anon`/`authenticated`). Undated names (test conferences) return nulls. Run over
+  every event when added: 19 events, 5 with dates in the name, 3 of them ranges.
+
 ## Watch out for
 
 - **`create or replace` with a changed argument list silently drops settings.**

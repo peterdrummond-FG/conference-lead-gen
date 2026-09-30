@@ -198,8 +198,9 @@ Supabase CLI on this machine.
 - **The welcome tour's copy is a set of promises.** Its Review step says a green
   "Ready" lead approves in one tap and that notes reach Zoho; its "Set up your
   phone" steps show the text reply `twilio-webhook` sends and the number from
-  `utils/smsNumber.ts`; its Setup steps describe the QR, text-in and kiosk
-  options. If you change Smart's Ready rule, Setup's flow, the SETUP reply, the
+  `utils/smsNumber.ts`; its Setup steps point at the conference card
+  (`data-tour="setup-conference"`) and the phone card (`setup-text-in`) by name
+  and button label ("Text the code SETUP"). If you change Smart's Ready rule, Setup's flow, the SETUP reply, the
   attendee form's labels or what `export-csv` emits, update
   `frontend/src/utils/onboardingTour.ts` too. Its tests catch the Ready rule, the
   form labels, the reply wording and the shared number, but not the prose.
@@ -207,6 +208,18 @@ Supabase CLI on this machine.
   in the test); anything state-dependent is an illustrated card. The tour never
   gets its own "text now" button: the opt-in disclosure lives once, on Setup,
   under the real one. Details: `docs/ARCHITECTURE.md`, "Welcome tour".
+
+- **Setup is a card per step, and its QR line is a claim about the server.**
+  Conference, phone and kiosk are numbered cards that turn into green checks; the
+  QR is an unnumbered resource. "Choose"/"Change" both open the one conference
+  dialog (no inline list, no separate Start button), and the QR line names the
+  conference scans go to or says they won't go through when none is chosen,
+  because `contacts-create` answers 409 for a rep with no `current_event_id` (it
+  does not use the previous conference; the meeting that specified this page
+  wasn't sure, and reading the function settled it). Dates come from the
+  `event_dates()` SQL function through `events-list-active`, never a second
+  parser in TypeScript. Keep the page's prose to a line or two; the explanation is
+  the tour. Details: `docs/ARCHITECTURE.md`, "Setup and Admin".
 
 ## Before shipping a feature
 

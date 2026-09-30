@@ -197,11 +197,12 @@ every call.
 
 | Page / Function | Purpose |
 |---|---|
-| `GET /setup` (Quasar page) | Rep-facing, two-step checklist (redesigned 2026-09-28). **Step 1** — the rep *joins* a live conference, or starts the one they're at if nobody has (any role) (a real write to their own `current_event_id`, not just a display choice: a rep's QR resolves its conference from that field and `contacts-create` rejects a scan when it's empty). **Step 2** — pick capture tools: their reusable QR (sales only — admin and Solutions Success hold no QR of their own, so they instead see a "Rep QR slides" list with a Download per Sales rep), text-in cards/voice notes (status: Connected / Not set up / Phone number needed), and a booth iPad kiosk PIN. QR and PIN belong to the person and are available before joining; only the text-in *status* depends on the joined conference — its phone steps and opt-in disclosure are always visible, since texting `SETUP` is self-contained. The event's `FolderCode` appears in the text-in card's "How it works" (for texting the code instead of `SETUP`) and per conference on `/admin` for the watcher's inbox subfolder |
+| `GET /setup` (Quasar page) | Rep-facing, a card per step (redesigned 2026-09-30; before that a two-step checklist). Each step is its own card whose number becomes a green check when done. **Choose your conference** — the rep *joins* a live conference, or activates the one they're at if nobody has (any role); a real write to their own `current_event_id`, not just a display choice (a rep's QR resolves its conference from that field and `contacts-create` rejects a scan when it's empty). Once chosen it folds to one line (cleaned name, dates, state) with **Change**, and an "Ended N days ago" chip once its last day has passed. **Set up your phone** — status (Connected / Not connected / Phone number needed), the number on file, a Text SETUP button with copy, Check connection, and the opt-in disclosure (always visible, directly under the action; texting `SETUP` is self-contained so none of it depends on joining). **Kiosk setup** — the booth iPad PIN. **Your QR code** is a resource, not a step: their reusable QR (sales only — admin and Solutions Success hold no QR of their own, so they instead see a "Rep QR slides" list with a Download per Sales rep), naming the conference scans go to. QR and PIN belong to the person and are available before joining; only the phone *status* depends on the joined conference. "Choose" and "Change" both open the one conference dialog. The event's `FolderCode` is shown per conference on `/admin` for the watcher's inbox subfolder |
 | `GET /admin` (Quasar page) | `admin` / `solutionsSuccess` only. **Conferences**: start one (searches/selects the Zoho Campaign, supplies State — see note below — and calls `events-activate`), end one, live/ended history, rep counts, the laptop-watcher folder code on demand. **Team**: add/edit/delete people, a per-rep "Working at" dropdown (the single control for placing a rep at a conference, replacing the old rep × event checkbox matrix), each rep's labelled "Download QR slide" button (staff download a rep's slide and send it to them themselves — the app has no email, and sends no message on their behalf) |
 | `campaigns-list` | Searches a Postgres cache of Campaigns (`Type = conference`) — same cache-not-live-call approach as before, now just an Edge Function instead of a .NET endpoint |
 | `events-activate` | Any logged-in role (Sales included since 2026-09-29 — a rep could already start one by texting `SETUP`, which calls the same `events_activate`; `campaigns-list` opened to match). The conference **name is looked up from the `campaigns` cache by id, never taken from the caller**, since it becomes the Zoho Lead Source and the caller is no longer necessarily staff. Activates a cached Campaign into a new `Event` row (atomic "deactivate current + insert new" lives in the `events_activate` Postgres function, since Edge Functions calling Postgres via `supabase-js` don't get automatic multi-statement transactions the way EF Core's `BeginTransactionAsync` did). Takes `state`/`city` directly from the rep — Zoho still has no such data to copy — and generates the `FolderCode` |
 | `events-active` | The currently active event, for both the frontend and (indirectly) the watcher/local-agent |
+| `events-list-active` | Every active event (name, slug, state, `activatedAt`, rep ids), any logged-in role. Since 2026-09-30 also `startsOn` / `endsOn`, read from the campaign name by the `event_dates()` SQL function (the picker's own parser; null for an undated name) so Setup can show dates and the "Ended N days ago" chip |
 | `events-list-recent` (added 2026-09-28) | The 5 most recently activated events regardless of status, tagged `active`/`completed` — feeds the Admin page's Conferences list (formerly Setup's "Reps & events" table) alongside `events-list-active` (which stays active-only) |
 | `events-complete` (added 2026-09-28) | Admin/Solutions-Success only. Ends a conference for everyone: `events_complete()` flips `is_active` off and clears `current_event_id` on every profile still linked to it, in one transaction — see the note in section 10 |
 | `GET /connect` (Quasar page) | The form for the currently active event. State/City shown as fixed context. District and school are type-ahead selects with "+ add new" |
@@ -934,6 +935,27 @@ past that threshold.
   the AI match reasoning. It now leads with `Notes: …`. **`export-csv` must be
   redeployed** (`node scripts/deploy-functions.mjs export-csv`) for the CSV to
   match what Review's tooltip says.
+
+- **Setup redesigned as a card per step (2026-09-30).** From a walkthrough where
+  a first-time rep found Setup text-heavy and couldn't tell steps from
+  information. Now: Choose your conference (folds to one line, **Change** always
+  offered, "Ended N days ago" chip), Set up your phone (status, number on file with
+  a "?" pointing at Solutions Success, Text SETUP with copy, Check connection; the
+  status also re-checks when the tab returns to the front), Kiosk setup, then Your
+  QR code as an unnumbered resource. The "How it works" accordion, the "Choose how
+  you'll capture leads" grouping and the separate Start button are gone; the
+  explanation is the welcome tour, and the page keeps one friendly line. The
+  conference dialog is the single picker for Choose and Change: a status chip sits
+  beside the title and the right-hand button is **Join** (live) or **Activate**
+  ("Start" became "Activate", in Admin too). Backed by migration
+  `20260930120000_event_dates_fn.sql` (`event_dates()`), `events-list-active`
+  returning `startsOn`/`endsOn`, and `/me` returning `phoneNumber` (both
+  functions redeployed). The QR line is true by construction: with no conference
+  chosen it says scans won't go through, because `contacts-create` answers 409 for
+  a rep with no `current_event_id` — it does not file the lead under the previous
+  one. Known gap: a live conference whose name has no date appears in the dialog
+  only when searched for. The tour's "Choose how to meet people" step was dropped
+  with the heading it pointed at.
 
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
