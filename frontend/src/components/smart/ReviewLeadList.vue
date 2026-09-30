@@ -63,4 +63,11 @@ defineEmits<{
   overflow: hidden;
 }
 .ll > div:last-child :deep(.lr) { border-bottom: 0; }
+
+/* Phone: the rows are cards of their own (see ReviewLeadRow), so the shared
+   white box around them goes, leaving a gap between cards instead. */
+@media (max-width: 599px) {
+  .ll { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+  .ll > div:last-child :deep(.lr) { border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+}
 </style>

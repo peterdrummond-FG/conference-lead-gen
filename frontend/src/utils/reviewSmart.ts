@@ -48,10 +48,10 @@ export function leadFlags(c: ContactListItem): LeadFlag[] {
     flags.push({ key: 'duplicate', label: 'Possible duplicate', tone: 'orange', blocking: true });
   }
   if (!c.email && !c.phone) {
-    flags.push({ key: 'no-contact', label: 'No email or phone', tone: 'red', blocking: true });
+    flags.push({ key: 'no-contact', label: 'Needs a phone or email', tone: 'red', blocking: true });
   }
   if (!hasOrg(c)) {
-    flags.push({ key: 'no-org', label: 'No school or district', tone: 'orange', blocking: true });
+    flags.push({ key: 'no-org', label: 'Needs a school or district', tone: 'orange', blocking: true });
   }
   // Ambiguous is approvable today (it exports as a new lead), so it informs
   // rather than blocks. It only earns a flag when there is something to pick:
@@ -63,8 +63,86 @@ export function leadFlags(c: ContactListItem): LeadFlag[] {
   return flags;
 }
 
+// Still in the automatic pipeline (research, then the Zoho match), as opposed
+// to stuck: a stuck lead has been given up on and will not finish by itself, so
+// "it'll be done in a few minutes" would be a lie. Approve is impossible while
+// processing (contacts-patch and bulk-approve both refuse a pending match), and
+// Reject is hidden too so a half-processed lead can't be discarded by a stray
+// tap before the rep has seen what the pipeline found.
+export function isProcessing(c: ContactListItem): boolean {
+  return c.reviewStatus === 'needs_review' && c.matchStatus === 'pending' && c.matchAttempts < MAX_AUTO_MATCH_ATTEMPTS;
+}
+
 export function isReady(c: ContactListItem): boolean {
   return c.reviewStatus === 'needs_review' && !leadFlags(c).some((f) => f.blocking);
+}
+
+// The one name for "nothing left for you to do but approve". "Ready" alone never
+// said what it was ready for, so every chip, count and button uses this wording.
+export const READY_LABEL = 'Ready to approve';
+
+// What a lead that can't be approved yet asks of the rep, as the short call to
+// action shown on its phone card (the card opens the lead where the fix is). Null
+// for a lead that is ready or still processing: those have a ✓ / ✕ or a bar.
+// Order follows leadFlags, so the first thing to fix is the one named.
+export function leadCue(c: ContactListItem): string | null {
+  if (c.reviewStatus !== 'needs_review' || isProcessing(c)) return null;
+  const first = leadFlags(c).find((f) => f.blocking);
+  switch (first?.key) {
+    case 'stuck': return 'Open to retry';
+    case 'duplicate': return 'Resolve duplicate';
+    case 'no-contact':
+    case 'no-org': return 'Add missing info';
+    default: return null;
+  }
+}
+
+// The counts under "2 ready to approve · 1 needs info · 1 processing". Each lead
+// is in exactly one bucket, decided by the same rules as its chip and button,
+// so the strip can never say something a card contradicts.
+export function summaryCounts(list: ContactListItem[]): { ready: number; needsInfo: number; processing: number } {
+  let ready = 0;
+  let needsInfo = 0;
+  let processing = 0;
+  for (const c of list) {
+    if (c.reviewStatus !== 'needs_review') continue;
+    if (isProcessing(c)) processing += 1;
+    else if (isReady(c)) ready += 1;
+    else needsInfo += 1;
+  }
+  return { ready, needsInfo, processing };
+}
+
+// Why "ready to approve" means what it means, one line per condition of
+// isReady. The open lead shows these: four ticks when it is ready, and a cross
+// with the fix where it isn't. Derived from the same fields as leadFlags; the
+// test holds the two together (all ticks <=> ready).
+export interface ReadinessItem {
+  key: 'contact' | 'org' | 'match' | 'duplicate';
+  label: string;
+  state: 'ok' | 'todo' | 'wait';
+  // What to do, only when state isn't ok.
+  fix?: string;
+}
+export function readinessChecklist(c: ContactListItem): ReadinessItem[] {
+  const matchWait = c.matchStatus === 'pending';
+  const stuck = matchWait && c.matchAttempts >= MAX_AUTO_MATCH_ATTEMPTS;
+  return [
+    c.email || c.phone
+      ? { key: 'contact', label: 'Phone or email on file', state: 'ok' }
+      : { key: 'contact', label: 'Phone or email', state: 'todo', fix: "Add one below, or reject if you can't reach them." },
+    hasOrg(c)
+      ? { key: 'org', label: 'School or district filled in', state: 'ok' }
+      : { key: 'org', label: 'School or district', state: 'todo', fix: 'Pick one below.' },
+    !matchWait
+      ? { key: 'match', label: 'Checked against Zoho', state: 'ok' }
+      : stuck
+        ? { key: 'match', label: 'Checked against Zoho', state: 'todo', fix: `The automatic match gave up after ${c.matchAttempts} tries.` }
+        : { key: 'match', label: 'Checked against Zoho', state: 'wait', fix: 'Still processing.' },
+    c.localDuplicateOfContactName
+      ? { key: 'duplicate', label: 'Not a duplicate', state: 'todo', fix: `Possible duplicate of ${c.localDuplicateOfContactName}.` }
+      : { key: 'duplicate', label: 'Not a duplicate', state: 'ok' },
+  ];
 }
 
 export function readyIds(list: ContactListItem[]): string[] {

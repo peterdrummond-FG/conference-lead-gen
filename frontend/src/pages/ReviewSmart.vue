@@ -94,6 +94,15 @@
           <q-btn unelevated no-caps color="negative" :label="`Delete ${selectedVisibleIds.length} selected`" :disable="selectedVisibleIds.length === 0" class="rs-bulk-btn" @click="confirmBulkDelete" />
         </div>
 
+        <!-- What the three states of a lead are, before any card is read. Counted by
+             the same rules as each card's chip and button (summaryCounts), so it can
+             never disagree with them. Read-only on purpose. -->
+        <div v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0" class="rs-summary" role="status" aria-label="Lead status summary">
+          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-ready" />{{ summary.ready }} {{ READY_LABEL.toLowerCase() }}</span>
+          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-info" />{{ summary.needsInfo }} needs info</span>
+          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-proc" />{{ summary.processing }} processing</span>
+        </div>
+
         <!-- A rep: their current conference first, then each past one. -->
         <template v-if="isSales">
           <section class="rs-section">
@@ -102,7 +111,7 @@
                 <div class="rs-sec-name">{{ currentTitle }}</div>
                 <div class="rs-sec-sub">Current event<template v-if="currentLeads.length"> · {{ currentLeads.length }} {{ currentLeads.length === 1 ? 'lead' : 'leads' }}</template></div>
               </div>
-              <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(currentLeads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
+              <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(currentLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
               <div class="rs-sec-actions">
                 <!-- Linking lives here, with the event it changes, rather than
                      as a loose control in the page header. Hidden while an
@@ -143,7 +152,7 @@
                     <span class="rs-sec-sub">{{ g.leads.length }} {{ g.leads.length === 1 ? 'lead' : 'leads' }}</span>
                   </span>
                 </button>
-                <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(g.leads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
+                <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(g.leads)}`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
               </div>
               <ReviewLeadList
                 v-if="isPastOpen(g.eventId, i)"
@@ -164,7 +173,7 @@
         <template v-else>
           <div v-if="tabLeads.length" class="rs-list-head">
             <div class="rs-sec-sub">{{ tabLeads.length }} {{ tabLeads.length === 1 ? 'lead' : 'leads' }}</div>
-            <q-btn v-if="tab === 'needs_review' && readyCount(tabLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve ${readyCount(tabLeads)} ready`" class="rs-ready-btn" @click="confirmApproveReady(tabLeads, 'All visible contacts')" />
+            <q-btn v-if="tab === 'needs_review' && readyCount(tabLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(tabLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(tabLeads, 'All visible contacts')" />
           </div>
           <ReviewLeadList
             v-if="tabLeads.length"
@@ -257,7 +266,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
-  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, readyIds, searchLeads, sortLeads,
+  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, isProcessing, READY_LABEL, readyIds, searchLeads, sortLeads, summaryCounts,
   type ReviewStatus, type SortKey,
 } from '@/utils/reviewSmart';
 
@@ -354,6 +363,7 @@ const flatLeads = computed<ContactListItem[]>(() => (
 ));
 
 const readyCount = (list: ContactListItem[]) => readyIds(list).length;
+const summary = computed(() => summaryCounts(tabLeads.value));
 
 // ── The rep's current event ──────────────────────────────────────────────
 
@@ -522,8 +532,8 @@ function confirmApproveReady(list: ContactListItem[], label: string) {
   const ids = readyIds(list);
   if (!ids.length) return;
   Dialog.create({
-    title: `Approve ${ids.length} ready contact${ids.length === 1 ? '' : 's'}?`,
-    message: `${label}: they'll be included in the next CSV export. Anything with a flag isn't included.`,
+    title: `Approve ${ids.length} contact${ids.length === 1 ? '' : 's'} that ${ids.length === 1 ? 'is' : 'are'} ready to approve?`,
+    message: `${label}: they'll be included in the next CSV export. Leads that still need something aren't included.`,
     cancel: true,
     persistent: true,
     ok: { label: 'Approve', color: 'positive' },
@@ -619,6 +629,30 @@ onMounted(async () => {
   await Promise.all(jobs);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+
+// Leads still in the pipeline have no Approve / Reject until they finish, and
+// nothing else would tell this page they had: the list is only fetched on load.
+// So while any lead is processing, look again every few seconds (quietly, no
+// spinner) so the buttons appear by themselves. Stops the moment none is, and
+// pauses in a background tab. Skipped mid-action so a refresh can't land between
+// an optimistic approve and its response.
+const POLL_MS = 8000;
+const anyProcessing = computed(() => buckets.needs_review.some(isProcessing));
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+function pollTick() {
+  if (document.hidden || busy.size > 0) return;
+  void load();
+}
+watch(anyProcessing, (on) => {
+  if (on && pollTimer === null) pollTimer = setInterval(pollTick, POLL_MS);
+  else if (!on && pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
+}, { immediate: true });
+function onVisible() { if (!document.hidden && anyProcessing.value && busy.size === 0) void load(); }
+document.addEventListener('visibilitychange', onVisible);
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisible);
+  if (pollTimer !== null) clearInterval(pollTimer);
+});
 </script>
 
 <style scoped>
@@ -693,8 +727,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 /* ── Sections ── */
 .rs-section + .rs-section { margin-top: 12px; }
-.rs-sec-head { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 2px 6px; }
-.rs-sec-head > .rs-sec-title, .rs-sec-head > .rs-sec-toggle { flex: 1; min-width: 0; }
+/* Wraps, and the title has a floor: "Link to <long conference name>" is a
+   no-shrink sibling, and with a zero-basis title it squeezed "Not linked to a
+   conference" to one character wide, printed a letter per line. Now the
+   button drops to its own line when it doesn't fit. */
+.rs-sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 48px; padding: 0 2px 6px; }
+.rs-sec-head > .rs-sec-title, .rs-sec-head > .rs-sec-toggle { flex: 1 1 10rem; min-width: 0; }
 .rs-sec-title { display: flex; flex-direction: column; min-width: 0; text-align: left; }
 .rs-sec-name { font-size: 16px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
 .rs-sec-sub { font-size: 13px; color: #5B6670; }
@@ -715,7 +753,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 }
 .rs-sec-toggle:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 6px; }
 .rs-ready-btn { min-height: 40px; padding: 0 12px; flex: none; }
-.rs-link-btn { min-height: 40px; }
+.rs-link-btn { min-height: 40px; max-width: 100%; }
+.rs-link-btn :deep(.q-btn__content) { white-space: normal; text-align: left; }
+.rs-sec-actions { max-width: 100%; }
+.rs-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.rs-sum-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.1); font-size: 13px; color: #2F3A44; white-space: nowrap; }
+.rs-sum-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.rs-dot-ready { background: #1E8E3E; }
+.rs-dot-info { background: #E07B00; }
+.rs-dot-proc { background: #0067AC; }
 .rs-past { margin-top: 20px; }
 .rs-past-title { margin: 0 0 4px; font-size: 13px; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: #5B6670; }
 .rs-note { padding: 12px 4px; color: #5B6670; font-size: 14px; }

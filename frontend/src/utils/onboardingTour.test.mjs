@@ -5,11 +5,11 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
+import { SAMPLE_CALLOUTS,
   BANNED_WORDS, CONNECT_MOCK, SAMPLE_LEAD, SMS_MOCK, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole, tourStartAction,
 } from './onboardingTour.ts';
 import { TWILIO_NUMBER_DISPLAY } from './smsNumber.ts';
-import { isReady } from './reviewSmart.ts';
+import { isReady, READY_LABEL } from './reviewSmart.ts';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = join(SRC, '..', '..');
@@ -174,4 +174,10 @@ test('an admin previewing someone else, or a tour already running, is left alone
   assert.equal(tourStartAction({ ...base, viewingAs: true }), 'none');
   assert.equal(tourStartAction({ ...base, phase: 'tour' }), 'none');
   assert.equal(tourStartAction(base), 'begin');
+});
+
+test('the tour calls the state by the name Review shows on the chip', () => {
+  const step = TOUR_STEPS.find((s) => s.id === 'review-sample');
+  assert.ok(step.body.includes(READY_LABEL), `review-sample should say "${READY_LABEL}"`);
+  assert.ok(SAMPLE_CALLOUTS.some((c) => c.text.includes(READY_LABEL)), 'a callout should use the chip wording');
 });

@@ -190,13 +190,13 @@ Supabase CLI on this machine.
 - **Review has two views, and Smart's rules live in one file.** `/review`
   switches between Classic (`ReviewClassic.vue`, deliberately left as it was)
   and Smart (`ReviewSmart.vue`). Smart's readiness / flag / sort / search /
-  grouping logic is `frontend/src/utils/reviewSmart.ts` with tests; "Ready"
-  (one-tap approve, "Approve N ready") means match finished, no possible
+  grouping logic is `frontend/src/utils/reviewSmart.ts` with tests; "Ready to approve"
+  (`READY_LABEL`; one-tap ✓, "Approve all N") means match finished, no possible
   duplicate, an email or phone, and a school or district. Change the rule there,
   not in a component. Details: `docs/ARCHITECTURE.md`, "Review's two views".
 
 - **The welcome tour's copy is a set of promises.** Its Review step says a green
-  "Ready" lead approves in one tap and that notes reach Zoho; its "Set up your
+  "Ready to approve" lead approves in one tap and that notes reach Zoho; its "Set up your
   phone" steps show the text reply `twilio-webhook` sends and the number from
   `utils/smsNumber.ts`; its Setup steps point at the conference card
   (`data-tour="setup-conference"`) and the phone card (`setup-text-in`) by name

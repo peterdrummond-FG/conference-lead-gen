@@ -21,6 +21,7 @@
             <LeadChip v-if="!isSales && contact.repName" tone="grey">{{ contact.repName }}</LeadChip>
             <!-- Reps get plain "New district / Existing school"; admin and
                  Solutions Success keep the wording they know from Classic. -->
+            <LeadChip v-if="contact.reviewStatus === 'needs_review' && ready" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
             <LeadChip v-if="!isSales" :tone="badge?.tone ?? 'grey'">{{ accountDetailLabel(contact) }}</LeadChip>
             <LeadChip v-else-if="badge" :tone="badge.tone">{{ badge.label }}</LeadChip>
           </div>
@@ -62,25 +63,23 @@
           @update:model-value="toggleFollowedUp"
         />
       </div>
-      <!-- Why this lead is here, with the fix next to it. Each line names one
-           thing to do — visible text, not a tooltip on a disabled button. -->
-      <div v-if="contact.reviewStatus === 'needs_review' && flags.length" class="le-issues">
-        <div v-for="f in flags" :key="f.key" class="le-issue" :class="`le-issue-${f.tone}`">
-          <q-icon :name="issueIcon(f.key)" size="18px" class="le-issue-icon" />
-          <div class="le-issue-text">
-            <template v-if="f.key === 'matching'">Still checking the account match. You can approve once it finishes.</template>
-            <template v-else-if="f.key === 'stuck'">The automatic match gave up after {{ contact.matchAttempts }} tries.</template>
-            <template v-else-if="f.key === 'duplicate'">
-              Possible duplicate of {{ contact.localDuplicateOfContactName }}<template v-if="contact.localDuplicateOfContactContext"> ({{ contact.localDuplicateOfContactContext }})</template>.
-            </template>
-            <template v-else-if="f.key === 'no-contact'">No email or phone. Add one below, or reject if you can't reach them.</template>
-            <template v-else-if="f.key === 'no-org'">No school or district. Pick one below.</template>
-            <template v-else>{{ f.label }}</template>
-          </div>
-          <q-btn v-if="f.key === 'stuck'" dense flat no-caps color="primary" label="Retry match" class="le-issue-act" @click="$emit('retryMatch', contact.id)" />
-          <q-btn v-if="f.key === 'duplicate'" dense flat no-caps color="orange-10" label="Resolve" class="le-issue-act" @click="showDuplicateDialog = true" />
-        </div>
-      </div>
+      <!-- What "ready to approve" means, line by line. A ready lead shows four
+           ticks; a lead that isn't shows a cross (or a wait, while it is still
+           processing) and, on that line, what to do about it. Replaces the old
+           list of problems, which only ever named what was wrong and left the rep
+           to guess what right looked like. Same rules as the chip and the button
+           (readinessChecklist). -->
+      <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this lead needs before it can be approved">
+        <li v-for="item in checklist" :key="item.key" class="le-check-item" :class="`is-${item.state}`">
+          <q-icon :name="checkIcon(item.state)" size="18px" class="le-check-icon" />
+          <span class="le-check-text">
+            <span class="le-check-label">{{ item.label }}</span>
+            <span v-if="item.fix" class="le-check-fix">{{ item.fix }}</span>
+          </span>
+          <q-btn v-if="item.key === 'match' && item.state === 'todo'" dense flat no-caps color="primary" label="Retry match" class="le-issue-act" @click="$emit('retryMatch', contact.id)" />
+          <q-btn v-if="item.key === 'duplicate' && item.state === 'todo'" dense flat no-caps color="orange-10" label="Resolve" class="le-issue-act" @click="showDuplicateDialog = true" />
+        </li>
+      </ul>
 
       <div v-if="contact.glanceSummary" class="ai-research-box">
         <q-icon name="travel_explore" size="18px" color="purple-8" class="q-mt-xs" />
@@ -234,11 +233,10 @@
             dense
             outlined
             type="textarea"
-            class="le-s6"
+            class="le-s6 le-notes"
             label="Notes"
             stack-label
             placeholder="Add a note about your conversation…"
-            hint="Typed notes and voice memos both land here. Included in the Zoho import."
             input-style="height: 84px; min-height: 64px; max-height: 220px"
           >
             <template #append>
@@ -247,6 +245,10 @@
               </q-icon>
             </template>
           </q-input>
+          <!-- Not the field's own hint: Quasar positions that absolutely under a
+               fixed 20px, so a hint that wraps to two lines on a phone printed over
+               whatever came next. In the flow, it pushes the next row down instead. -->
+          <div class="le-s6 le-notes-cap">Typed notes and voice memos both land here. Included in the Zoho import.</div>
           <div class="le-s6 le-notes-actions">
             <q-btn flat no-caps dense color="primary" icon="note_add" label="Add note" class="le-note-btn" @click="showNoteDialog = true" />
             <span class="le-notes-hint">Adds a dated line and saves right away.</span>
@@ -257,15 +259,25 @@
     </div>
 
     <div class="le-foot">
-      <div v-if="footNote" class="le-foot-note" role="status">{{ footNote }}</div>
+      <!-- While the pipeline is still working the lead has nothing to approve or
+           reject yet, so the two buttons are replaced by a notice rather than
+           disabled (a disabled button tells a phone user nothing). The notice
+           takes the buttons' place, so the footer doesn't change height when the
+           match lands. ReviewSmart reloads on its own while any lead is in this
+           state, which is what swaps the buttons back in. -->
+      <div v-if="processing" class="le-proc" role="status">
+        <ProcessingBar caption="" label="Processing this contact" />
+        <div class="le-proc-body">You can approve or reject once it finishes.</div>
+      </div>
+      <div v-else-if="footNote" class="le-foot-note" role="status">{{ footNote }}</div>
       <div class="le-foot-row">
         <q-space />
         <q-btn v-if="isDirty" outline no-caps color="primary" label="Save changes" class="le-btn" :loading="busy" @click="save" />
-        <q-btn v-if="contact.reviewStatus !== 'rejected'" flat no-caps color="negative" label="Reject" class="le-btn" :disable="busy" @click="rejectClick" />
-        <q-btn v-if="contact.reviewStatus === 'needs_review'" unelevated no-caps color="positive" label="Approve" class="le-btn le-approve" :loading="busy" @click="approveClick" />
+        <q-btn v-if="contact.reviewStatus !== 'rejected' && !processing" flat no-caps color="negative" label="Reject" class="le-btn" :disable="busy" @click="rejectClick" />
+        <q-btn v-if="contact.reviewStatus === 'needs_review' && !processing && contact.matchStatus !== 'pending'" unelevated no-caps color="positive" label="Approve" class="le-btn le-approve" :loading="busy" @click="approveClick" />
         <q-btn v-if="contact.reviewStatus === 'rejected'" outline no-caps color="primary" icon="undo" label="Restore to Needs Review" class="le-btn" :loading="busy" @click="$emit('restore', contact.id)" />
       </div>
-      <div v-if="showKeys && contact.reviewStatus === 'needs_review'" class="le-keys">J / K move · A approve · R reject</div>
+      <div v-if="showKeys && contact.reviewStatus === 'needs_review' && !processing" class="le-keys">J / K move · A approve · R reject</div>
     </div>
   </div>
 </template>
@@ -275,6 +287,7 @@ import { reactive, computed, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import LeadChip from '@/components/smart/LeadChip.vue';
+import ProcessingBar from '@/components/smart/ProcessingBar.vue';
 import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
 import DuplicateResolutionDialog from '@/components/DuplicateResolutionDialog.vue';
 import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
@@ -283,7 +296,7 @@ import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/u
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { DisplayPatch } from '@/composables/useSmartReview';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
-import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, leadFlags, type LeadFlag } from '@/utils/reviewSmart';
+import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist } from '@/utils/reviewSmart';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -309,7 +322,12 @@ const emit = defineEmits<{
 }>();
 
 const name = computed(() => fullName(props.contact));
-const flags = computed(() => leadFlags(props.contact));
+const processing = computed(() => isProcessing(props.contact));
+const ready = computed(() => isReady(props.contact));
+const checklist = computed(() => readinessChecklist(props.contact));
+function checkIcon(state: 'ok' | 'todo' | 'wait') {
+  return state === 'ok' ? 'check_circle' : state === 'wait' ? 'hourglass_empty' : 'cancel';
+}
 const badge = computed(() => accountBadge(props.contact));
 
 const showFullImage = ref(false);
@@ -486,8 +504,9 @@ function toggleFollowedUp(value: boolean) {
 // anyway; this just says why first. A possible duplicate interrupts with an
 // explicit choice rather than letting the tap through silently.
 function approveClick() {
+  // The A shortcut lands here too, with no button on screen to explain itself.
   if (props.contact.matchStatus === 'pending') {
-    Notify.create({ type: 'warning', message: 'Still checking the account match. Try again in a moment.' });
+    Notify.create({ type: 'warning', message: isProcessing(props.contact) ? "We're still processing this contact. Try again in a few minutes." : 'The automatic match gave up. Retry it first.' });
     return;
   }
   if (props.contact.localDuplicateOfContactName) {
@@ -523,13 +542,17 @@ function appendNote(text: string) {
 }
 
 function rejectClick() {
+  if (processing.value) {
+    Notify.create({ type: 'warning', message: "We're still processing this contact. You can reject it once that's done." });
+    return;
+  }
   emit('reject', props.contact.id);
 }
 
 const footNote = computed(() => {
   const c = props.contact;
   if (c.reviewStatus !== 'needs_review') return '';
-  if (c.matchStatus === 'pending') return 'Still checking the account match. Approve works once it finishes.';
+  if (c.matchStatus === 'pending') return 'The automatic match gave up, so this can\'t be approved yet. Use Retry match above.';
   if (c.localDuplicateOfContactName) return "Possible duplicate. You'll be asked to confirm before approving.";
   if (c.matchStatus === 'ambiguous') return 'No confirmed match. Approving sends this as a new lead.';
   return '';
@@ -559,17 +582,6 @@ function sourceLabel(source: string) {
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
-}
-
-function issueIcon(key: LeadFlag['key']) {
-  switch (key) {
-    case 'matching': return 'hourglass_empty';
-    case 'stuck': return 'error_outline';
-    case 'duplicate': return 'content_copy';
-    case 'no-contact': return 'phone_disabled';
-    case 'no-org': return 'school';
-    default: return 'info_outline';
-  }
 }
 
 // Read by the page: the unsaved-edits guard before switching leads, and the
@@ -616,23 +628,33 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 
 .le-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 16px; overscroll-behavior: contain; }
 
-.le-issues { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.le-issue {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+.le-check {
+  list-style: none;
+  margin: 4px 0 0;
   padding: 8px 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
   border-radius: 8px;
-  font-size: 14px;
+  background: #F7F8FA;
+  font-size: 13px;
   line-height: 1.4;
 }
-.le-issue-icon { margin-top: 1px; }
-.le-issue-text { flex: 1; min-width: 0; }
+.le-check-item { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: #3D4750; }
+.le-check-icon { margin-top: 1px; flex: none; }
+.le-check-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.le-check-label { overflow-wrap: anywhere; }
+.le-check-fix { color: #55616B; }
+.le-check-item.is-ok .le-check-icon { color: #1E8E3E; }
+/* A line that needs something takes the full row, so its fix and button have room. */
+.le-check-item.is-todo, .le-check-item.is-wait { grid-column: 1 / -1; font-weight: 500; }
+.le-check-item.is-todo .le-check-icon { color: #B23B3B; }
+.le-check-item.is-wait .le-check-icon { color: #0067AC; }
+.le-check-item.is-todo .le-check-fix, .le-check-item.is-wait .le-check-fix { font-weight: 400; }
 .le-issue-act { flex: none; min-height: 32px; }
-.le-issue-red { background: #FBEAEA; color: #8F2D2D; }
-.le-issue-orange { background: #FDEEE3; color: #8A4200; }
-.le-issue-grey { background: #EEF0F2; color: #3D4750; }
-.le-issue-blue { background: #E3F1FA; color: #0B5A94; }
+@container le (max-width: 360px) {
+  .le-check { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Deliberately distinct from every fact on the card: an AI-derived guess must
    never look like confirmed data (see ReviewContactCard for the incident). */
@@ -674,7 +696,8 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-s4 { grid-column: span 4; }
 .le-s6 { grid-column: span 6; }
 .le-suggest { margin-top: -6px; }
-.le-notes-actions { display: flex; align-items: center; gap: 8px; margin-top: -4px; }
+.le-notes-cap { margin-top: -6px; font-size: 12px; line-height: 1.4; color: #6B7680; }
+.le-notes-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .le-note-btn { min-height: 36px; }
 .le-notes-hint { font-size: 12px; color: #6B7680; }
 
@@ -684,6 +707,9 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-btn { min-height: 44px; }
 .le-approve { min-width: 120px; }
 .le-follow { min-height: 44px; margin-left: 4px; }
+
+.le-proc { padding: 6px 0 4px; }
+.le-proc-body { margin-top: 6px; font-size: 13px; line-height: 1.45; color: #55616B; }
 .le-keys { margin-top: 6px; font-size: 12px; color: #6B7680; text-align: right; }
 
 @container le (max-width: 560px) {
@@ -715,8 +741,10 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   /* Email, phone, state and district each take a full row: at 2-4 tracks of a
      ~317px form, State was ~98px and clipped "Tennessee" to "Tennes". */
   .le-s2, .le-s4 { grid-column: span 6; }
-  .le-form :deep(.q-field--dense .q-field__control),
-  .le-form :deep(.q-field--dense .q-field__marginal) { height: 44px; }
+  /* Not the Notes textarea: pinning its control to 44px squeezed the text into a
+     one-line box and let the rest spill out over the hint beneath it. */
+  .le-form :deep(.q-field--dense:not(.le-notes) .q-field__control),
+  .le-form :deep(.q-field--dense:not(.le-notes) .q-field__marginal) { height: 44px; }
 
   .le-approve { flex: 1; }
   .le-foot-row .q-btn { flex: 1 1 auto; }
