@@ -160,6 +160,25 @@ checks and the rep taps the one to change. Keep it that way:
 - The "how it works" explanation is the welcome tour, not text on Setup. Keep the
   page's prose to a line or two.
 
+### Admin "View as"
+
+The switcher in the header (admin only) shows the app as another person sees
+it. Every request still carries the admin's own token, so **a write made while
+previewing lands on the admin's account**, never the previewed person's.
+
+- **Review** reads that person's leads (`contacts-list?viewAsRepId=`,
+  `inbound-messages-unresolved-list?viewAsRepId=`). Approve / Reject still work
+  and are done as the admin.
+- **Setup, Connect and Notes** show that person's own conference, phone and PIN
+  state from `me?viewAsId=` (admin only; returns the same shape as `me` plus
+  `smsBound`, never the PIN itself). Controls that would change the admin's own
+  account (join a conference, text SETUP, set a PIN, submit the form, send a
+  note) are shown but switched off, since they would act on the admin rather than
+  the person on screen. Before this, Setup hid its whole personal section and
+  Connect showed the admin's own conference under the rep's name.
+- A purple "Viewing as …" bar sits under the header on every page. On a phone
+  the switcher is an unlabelled icon, so nothing else says whose view it is.
+
 ### Welcome tour
 
 A new staff account sees a three-screen welcome, then a walkthrough (Setup,

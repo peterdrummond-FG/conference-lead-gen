@@ -371,7 +371,11 @@ const isLinked = computed(() => (
   sessionStore.viewingAs ? !!sessionStore.viewingAs.currentEventId : !!sessionStore.user?.currentEventId
 ));
 const currentTitle = computed(() => {
-  if (sessionStore.viewingAs) return currentLeads.value[0]?.eventName ?? (isLinked.value ? 'Current event' : 'Not linked to a conference');
+  // Previewing: their own conference's name (me?viewAsId). Reading it off the
+  // first lead left a rep with no leads yet titled just "Current event".
+  if (sessionStore.viewingAs) {
+    return sessionStore.preview?.currentEventName ?? currentLeads.value[0]?.eventName ?? (isLinked.value ? 'Current event' : 'Not linked to a conference');
+  }
   return sessionStore.user?.currentEventName ?? 'Not linked to a conference';
 });
 const emptyForCurrent = computed(() => {
@@ -714,8 +718,9 @@ onBeforeUnmount(() => {
 /* The pane stays in view while the list scrolls. 72px clears the app header. */
 .rs-pane {
   position: sticky;
-  top: 72px;
-  height: calc(100vh - 88px);
+  /* --preview-bar-h: the "Viewing as" bar MainLayout adds under the header. */
+  top: calc(72px + var(--preview-bar-h, 0px));
+  height: calc(100vh - 88px - var(--preview-bar-h, 0px));
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 14px;

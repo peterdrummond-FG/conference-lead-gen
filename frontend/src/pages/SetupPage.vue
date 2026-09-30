@@ -8,16 +8,20 @@
         </div>
       </div>
 
-      <!-- Every control below writes to the real caller's own profile
-           (profiles-set-current-event, kiosk-set-code, their own QR), never the
-           previewed user's -- session-store.ts's viewingAs comment. Rendering them
-           under someone else's name would show that person's conference next to
-           buttons that change the admin's own account, so the whole personal
-           section is swapped for this notice instead. -->
-      <q-banner v-if="sessionStore.viewingAs" rounded class="bg-grey-2 text-grey-9">
-        You're previewing {{ sessionStore.viewingAs.name }}. Joining a conference, downloading a QR
-        code, and setting a PIN always act on your own account, so they're hidden here.
-      </q-banner>
+      <!-- Previewing someone (admin "View as"): the cards below show THEIR Setup,
+           from sessionStore.preview (me?viewAsId). This page used to hide the lot
+           behind a notice, so an admin had no way to see what a rep sees here.
+           The controls that write -- joining a conference, texting SETUP, the PIN
+           -- act on the caller's own account whoever is on screen (session-store's
+           viewingAs comment), so they're shown but switched off rather than left
+           live next to someone else's name. Reads (Check connection, copying,
+           saving the rep's own QR) stay on. -->
+      <div v-if="previewing" class="text-caption text-grey-8">
+        This is {{ sessionStore.viewingAs?.name }}'s Setup. Buttons that would change your own
+        account are switched off.
+      </div>
+
+      <div v-if="previewing && !subject" class="text-caption text-grey-8">Loading…</div>
 
       <template v-else>
         <!-- Step 1: conference. A step is its own card with a number that turns into
@@ -36,7 +40,7 @@
               <!-- Always offered once joined: this is now the only way to switch or to
                    activate one that isn't live yet (the separate "Start a new
                    conference" button is gone), and the dialog lists both. -->
-              <q-btn v-if="joinedEvent" flat no-caps color="primary" label="Change" @click="picking = true" />
+              <q-btn v-if="joinedEvent" flat no-caps color="primary" label="Change" :disable="previewing" @click="picking = true" />
             </div>
           </q-card-section>
 
@@ -62,7 +66,7 @@
                  this always asks. -->
             <div v-else>
               <div class="text-body2 q-mb-sm">Pick the one you're at, so every lead lands in the right place.</div>
-              <q-btn unelevated no-caps color="primary" label="Choose conference" @click="picking = true" />
+              <q-btn unelevated no-caps color="primary" label="Choose conference" :disable="previewing" @click="picking = true" />
             </div>
           </q-card-section>
         </q-card>
@@ -167,7 +171,8 @@
               <q-btn
                 v-if="isMobile"
                 unelevated class="full-width" color="primary" no-caps icon="sms" label="Text the code SETUP"
-                :href="`sms:${twilioNumberE164}?&body=SETUP`"
+                :href="previewing ? undefined : `sms:${twilioNumberE164}?&body=SETUP`"
+                :disable="previewing"
               />
               <div v-else class="text-body2">
                 From your phone, text the code <span class="text-weight-bold">SETUP</span> to
@@ -201,12 +206,12 @@
         <q-card>
           <q-card-section>
             <div class="row items-center no-wrap">
-              <q-avatar size="26px" :color="sessionStore.user?.hasKioskPin ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
-                <q-icon v-if="sessionStore.user?.hasKioskPin" name="check" size="18px" />
+              <q-avatar size="26px" :color="subject?.hasKioskPin ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
+                <q-icon v-if="subject?.hasKioskPin" name="check" size="18px" />
                 <template v-else>3</template>
               </q-avatar>
               <div class="col text-subtitle1 text-weight-medium">Kiosk setup</div>
-              <q-badge class="text-no-wrap" v-if="sessionStore.user?.hasKioskPin" color="positive" label="PIN set" />
+              <q-badge class="text-no-wrap" v-if="subject?.hasKioskPin" color="positive" label="PIN set" />
               <q-badge class="text-no-wrap" v-else color="grey-7" label="PIN not set" />
             </div>
           </q-card-section>
@@ -217,7 +222,8 @@
             </div>
             <q-btn
               outline no-caps color="primary" class="q-mt-sm"
-              :label="sessionStore.user?.hasKioskPin ? 'Change PIN' : 'Set PIN'"
+              :label="subject?.hasKioskPin ? 'Change PIN' : 'Set PIN'"
+              :disable="previewing"
               @click="promptKioskPin"
             />
             <div class="text-caption text-grey-8 q-mt-xs">When you're ready, tap Lock kiosk in the top bar.</div>
@@ -229,7 +235,7 @@
              Available before joining (the code is the rep's own and reusable), but
              it only works once they're linked to a conference. Sales accounts only:
              repSlug is only ever generated for them (profiles-create/-update). -->
-        <q-card v-if="sessionStore.user?.repSlug">
+        <q-card v-if="subject?.repSlug">
           <q-card-section>
             <div class="row items-start no-wrap">
               <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
@@ -247,7 +253,7 @@
                   Choose a conference first. Scans won't go through until you do.
                 </div>
                 <qr-save-buttons
-                  :rep="{ name: sessionStore.user.name, repSlug: sessionStore.user.repSlug }" class="q-mt-sm"
+                  :rep="{ name: subject.name, repSlug: subject.repSlug }" class="q-mt-sm"
                 />
               </div>
             </div>
@@ -316,7 +322,7 @@ import { Dialog, Notify, Platform, copyToClipboard } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { TWILIO_NUMBER_DISPLAY, TWILIO_NUMBER_E164 } from '@/utils/smsNumber';
-import { useSessionStore } from '@/stores/session-store';
+import { useSessionStore, type PreviewUser, type SessionUser } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
 import QrSaveButtons from '@/components/QrSaveButtons.vue';
 import { cleanConferenceName, conferenceDateLabel, conferenceEndedLabel, formatPhone } from '@/utils/conferenceName';
@@ -358,6 +364,11 @@ const checking = ref(false);
 // server-side by the real caller's own JWT.
 // Admin/solutionsSuccess extras on Setup (the Rep QR slides list). Activating a
 // conference is open to every role -- see StartConferenceDialog.
+// Admin "View as": whose Setup is on screen. subject is that person's own facts
+// (sessionStore.preview) or the caller's; null only while a preview loads.
+const previewing = computed(() => !!sessionStore.viewingAs);
+const subject = computed<PreviewUser | SessionUser | null>(() => (previewing.value ? sessionStore.preview : sessionStore.user));
+
 const canManageEvents = computed(() => (
   sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
@@ -371,7 +382,7 @@ const activeEvents = ref<ActiveEventOption[]>([]);
 // back to the most recently activated one (events-active's legacy fallback).
 // Step 1 keys off this so "joined" never means "happened to be displayed".
 const joinedEvent = computed(() => (
-  activeEvents.value.find((e) => e.id === sessionStore.user?.currentEventId) ?? null
+  activeEvents.value.find((e) => e.id === subject.value?.currentEventId) ?? null
 ));
 // eventStore.activeEvent, but only once it's confirmed to be the joined one --
 // it carries smsBound, which is only meaningful for that event and lags a
@@ -385,13 +396,21 @@ const linkedEvent = computed(() => (
 // that -- not "false" -- is the "no phone number" state. Null until
 // linkedEvent has caught up, so no badge flashes wrongly in the meantime.
 const smsStatus = computed<'connected' | 'pending' | 'no-phone' | null>(() => {
+  // Previewing: the same three states, from the previewed person's own phone
+  // binding (me?viewAsId), not eventStore, which only ever describes the caller.
+  if (previewing.value) {
+    const p = sessionStore.preview;
+    if (!joinedEvent.value || !p) return null;
+    if (!p.phoneNumber) return 'no-phone';
+    return p.smsBound ? 'connected' : 'pending';
+  }
   if (!linkedEvent.value) return null;
   if (linkedEvent.value.smsBound === undefined) return 'no-phone';
   return linkedEvent.value.smsBound ? 'connected' : 'pending';
 });
 
 // The number texted cards are credited to, for the rep to sanity-check.
-const phoneOnFile = computed(() => formatPhone(sessionStore.user?.phoneNumber));
+const phoneOnFile = computed(() => formatPhone(subject.value?.phoneNumber));
 
 // "Sep 30 to Oct 2 · IL"; just the state for a name with no date.
 function conferenceWhen(e: ActiveEventOption): string {
@@ -428,13 +447,17 @@ async function onStarted(payload: { joined: boolean; name: string }) {
 async function checkConnection() {
   checking.value = true;
   try {
+    if (previewing.value) {
+      await sessionStore.fetchPreview();
+      return;
+    }
     await Promise.all([sessionStore.fetchMe(), eventStore.fetchActive()]);
   } finally {
     checking.value = false;
   }
 }
 function onVisible() {
-  if (document.visibilityState === 'visible' && joinedEvent.value && smsStatus.value !== 'connected') {
+  if (document.visibilityState === 'visible' && !previewing.value && joinedEvent.value && smsStatus.value !== 'connected') {
     void eventStore.fetchActive();
   }
 }
@@ -466,7 +489,7 @@ async function loadProfiles() {
 // existing PIN, which is why the Kiosk setup card keeps a button for it.
 function promptKioskPin() {
   Dialog.create({
-    title: sessionStore.user?.hasKioskPin ? 'Change your kiosk PIN' : 'Set your kiosk PIN',
+    title: subject.value?.hasKioskPin ? 'Change your kiosk PIN' : 'Set your kiosk PIN',
     message: "You'll unlock a locked device with this. It's separate from your login password. At least 4 characters.",
     prompt: { model: '', type: 'text', isValid: (v: string) => v.length >= 4 },
     cancel: true,
