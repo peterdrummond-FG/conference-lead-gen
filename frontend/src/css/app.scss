@@ -35,3 +35,39 @@ body {
   scroll-margin-top: 112px;
   scroll-margin-bottom: 24px;
 }
+
+// --- Phone zoom and sideways scroll ----------------------------------------
+// Two things made the screen jump while a rep filled in a form:
+//
+// 1. Quasar's $input-font-size is 14px here, and iOS Safari zooms the whole
+//    page into any focused field under 16px — then stays zoomed after the
+//    keyboard closes, so the page looks cut off at the side. Every input on
+//    every screen was affected (login showed 14px); StartConferenceDialog had
+//    worked around it for its own fields only. Fixed once, for every field:
+//    on a touch device, text in a field is 16px. Desktop keeps Quasar's 14px.
+//    (Don't "fix" this with maximum-scale/user-scalable=no in index.html:
+//    it blocks pinch-zoom for people who need it, and iOS ignores it anyway.)
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select,
+  .q-field__native,
+  .q-field__input {
+    font-size: 16px;
+  }
+}
+
+// 2. A dialog with a fixed width wider than the screen (Duplicates was
+//    700px, with a min-width that beat its own max-width) pushes the page
+//    sideways. Never let a dialog card outgrow the space the dialog gives it.
+.q-dialog__inner--minimized > .q-card {
+  max-width: 100%;
+}
+
+// Backstop: if some future element is still too wide, clip it rather than
+// let the page scroll sideways or shrink to fit. `clip`, not `hidden` —
+// `hidden` makes body a scroll container and breaks sticky/fixed headers.
+html,
+body {
+  overflow-x: clip;
+}

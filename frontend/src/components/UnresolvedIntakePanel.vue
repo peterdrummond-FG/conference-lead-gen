@@ -67,7 +67,7 @@
     </div>
 
     <q-dialog v-model="assignDialogOpen">
-      <q-card style="min-width: 360px">
+      <q-card style="width: 360px">
         <q-card-section>
           <div class="text-subtitle1">Assign voice memo to a contact</div>
           <div class="text-caption text-grey q-mt-xs">{{ assignTarget?.transcript || '(no transcript)' }}</div>
