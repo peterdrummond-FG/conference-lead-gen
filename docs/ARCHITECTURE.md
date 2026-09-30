@@ -110,7 +110,7 @@ preserve:
   is linked, so the two differ exactly when a rep is about to have a broken QR.
   Joining is a write (`profiles-set-current-event`); it is never inferred.
 - **Placing a rep at a conference has one control per audience** — Setup's
-  Join/Switch for yourself, Admin → Team's "Working at" for someone else. Both
+  Choose/Change for yourself, Admin → Team's "Working at" for someone else. Both
   end in the same field; don't add a third surface.
 
 Only Sales accounts have a QR (`rep_slug`); admin and Solutions Success are who
