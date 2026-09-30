@@ -26,49 +26,70 @@
           <div class="intake-title">{{ eventStore.activeEvent?.name }}</div>
           <div class="intake-subtitle">Tell us a bit about yourself.</div>
 
-          <q-form ref="formRef" class="intake-form" @submit.prevent="onSubmit">
-            <q-input
-              v-model="form.firstName"
-              label="First name *"
-              :autocomplete="ac('given-name')"
-              borderless
-              :rules="[(v: string) => !!v || 'Required']"
-            />
-            <q-input
-              v-model="form.lastName"
-              label="Last name *"
-              :autocomplete="ac('family-name')"
-              borderless
-              :rules="[(v: string) => !!v || 'Required']"
-            />
+          <q-form ref="formRef" class="intake-form" @submit.prevent="onSubmit" @focusin="onFormFocusIn">
+            <!-- The first block folds into a one-line summary once it's filled in and
+                 the attendee moves on to another field (never while they're still
+                 typing in it, which would shift the screen under their thumb). The
+                 fields stay mounted (v-show) so their values and validation are
+                 untouched; "Edit" just reopens them. -->
+            <div v-if="folded" class="intake-summary">
+              <q-icon name="check_circle" color="positive" size="22px" />
+              <div class="intake-summary-text">
+                <div class="intake-summary-name">{{ form.firstName.trim() }} {{ form.lastName.trim() }}</div>
+                <div class="intake-summary-contact">{{ [form.email.trim(), form.phone.trim()].filter(Boolean).join(' · ') }}</div>
+              </div>
+              <q-btn flat no-caps color="primary" label="Edit" class="intake-summary-edit" aria-label="Edit your name and contact details" @click="unfold" />
+            </div>
 
-            <q-input
-              v-model="form.email"
-              label="Email"
-              type="email"
-              inputmode="email"
-              :autocomplete="ac('email')"
-              borderless
-              :rules="[contactMethodRule]"
-            />
-            <!-- type="tel" + inputmode="tel" is what brings up the number pad on
-                 a phone; a plain text input gave attendees the full keyboard. -->
-            <q-input
-              v-model="form.phone"
-              label="Phone"
-              type="tel"
-              inputmode="tel"
-              :autocomplete="ac('tel')"
-              borderless
-              :rules="[contactMethodRule]"
-            />
-            <!-- The rule below only used to surface as an error after Submit. -->
-            <div class="intake-hint">Add an email or a phone number. One is enough.</div>
+            <div v-show="!folded" ref="identityEl" class="intake-identity">
+              <div class="intake-name-row">
+                <q-input
+                  ref="firstNameRef"
+                  v-model="form.firstName"
+                  label="First name *"
+                  :autocomplete="ac('given-name')"
+                  borderless
+                  :rules="[(v: string) => !!v || 'Required']"
+                />
+                <q-input
+                  v-model="form.lastName"
+                  label="Last name *"
+                  :autocomplete="ac('family-name')"
+                  borderless
+                  :rules="[(v: string) => !!v || 'Required']"
+                />
+              </div>
+
+              <q-input
+                v-model="form.email"
+                label="Email"
+                type="email"
+                inputmode="email"
+                :autocomplete="ac('email')"
+                borderless
+                :rules="[contactMethodRule]"
+              />
+              <!-- type="tel" + inputmode="tel" is what brings up the number pad on
+                   a phone; a plain text input gave attendees the full keyboard. -->
+              <q-input
+                v-model="form.phone"
+                label="Phone"
+                type="tel"
+                inputmode="tel"
+                :autocomplete="ac('tel')"
+                borderless
+                :rules="[contactMethodRule]"
+              />
+              <!-- Reads as "both", but Submit still only needs one of the two. -->
+              <div class="intake-hint">Add your email and phone number</div>
+            </div>
 
             <div class="intake-optional">Optional</div>
             <q-input v-model="form.title" label="Title" :autocomplete="ac('organization-title')" borderless />
 
+            <!-- A booth or breakout-session QR already says how they found us. -->
             <q-select
+              v-if="!initialChannel"
               v-model="form.channel"
               :options="CHANNEL_OPTIONS"
               option-label="label"
@@ -152,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onMounted } from 'vue';
+import { reactive, ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
@@ -216,6 +237,9 @@ const needsLink = computed(
 );
 
 const formRef = ref<QForm | null>(null);
+const identityEl = ref<HTMLElement | null>(null);
+const firstNameRef = ref<{ focus: () => void } | null>(null);
+const folded = ref(false);
 const submitting = ref(false);
 const submitted = ref(false);
 const stateOptions = ref<UsStateOption[]>(US_STATES);
@@ -255,7 +279,31 @@ watch(() => form.district, (_newDistrict, oldDistrict) => {
 // alone. Attached to both email/phone fields so either one satisfying it
 // clears the error on both.
 function contactMethodRule() {
-  return (!!form.email || !!form.phone) || 'Provide an email or phone number';
+  return (!!form.email || !!form.phone) || 'Add an email or a phone number';
+}
+
+// Name plus at least one way to reach them. An email that doesn't look like one
+// keeps the block open so a typo is still in front of them, not tucked away.
+const identityComplete = computed(() => {
+  const email = form.email.trim();
+  const emailOk = !email || /^\S+@\S+\.\S+$/.test(email);
+  return !!form.firstName.trim() && !!form.lastName.trim() && emailOk && (!!email || !!form.phone.trim());
+});
+
+// Fold when focus ENTERS a field outside the block, not when it leaves the block:
+// someone who dismisses the keyboard first and then taps Title has already left
+// the block without a focus change to catch. Never while they are typing in it,
+// which would shift the screen under their thumb.
+function onFormFocusIn(event: FocusEvent) {
+  const target = event.target as Node | null;
+  if (!target || identityEl.value?.contains(target)) return;
+  if (identityComplete.value) folded.value = true;
+}
+
+async function unfold() {
+  folded.value = false;
+  await nextTick();
+  firstNameRef.value?.focus();
 }
 
 function filterStates(val: string, update: (cb: () => void) => void) {
@@ -319,6 +367,7 @@ function resetForm() {
   form.district = null;
   form.school = null;
   form.channel = initialChannel;
+  folded.value = false;
   districtInputText.value = '';
   schoolInputText.value = '';
   formRef.value?.resetValidation();
@@ -377,8 +426,42 @@ onMounted(async () => {
 /* A phone doesn't need 48px of air above the first field. */
 @media (max-width: 599px) {
   .intake-page { padding: 20px 16px 32px; }
-  .intake-subtitle { margin-bottom: 20px; }
+  .intake-title { font-size: 24px; }
+  .intake-subtitle { margin-top: 4px; margin-bottom: 12px; font-size: 16px; }
+  .intake-form :deep(.q-field) { font-size: 18px; margin-bottom: 4px; }
+  .intake-form :deep(.q-field__control) { height: 52px; }
+  .intake-submit-row { margin-top: 24px; }
 }
+
+/* First and last name share a row; on the narrowest phones they stack again. */
+.intake-name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 339px) {
+  .intake-name-row { grid-template-columns: 1fr; gap: 0; }
+}
+
+.intake-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  margin-bottom: 8px;
+  background: #E9F5EC;
+  border-radius: 12px;
+}
+.intake-summary-text { flex: 1; min-width: 0; }
+.intake-summary-name { font-size: 16px; font-weight: 600; color: #1E5E2C; }
+.intake-summary-contact {
+  font-size: 14px;
+  color: #2F6B3B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.intake-summary-edit { min-height: 44px; }
 
 .intake-shell {
   width: 100%;

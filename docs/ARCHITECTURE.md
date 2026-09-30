@@ -209,6 +209,17 @@ attendee fills in on their own phone or at a booth device. Two rules:
   is signed in on the device and the kiosk isn't locked, and `autocomplete="off"`
   otherwise — a shared booth device's browser would otherwise offer its owner's
   saved name, email and phone to every attendee who taps a field.
+- **Everything is open from the start; the first block folds once it's done.** The
+  name / email / phone block collapses to a one-line summary (name plus contact,
+  with Edit) when the attendee moves into a field *outside* it and has a name plus
+  a valid-looking email or a phone. It folds on focus **entering** another field,
+  not on leaving the block (someone who dismisses the keyboard first would
+  otherwise never fold), and never while they type in it. The fields stay mounted
+  (`v-show`), so values and validation are untouched; Edit reopens them. State is
+  deliberately **not** prefilled from the conference: it is visible from the
+  start, so a prefill would be sent even if the attendee never looked at it.
+- "How did you hear about us?" is hidden when the QR already sets the channel
+  (`?channel=booth|session`); the channel is still sent with the submission.
 - Phone is `type="tel"` with `inputmode="tel"` (number pad); the "email or phone,
   one is enough" rule is stated under the fields, not only as an error after
   Submit. Field labels and edges use the darker greys (`#5f6368` / `#8b95a1`);
