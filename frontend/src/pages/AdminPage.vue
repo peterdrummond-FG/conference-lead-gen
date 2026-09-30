@@ -45,16 +45,19 @@
                 <q-icon name="warning" size="14px" /> No reps yet
               </q-item-label>
 
-              <!-- The folder code is the watcher's subfolder name and also an SMS
-                   bind token (events-active's audit S11 comment), so it's fetched
-                   on demand for the one conference asked about instead of
-                   riding along on the list. Only whoever runs the laptop watcher
-                   needs it, hence tucked behind a link. -->
+              <!-- The conference code (folder_code in the database) does two jobs: it is
+                   the card-photo watcher's subfolder name, and a rep can text it to
+                   link their phone to this conference (twilio-webhook), so it is not
+                   only for the laptop -- this used to be labelled "laptop folder
+                   code", which described half of it. It is also an SMS bind token
+                   (events-active's audit S11 comment), so it's fetched on demand for
+                   the one conference asked about instead of riding along on the
+                   list, and tucked behind a link. -->
               <template v-if="event.status === 'active'">
                 <div>
                   <q-btn
                     flat dense no-caps color="primary" class="q-px-none admin-link"
-                    :label="folderCodes[event.id] === undefined ? 'Show laptop folder code' : 'Hide laptop folder code'"
+                    :label="folderCodes[event.id] === undefined ? 'Show conference code' : 'Hide conference code'"
                     :loading="loadingFolder === event.id"
                     @click="toggleFolderCode(event)"
                   />
@@ -62,7 +65,8 @@
                 <div v-if="folderCodes[event.id]" class="q-mt-xs">
                   <span class="text-subtitle2 text-weight-bold">{{ folderCodes[event.id] }}</span>
                   <div class="text-caption text-grey-8">
-                    For the card-photo watcher: create a subfolder with this exact name under its inbox folder.
+                    Reps can text this code to link their phone to this conference. For the
+                    card-photo watcher, name its inbox subfolder exactly this.
                   </div>
                 </div>
               </template>
