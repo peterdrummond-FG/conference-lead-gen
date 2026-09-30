@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="(v: boolean) => $emit('update:modelValue', v)">
-    <q-card style="min-width: 700px; max-width: 95vw">
+    <q-card style="width: 700px; max-width: 95vw">
       <q-card-section>
         <div class="text-h6">Resolve duplicate</div>
         <div class="text-caption text-grey">Pick which record to keep, then confirm or adjust its details. The others are rejected as duplicates.</div>
