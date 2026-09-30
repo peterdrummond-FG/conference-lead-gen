@@ -36,7 +36,7 @@
               <!-- Always offered once joined: this is now the only way to switch or to
                    activate one that isn't live yet (the separate "Start a new
                    conference" button is gone), and the dialog lists both. -->
-              <q-btn v-if="joinedEvent" flat dense no-caps color="primary" label="Change" @click="picking = true" />
+              <q-btn v-if="joinedEvent" flat no-caps color="primary" label="Change" @click="picking = true" />
             </div>
           </q-card-section>
 
@@ -50,7 +50,7 @@
                 <!-- The check stays: they're still connected, and leads sent for a
                      conference that ended two days ago still arrive. The chip is only
                      there so someone who's at the wrong conference notices. -->
-                <q-badge v-if="endedLabel" color="orange-9" :label="endedLabel" />
+                <q-badge class="text-no-wrap" v-if="endedLabel" color="orange-10" :label="endedLabel" />
               </div>
             </div>
 
@@ -79,9 +79,13 @@
                 <template v-else>2</template>
               </q-avatar>
               <div class="col text-subtitle1 text-weight-medium">Set up your phone</div>
-              <q-badge v-if="smsStatus === 'connected'" color="positive" label="Connected" />
-              <q-badge v-else-if="smsStatus === 'pending'" color="orange-9" label="Not connected" />
-              <q-badge v-else-if="smsStatus === 'no-phone'" color="grey-7" label="Phone number needed" />
+              <!-- role=status so a screen reader hears it when Check connection (or
+                   coming back from Messages) flips it, without moving focus. -->
+              <span role="status" aria-atomic="true">
+                <q-badge class="text-no-wrap" v-if="smsStatus === 'connected'" color="positive" label="Connected" />
+                <q-badge class="text-no-wrap" v-else-if="smsStatus === 'pending'" color="orange-10" label="Not connected" />
+                <q-badge class="text-no-wrap" v-else-if="smsStatus === 'no-phone'" color="grey-7" label="Phone number needed" />
+              </span>
             </div>
           </q-card-section>
 
@@ -90,9 +94,10 @@
                  texted from: reps can't change their own (a deliberate limit), so the
                  ? says who can. A popup, not a tooltip, because tooltips don't open
                  on a phone. -->
-            <div v-if="phoneOnFile" class="row items-center no-wrap text-body2">
-              <span>We have you at <span class="text-weight-bold">{{ phoneOnFile }}</span></span>
-              <q-btn flat round dense size="sm" icon="help_outline" color="grey-7" aria-label="Wrong number?">
+            <div v-if="phoneOnFile" class="row items-center text-body2">
+              <!-- nowrap on the number: at 320px it broke mid-number ("123-" / "4567"). -->
+              <span>We have you at <span class="text-weight-bold text-no-wrap">{{ phoneOnFile }}</span></span>
+              <q-btn flat round icon="help_outline" color="grey-7" aria-label="Wrong number?">
                 <q-popup-proxy>
                   <div class="q-pa-md" style="max-width: 260px">
                     Wrong number? Contact your Solutions Success rep and they'll fix it.
@@ -100,7 +105,7 @@
                 </q-popup-proxy>
               </q-btn>
             </div>
-            <div v-else-if="smsStatus === 'no-phone'" class="text-body2 text-orange-9">
+            <div v-else-if="smsStatus === 'no-phone'" class="text-body2 text-orange-10">
               Your account has no phone number yet, so texted cards can't be credited to you. Ask
               your Solutions Success rep to add yours.
             </div>
@@ -119,7 +124,7 @@
                 <q-icon name="sms" size="20px" color="primary" class="q-mr-sm q-mt-xs" />
                 <span>
                   Text the info yourself<!--
-                  --><q-btn flat round dense size="sm" icon="info_outline" color="grey-7" aria-label="Texting tip">
+                  --><q-btn flat round icon="info_outline" color="grey-7" aria-label="Texting tip">
                     <q-popup-proxy>
                       <div class="q-pa-md" style="max-width: 260px">
                         Due to character limits, text one contact per message for best results.
@@ -142,9 +147,9 @@
             <div class="q-mt-md">
               <div v-if="smsStatus === 'connected'" class="row items-center no-wrap text-body2">
                 <span>Text photos and voice memos to <span class="text-weight-bold">{{ twilioNumber }}</span></span>
-                <q-btn flat round dense size="sm" icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
+                <q-btn flat round icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
               </div>
-              <div v-else class="row items-center no-wrap q-gutter-x-xs">
+              <div v-else class="row items-center no-wrap q-gutter-x-sm">
                 <!-- sms: only opens a composer on a phone; on a laptop the number and
                      keyword are spelled out instead. -->
                 <q-btn
@@ -156,14 +161,14 @@
                   From your phone, text the code <span class="text-weight-bold">SETUP</span> to
                   <span class="text-weight-bold">{{ twilioNumber }}</span>.
                 </div>
-                <q-btn flat round dense icon="content_copy" color="primary" aria-label="Copy SETUP" @click="copy('SETUP', 'Copied SETUP.')" />
+                <q-btn flat round icon="content_copy" color="primary" aria-label="Copy SETUP" @click="copy('SETUP', 'Copied SETUP.')" />
               </div>
             </div>
 
             <q-btn
               v-if="smsStatus !== 'connected'"
-              flat dense no-caps color="primary" icon="refresh" label="Check connection"
-              class="q-mt-sm q-px-none" :loading="checking" @click="checkConnection"
+              flat no-caps color="primary" icon="refresh" label="Check connection"
+              class="q-mt-xs q-px-sm" :loading="checking" @click="checkConnection"
             />
 
             <!-- Consent disclosure: always visible, directly under the action that gives
@@ -189,8 +194,8 @@
                 <template v-else>3</template>
               </q-avatar>
               <div class="col text-subtitle1 text-weight-medium">Kiosk setup</div>
-              <q-badge v-if="sessionStore.user?.hasKioskPin" color="positive" label="PIN set" />
-              <q-badge v-else color="grey-7" label="PIN not set" />
+              <q-badge class="text-no-wrap" v-if="sessionStore.user?.hasKioskPin" color="positive" label="PIN set" />
+              <q-badge class="text-no-wrap" v-else color="grey-7" label="PIN not set" />
             </div>
           </q-card-section>
           <q-card-section class="q-pt-none">
@@ -226,7 +231,7 @@
                   Right now, contacts who scan it are attached to
                   <span class="text-weight-bold">{{ cleanConferenceName(joinedEvent.name) }}</span>.
                 </div>
-                <div v-else class="text-body2 text-orange-9 q-mt-xs">
+                <div v-else class="text-body2 text-orange-10 q-mt-xs">
                   Choose a conference first. Scans won't go through until you do.
                 </div>
                 <qr-save-buttons

@@ -75,7 +75,7 @@
               >
                 <q-item-section>
                   <q-item-label class="conf-name">{{ cleanConferenceName(c.name) }}</q-item-label>
-                  <q-item-label caption class="row items-center q-gutter-x-sm">
+                  <q-item-label caption class="row items-center q-gutter-xs">
                     <span>
                       {{ conferenceDateLabel(c.startsOn, c.endsOn) ?? 'Date not in name' }}<template v-if="c.state"> · {{ c.state }}</template>
                     </span>
@@ -84,8 +84,8 @@
                          collecting leads at it, Activate if not. "Live" vs "In
                          progress" used to be explained by an unexplained arrow; now
                          the button says what tapping does. -->
-                    <q-badge v-if="c.liveEventId" color="positive" label="Live" />
-                    <q-badge v-else-if="conferenceTiming(c.startsOn, c.endsOn)" color="primary" outline :label="conferenceTiming(c.startsOn, c.endsOn) ?? ''" />
+                    <q-badge v-if="c.liveEventId" class="text-no-wrap" color="positive" label="Live" />
+                    <q-badge v-else-if="conferenceTiming(c.startsOn, c.endsOn)" class="text-no-wrap" color="primary" outline :label="conferenceTiming(c.startsOn, c.endsOn) ?? ''" />
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
