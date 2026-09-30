@@ -35,7 +35,6 @@ export type StepKind = 'spotlight' | 'illustrated';
 // centred card (see TourSpotlight) instead of getting stuck.
 export type TourTarget =
   | 'setup-conference'
-  | 'setup-capture-head'
   | 'setup-text-in'
   | 'review-tabs'
   | 'review-note-button'
@@ -77,16 +76,6 @@ export const TOUR_STEPS: TourStep[] = [
     chapter: 'Get set up',
     title: 'Start here',
     body: "Pick the conference you're at, so every new lead lands in the right place.",
-    roles: EVERYONE,
-  },
-  {
-    id: 'capture',
-    kind: 'spotlight',
-    route: '/setup',
-    target: 'setup-capture-head',
-    chapter: 'Collect leads',
-    title: 'Choose how to meet people',
-    body: 'There are three ways: share a QR code, text in photos and voice notes from your phone, or set up an iPad for people to fill in themselves. Use one or all of them.',
     roles: EVERYONE,
   },
   {
@@ -178,7 +167,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: 'nav-admin',
     chapter: 'Your team',
     title: 'Look after your team',
-    body: 'Start and end conferences, and manage your team, from Admin.',
+    body: 'Activate and end conferences, and manage your team, from Admin.',
     roles: MANAGERS,
   },
   {

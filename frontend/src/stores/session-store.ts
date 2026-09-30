@@ -7,6 +7,9 @@ export interface SessionUser {
   id: string;
   name: string;
   email: string | null;
+  // The number texted cards are credited to. Optional for the same reason as
+  // `onboarded`: an older `me` response doesn't send it.
+  phoneNumber?: string | null;
   role: Role;
   currentEventId: string | null;
   currentEventName: string | null;
@@ -49,6 +52,7 @@ export const useSessionStore = defineStore('session', {
         name: string;
         role: Role;
         email: string | null;
+        phoneNumber: string | null;
         currentEventId: string | null;
         currentEventName: string | null;
         repSlug: string | null;

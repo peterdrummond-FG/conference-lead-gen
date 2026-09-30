@@ -61,3 +61,25 @@ export function conferenceTiming(
   if (startsIn < 0 && end.getTime() >= today.getTime()) return 'In progress';
   return null;
 }
+
+// "Ended yesterday" / "Ended 2 days ago" once the last day has passed, null while
+// it is running, still to come, or undated. Setup shows it as a chip beside the
+// green check and deliberately says no more: a rep can still send leads for a
+// conference that ended two days ago, and "ended" alone must not read as "broken".
+export function conferenceEndedLabel(endsOn: string | null, now: Date = new Date()): string | null {
+  if (!endsOn) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((today.getTime() - parseDay(endsOn).getTime()) / (24 * 60 * 60 * 1000));
+  if (days < 1) return null;
+  return days === 1 ? 'Ended yesterday' : `Ended ${days} days ago`;
+}
+
+// "5551234567" / "+15551234567" -> "(555) 123-4567". Anything that isn't a US
+// number is shown as stored rather than guessed at.
+export function formatPhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  const ten = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (ten.length !== 10) return raw;
+  return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+}

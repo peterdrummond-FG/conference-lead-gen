@@ -12,7 +12,7 @@
       <div class="row items-center no-wrap q-pa-xs q-pr-sm">
         <q-btn v-if="step === 'confirm'" flat round icon="arrow_back" aria-label="Back to results" @click="step = 'list'" />
         <div class="col text-h6" :class="step === 'confirm' ? 'q-pl-xs' : 'q-pl-md'">
-          {{ step === 'list' ? 'Start a conference' : 'Start this conference?' }}
+          {{ step === 'list' ? 'Activate a conference' : 'Activate this conference?' }}
         </div>
         <q-btn flat round icon="close" aria-label="Close" v-close-popup />
       </div>
@@ -75,21 +75,27 @@
               >
                 <q-item-section>
                   <q-item-label class="conf-name">{{ cleanConferenceName(c.name) }}</q-item-label>
-                  <q-item-label caption>
-                    {{ conferenceDateLabel(c.startsOn, c.endsOn) ?? 'Date not in name' }}<template v-if="c.state"> · {{ c.state }}</template>
+                  <q-item-label caption class="row items-center q-gutter-x-sm">
+                    <span>
+                      {{ conferenceDateLabel(c.startsOn, c.endsOn) ?? 'Date not in name' }}<template v-if="c.state"> · {{ c.state }}</template>
+                    </span>
+                    <!-- The chip sits with the title and place, and the button on the
+                         right is always the action: Join if someone is already
+                         collecting leads at it, Activate if not. "Live" vs "In
+                         progress" used to be explained by an unexplained arrow; now
+                         the button says what tapping does. -->
+                    <q-badge v-if="c.liveEventId" color="positive" label="Live" />
+                    <q-badge v-else-if="conferenceTiming(c.startsOn, c.endsOn)" color="primary" outline :label="conferenceTiming(c.startsOn, c.endsOn) ?? ''" />
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <div v-if="c.liveEventId" class="row items-center no-wrap q-gutter-x-sm">
-                    <q-badge color="positive" label="Live" />
-                    <q-btn
-                      unelevated no-caps color="primary" label="Join"
-                      :loading="joiningId === c.id"
-                      @click.stop="join(c)"
-                    />
-                  </div>
-                  <q-badge v-else-if="conferenceTiming(c.startsOn, c.endsOn)" color="primary" outline :label="conferenceTiming(c.startsOn, c.endsOn) ?? ''" />
-                  <q-icon v-else name="chevron_right" color="grey-6" />
+                  <q-btn
+                    v-if="c.liveEventId"
+                    unelevated no-caps color="primary" label="Join"
+                    :loading="joiningId === c.id"
+                    @click.stop="join(c)"
+                  />
+                  <q-btn v-else outline no-caps color="primary" label="Activate" @click.stop="pick(c)" />
                 </q-item-section>
               </q-item>
             </q-list>
@@ -142,7 +148,7 @@
             size="lg"
             color="primary"
             class="full-width"
-            label="Start conference"
+            label="Activate conference"
             :loading="activating"
             @click="start"
           />
@@ -162,7 +168,7 @@ import { api } from '@/boot/axios';
 import { US_STATES } from '@/constants/usStates';
 import { cleanConferenceName, conferenceDateLabel, conferenceTiming } from '@/utils/conferenceName';
 
-// Shared by Setup (any role -- a rep on their phone can start the conference
+// Shared by Setup (any role -- a rep on their phone can activate the conference
 // they're at, as they always could by texting SETUP) and Admin. One copy so the
 // two can't drift apart on what starting a conference asks for.
 defineProps<{ modelValue: boolean }>();

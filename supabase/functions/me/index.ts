@@ -1,5 +1,5 @@
-// GET -> { id, name, role, email, currentEventId, currentEventName, repSlug,
-// hasKioskPin, onboarded }.
+// GET -> { id, name, role, email, phoneNumber, currentEventId, currentEventName,
+// repSlug, hasKioskPin, onboarded }.
 // Any logged-in user. The first call the frontend makes after login (or on
 // app boot with an existing session) -- a Supabase Auth session alone only
 // carries id/email, not this app's role/current-event state.
@@ -17,15 +17,17 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  // onboarded_at is read here rather than added to requireUser's select:
-  // `me` is its only consumer, and widening _shared/auth.ts would mean
-  // redeploying every function that imports it.
+  // onboarded_at and phone_number are read here rather than added to
+  // requireUser's select: `me` is their only consumer, and widening
+  // _shared/auth.ts would mean redeploying every function that imports it.
+  // phone_number is the number texted cards are credited to; Setup shows it so a
+  // rep can see which number we have on file before texting SETUP.
   const [{ data: authUser }, { data: event }, { data: onboarding, error: onboardingError }] = await Promise.all([
     supabase.auth.admin.getUserById(user.id),
     user.currentEventId
       ? supabase.from("events").select("name").eq("id", user.currentEventId).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("profiles").select("onboarded_at").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("onboarded_at, phone_number").eq("id", user.id).maybeSingle(),
   ]);
 
   return jsonResponse(req, {
@@ -33,6 +35,7 @@ Deno.serve(async (req) => {
     name: user.name,
     role: user.role,
     email: authUser?.user?.email ?? null,
+    phoneNumber: onboarding?.phone_number ?? null,
     currentEventId: user.currentEventId,
     currentEventName: event?.name ?? null,
     repSlug: user.repSlug,
