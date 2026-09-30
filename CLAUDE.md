@@ -196,12 +196,17 @@ Supabase CLI on this machine.
   not in a component. Details: `docs/ARCHITECTURE.md`, "Review's two views".
 
 - **The welcome tour's copy is a set of promises.** Its Review step says a green
-  "Ready" lead approves in one tap and that notes reach Zoho; its Setup steps
-  describe the QR, text-in and kiosk options. If you change Smart's Ready rule,
-  Setup's flow, or what `export-csv` emits, update
-  `frontend/src/utils/onboardingTour.ts` too (its tests catch the Ready rule and
-  missing spotlight targets, not the prose). Details: `docs/ARCHITECTURE.md`,
-  "Welcome tour".
+  "Ready" lead approves in one tap and that notes reach Zoho; its "Set up your
+  phone" steps show the text reply `twilio-webhook` sends and the number from
+  `utils/smsNumber.ts`; its Setup steps describe the QR, text-in and kiosk
+  options. If you change Smart's Ready rule, Setup's flow, the SETUP reply, the
+  attendee form's labels or what `export-csv` emits, update
+  `frontend/src/utils/onboardingTour.ts` too. Its tests catch the Ready rule, the
+  form labels, the reply wording and the shared number, but not the prose.
+  Spotlights may only point at things a brand-new account sees (short allow-list
+  in the test); anything state-dependent is an illustrated card. The tour never
+  gets its own "text now" button: the opt-in disclosure lives once, on Setup,
+  under the real one. Details: `docs/ARCHITECTURE.md`, "Welcome tour".
 
 ## Before shipping a feature
 

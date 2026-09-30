@@ -382,6 +382,34 @@ what's on screen, and report what the server says it did.
 
 ---
 
+## 16. Point at things that stay put; draw what depends on state
+
+**What happened.** The first welcome tour shipped with a spotlight that was
+measured once, then trusted. It looked fine on a laptop and was wrong on a phone
+in four ways at once: the highlight sat a button-width to the left of the help
+icon (the icon font loading changed the header buttons' widths *after* the
+measurement), over the page title instead of the sample lead (data loading
+pushed the list down), and around a blank box on the Connect step (that form
+only renders once a conference is joined, and a brand-new account has none).
+Every step had passed on the developer's own account, which had a conference,
+data and a warm font cache: the states a new user is never in.
+
+**The rule.** Anything that follows or points at live UI has to keep looking at
+it: read its position every frame rather than once, and don't show the card
+until it has stopped moving. And only point at things a *brand-new* account
+sees; anything that depends on app state gets a self-contained picture instead,
+so it can't depend on the page behind it. Test the first-run state, not your
+own. The tests hold this: `onboardingTour.test.mjs` keeps a short allow-list of
+spotlight targets, and checks the pictures against the real form and the real
+text-message reply.
+
+A related trap from the same work: state that outlives the person it belongs to.
+A 401 signs someone out but left their half-finished tour in memory, so the next
+person to sign in on that tab resumed it, in the previous person's role. When a
+thing is tied to a user, tie its lifetime to that user (`tourStartAction`).
+
+---
+
 ## Checklist before shipping a feature
 
 - [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
@@ -408,3 +436,6 @@ what's on screen, and report what the server says it did.
 - [ ] Any new poll-loop retry uses the claim-based shape
       (`claim_pending_contacts`/`claim_unlinked_audio_messages`), not a
       time-window-from-receipt or in-process cooldown state
+- [ ] Anything that highlights or follows live UI tracks it continuously and
+      was checked in a brand-new account's state, not just your own
+- [ ] Anything tied to a signed-in user is cleared when that user goes away
