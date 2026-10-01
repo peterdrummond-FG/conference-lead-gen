@@ -63,14 +63,14 @@
           @update:model-value="toggleFollowedUp"
         />
       </div>
-      <!-- What "ready to approve" means, line by line. A ready lead shows four
-           ticks; a lead that isn't shows a cross (or a wait, while it is still
-           processing) and, on that line, what to do about it. Replaces the old
-           list of problems, which only ever named what was wrong and left the rep
-           to guess what right looked like. Same rules as the chip and the button
-           (readinessChecklist). -->
+      <!-- What "ready to approve" means, line by line. Phone/email and school are
+           always listed, ticked or crossed with the fix on that line; the Zoho and
+           duplicate lines appear only when they are the problem (or, for Zoho,
+           still processing). Replaces the old list of problems, which only ever
+           named what was wrong and left the rep to guess what right looked like.
+           Same rules as the chip and the button (readinessChecklist). -->
       <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this lead needs before it can be approved">
-        <li v-for="item in checklist" :key="item.key" class="le-check-item" :class="`is-${item.state}`">
+        <li v-for="item in shownChecklist" :key="item.key" class="le-check-item" :class="`is-${item.state}`">
           <q-icon :name="checkIcon(item.state)" size="18px" class="le-check-icon" />
           <span class="le-check-text">
             <span class="le-check-label">{{ item.label }}</span>
@@ -313,7 +313,7 @@ const emit = defineEmits<{
   approve: [payload: { id: string; edits?: UpdateContactPayload | undefined; display?: DisplayPatch | undefined }];
   reject: [id: string];
   restore: [id: string];
-  update: [payload: { id: string; payload: UpdateContactPayload; display?: DisplayPatch | undefined }];
+  update: [payload: { id: string; payload: UpdateContactPayload; display?: DisplayPatch | undefined; message?: string | undefined }];
   retryMatch: [id: string];
   duplicatesResolved: [];
   close: [];
@@ -325,6 +325,13 @@ const name = computed(() => fullName(props.contact));
 const processing = computed(() => isProcessing(props.contact));
 const ready = computed(() => isReady(props.contact));
 const checklist = computed(() => readinessChecklist(props.contact));
+// "Checked against Zoho" and "Not a duplicate" are true of nearly every lead
+// that reaches this pane, so a green tick for each was noise next to the two
+// things a rep can actually fix. They are shown only when they are the problem
+// (a stuck match with its Retry button, a flagged duplicate with Resolve).
+// readinessChecklist still lists all four so its test keeps proving that "all
+// ticks" and "ready" are the same thing.
+const shownChecklist = computed(() => checklist.value.filter((i) => !(i.state === 'ok' && (i.key === 'match' || i.key === 'duplicate'))));
 function checkIcon(state: 'ok' | 'todo' | 'wait') {
   return state === 'ok' ? 'check_circle' : state === 'wait' ? 'hourglass_empty' : 'cancel';
 }
@@ -451,7 +458,7 @@ function draftDisplay(): DisplayPatch {
 }
 
 function save() {
-  emit('update', { id: props.contact.id, payload: draftPayload(), display: draftDisplay() });
+  emit('update', { id: props.contact.id, payload: draftPayload(), display: draftDisplay(), message: `Saved ${name.value}` });
 }
 
 function resolveCandidate(candidate: CandidateMatch) {

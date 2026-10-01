@@ -97,20 +97,24 @@ export function leadCue(c: ContactListItem): string | null {
   }
 }
 
-// The counts under "2 ready to approve · 1 needs info · 1 processing". Each lead
-// is in exactly one bucket, decided by the same rules as its chip and button,
-// so the strip can never say something a card contradicts.
+// Which of the three summary pills a lead falls under. Each lead is in exactly
+// one, decided by the same rules as its chip and button, so a pill's count and
+// the list it filters to can never disagree with the cards.
+export type LeadBucket = 'ready' | 'needsInfo' | 'processing';
+export function leadBucket(c: ContactListItem): LeadBucket | null {
+  if (c.reviewStatus !== 'needs_review') return null;
+  if (isProcessing(c)) return 'processing';
+  return isReady(c) ? 'ready' : 'needsInfo';
+}
+
+// The counts under "2 ready to approve · 1 needs info · 1 processing".
 export function summaryCounts(list: ContactListItem[]): { ready: number; needsInfo: number; processing: number } {
-  let ready = 0;
-  let needsInfo = 0;
-  let processing = 0;
+  const n = { ready: 0, needsInfo: 0, processing: 0 };
   for (const c of list) {
-    if (c.reviewStatus !== 'needs_review') continue;
-    if (isProcessing(c)) processing += 1;
-    else if (isReady(c)) ready += 1;
-    else needsInfo += 1;
+    const b = leadBucket(c);
+    if (b) n[b] += 1;
   }
-  return { ready, needsInfo, processing };
+  return n;
 }
 
 // Why "ready to approve" means what it means, one line per condition of
@@ -226,11 +230,10 @@ export function orgLine(c: ContactListItem): string {
 
 // ── Sorting ──────────────────────────────────────────────────────────────
 
-export type SortKey = 'attention' | 'newest' | 'hot' | 'name' | 'followup';
+export type SortKey = 'newest' | 'hot' | 'name' | 'followup';
 
 export const SORT_OPTIONS: Record<ReviewStatus, { value: SortKey; label: string }[]> = {
   needs_review: [
-    { value: 'attention', label: 'Needs attention first' },
     { value: 'newest', label: 'Newest first' },
     { value: 'hot', label: 'Hot first' },
     { value: 'name', label: 'Name A–Z' },
@@ -248,7 +251,7 @@ export const SORT_OPTIONS: Record<ReviewStatus, { value: SortKey; label: string 
 };
 
 export const DEFAULT_SORT: Record<ReviewStatus, SortKey> = {
-  needs_review: 'attention',
+  needs_review: 'newest',
   approved: 'followup',
   rejected: 'newest',
 };
@@ -261,16 +264,10 @@ function created(c: ContactListItem): number {
   const t = Date.parse(c.createdAt);
   return Number.isNaN(t) ? 0 : t;
 }
-function needsAttention(c: ContactListItem): boolean {
-  return leadFlags(c).some((f) => f.blocking);
-}
-
 export function sortLeads(list: ContactListItem[], key: SortKey): ContactListItem[] {
   const out = [...list];
   const newestFirst = (a: ContactListItem, b: ContactListItem) => created(b) - created(a);
   switch (key) {
-    case 'attention':
-      return out.sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)) || newestFirst(a, b));
     case 'hot':
       return out.sort((a, b) => intentRank(a) - intentRank(b) || newestFirst(a, b));
     case 'followup':
@@ -286,6 +283,48 @@ export function sortLeads(list: ContactListItem[], key: SortKey): ContactListIte
     default:
       return out.sort(newestFirst);
   }
+}
+
+// ── Frozen order ─────────────────────────────────────────────────────────
+//
+// To review defaults to plain arrival order (newest first), which an edit can't
+// change. It used to sort "Needs attention first" on the readiness flags: on
+// 2026-10-01 a rep added a district to the newest lead, it flipped to Ready and
+// dropped from row 1 to row 41, and they reloaded twice without finding it.
+// "Hot first" and "Follow up first" still read fields an edit changes (tap Hot
+// and the row would move under the finger), so the page sorts once (on load, or
+// when the rep picks a sort) and keeps that order until the next deliberate
+// re-sort.
+//
+// Keyed by status AND id: a lead that moves tab (approve, then Undo) is only
+// ranked against the leads it was sorted with, so Undo drops it back in place.
+
+export type SortChoice = Record<ReviewStatus, SortKey>;
+export type LeadRank = Map<string, number>;
+
+const rankKey = (status: ReviewStatus, id: string) => `${status}:${id}`;
+
+export function buildRank(buckets: Record<ReviewStatus, ContactListItem[]>, sorts: SortChoice): LeadRank {
+  const rank: LeadRank = new Map();
+  for (const status of REVIEW_STATUSES) {
+    sortLeads(buckets[status], sorts[status]).forEach((c, i) => rank.set(rankKey(status, c.id), i));
+  }
+  return rank;
+}
+
+// Leads the rank has not seen (a new arrival, a lead just approved into this
+// tab) go first, newest first: that is where a rep looks for what just
+// happened. The next full re-sort files them properly.
+export function orderByRank(list: ContactListItem[], status: ReviewStatus, rank: LeadRank): ContactListItem[] {
+  const ranked: { c: ContactListItem; r: number }[] = [];
+  const unseen: ContactListItem[] = [];
+  for (const c of list) {
+    const r = rank.get(rankKey(status, c.id));
+    if (r === undefined) unseen.push(c);
+    else ranked.push({ c, r });
+  }
+  ranked.sort((a, b) => a.r - b.r);
+  return [...sortLeads(unseen, 'newest'), ...ranked.map((x) => x.c)];
 }
 
 // ── Search ───────────────────────────────────────────────────────────────

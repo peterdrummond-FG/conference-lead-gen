@@ -530,14 +530,29 @@ Rules worth knowing before changing Smart:
   possible duplicate, has an email or phone, and has a school or district.
   Bulk approve only ever sends ready ids; the server still skips any pending
   ones and the response is read and reported.
+- **Saving never moves a lead.** To review is plain arrival order (newest first);
+  there is no "needs attention first" sort. That sort ranked on the readiness flags,
+  so on 2026-10-01 adding a district to the newest lead flipped it to Ready and sent
+  it from row 1 to row 41 the instant Save landed. The sorts that still read editable
+  fields (Hot first, Follow up first) are computed once (`buildRank`, on load / sort
+  change / tab switch) and kept (`orderByRank`), not re-run live. The background poll
+  (`load({ keepOrder: true })`) keeps that order and yields to any write in flight
+  rather than putting stale values back. "Save changes" says "Saved <name>".
+- **The status pills are filters.** "N ready to approve / needs info / processing"
+  over To review (`leadBucket`, same rules as the chips) are toggles: one at a time,
+  tap again to clear, counts always over the whole tab. The lead just edited stays
+  listed even if the edit stops it matching a pill or the search (`pinnedId`), until
+  the rep opens another lead or changes the filter. The editor's checklist hides
+  "Checked against Zoho" and "Not a duplicate" unless they are the problem.
 - **Phone layout.** Below 600px each lead is a card: a › chevron, the whole card
   opens the lead, and the footer holds only what saves in one tap. A ready lead
   has a round ✕ and ✓ (no words); a lead that can't be approved has a cue from
   `leadCue` ("Add missing info", "Resolve duplicate", "Open to retry"); a
   processing lead has `ProcessingBar`. Add note lives in the open lead there.
   A strip above the To review list (`summaryCounts`) says how many are ready to
-  approve, need info, or are processing, and the open lead lists the four
-  conditions of `isReady` as a checklist (`readinessChecklist`). A test keeps
+  approve, need info, or are processing (and filters by each), and the open lead
+  checks the conditions of `isReady` as a list (`readinessChecklist`; the Zoho and
+  duplicate lines show only when they are the problem). A test keeps
   the checklist, the chip and `isReady` in agreement: change one, change all.
 - **Processing** (`isProcessing`): a lead whose match is still `pending` and not
   yet given up on has no Approve and no Reject, in the editor or on the row. A
