@@ -156,7 +156,7 @@ Supabase CLI on this machine.
 
 - **A bare call must not guess the conference.** `contacts-create` used to
   file a submission with no `repSlug`/`eventSlug` under "the most recently
-  activated active event" with no rep. The in-app Connect tab is exactly that
+  activated active event" with no rep. The in-app Kiosk tab is exactly that
   call, and `events-active` showed the signed-in rep *their own* event while the
   insert went to a different one (a Region 4 rep's lead landed in MoASSP with
   `rep_id` null, invisible in their Review, 2026-09-29). Now a bare call is
@@ -187,13 +187,20 @@ Supabase CLI on this machine.
   what `export-csv` emits, update Review's tooltips (`ReviewLeadEditor.vue`,
   `AddNoteDialog.vue`, `ReviewLeadRow.vue`) too — and redeploy `export-csv`.
 
-- **Review has two views, and Smart's rules live in one file.** `/review`
-  switches between Classic (`ReviewClassic.vue`, deliberately left as it was)
-  and Smart (`ReviewSmart.vue`). Smart's readiness / flag / sort / search /
-  grouping logic is `frontend/src/utils/reviewSmart.ts` with tests; "Ready to approve"
+- **Review is one view, and its rules live in one file.** `/review` is
+  `ReviewSmart.vue` (the old Classic view and its ⋮ switch were retired
+  2026-10-01). Its readiness / flag / sort / search / grouping logic is
+  `frontend/src/utils/reviewSmart.ts` with tests; "Ready to approve"
   (`READY_LABEL`; one-tap ✓, "Approve all N") means match finished, no possible
   duplicate, an email or phone, and a school or district. Change the rule there,
-  not in a component. Details: `docs/ARCHITECTURE.md`, "Review's two views".
+  not in a component. To review is newest-first and **must not sort on
+  readiness** (it made a just-saved lead vanish to the bottom). Details:
+  `docs/ARCHITECTURE.md`, "Review".
+
+- **The tab is called "Kiosk", the URL is still `/connect`.** Only the label in
+  `MainLayout.vue` changed. `/connect/<repSlug>` is printed on slides and QR
+  codes, so the route, its redirects and `generateConnectSlide.ts` keep the old
+  name. Don't rename them to match the label.
 
 - **The welcome tour's copy is a set of promises.** Its Review step says a green
   "Ready to approve" lead approves in one tap and that notes reach Zoho; its "Set up your

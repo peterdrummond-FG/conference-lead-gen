@@ -39,11 +39,11 @@ export const useSessionStore = defineStore('session', {
     initialized: false,
     // Admin-only "view as" preview (see MainLayout's user switcher) — only
     // ever changes what is read and shown (Review's scoping params, and the
-    // `preview` facts Setup and Connect display); every request
+    // `preview` facts Setup and Kiosk display); every request
     // still carries the real admin's own JWT, so writes always land under
     // the admin's own account, never the previewed user's.
     viewingAs: null as Profile | null,
-    // What Setup and Connect show while previewing: the viewingAs profile
+    // What Setup and Kiosk show while previewing: the viewingAs profile
     // alone carries no conference name, phone-connected state or PIN state,
     // which is why those pages used to hide everything instead. Null until
     // it has loaded (and whenever nobody is being previewed).

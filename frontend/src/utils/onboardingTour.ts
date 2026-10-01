@@ -328,8 +328,8 @@ export function allTourCopy(): string[] {
 
 export const SAMPLE_LEAD_LABEL = 'Sample. Not a real lead.';
 
-// Shown when a spotlight target can't be found (for example the person keeps
-// Review on its Classic layout), so the step reads as a plain card instead.
+// Shown when a spotlight target can't be found (for example a part of the page
+// that is hidden at this screen size), so the step reads as a plain card instead.
 export const TOUR_FALLBACK_COPY = ["We couldn't find that part of the page, so here's the idea in words instead."];
 
 // What the attendee form looks like, for the illustrated Connect step. The real

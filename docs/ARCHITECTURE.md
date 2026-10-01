@@ -86,12 +86,12 @@ fixed in the same change. `events-active`'s own fallback branch already had
 the check; it just hadn't been true everywhere. Grep for `.eq("slug",` /
 `.eq("event_id",` on a client-supplied value before adding a new one.
 
-### Which conference a Connect submission lands in
+### Which conference a Kiosk / Connect submission lands in
 
 `contacts-create` resolves the event and the credited rep from, in order:
 `repSlug` (a rep's reusable QR: their linked event, rep credited), `eventSlug`
 (+ optional `repId`, revalidated against `event_reps`; event must be active),
-then — for a bare call — the **signed-in caller** (the in-app Connect tab: their
+then — for a bare call — the **signed-in caller** (the in-app Kiosk tab: their
 `current_event_id`, credited if `sales`). A bare call with no valid session is a
 409, never "the latest-activated event". Old `/booth` and `/session` slides land
 here, so they now show "Scan the conference QR code again" until reprinted.
@@ -169,7 +169,7 @@ previewing lands on the admin's account**, never the previewed person's.
 - **Review** reads that person's leads (`contacts-list?viewAsRepId=`,
   `inbound-messages-unresolved-list?viewAsRepId=`). Approve / Reject still work
   and are done as the admin.
-- **Setup, Connect and Notes** show that person's own conference, phone and PIN
+- **Setup, Kiosk and Notes** show that person's own conference, phone and PIN
   state from `me?viewAsId=` (admin only; returns the same shape as `me` plus
   `smsBound`, never the PIN itself). Controls that would change the admin's own
   account (join a conference, text SETUP, set a PIN, submit the form, send a
@@ -231,7 +231,7 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
   The "Try it now" step spotlights that real button and disclosure instead. A
   test fails if the disclosure wording or an `sms:` link appears in the tour.
 - **A missing target is a plain card, not a stuck tour.** If a spotlight target
-  never appears (Review's Classic view has none of Smart's markers), the card is
+  never appears, the card is
   centred and says so.
 - **The wording is for a rep at a booth.** A test fails if technical vocabulary
   (`BANNED_WORDS`) appears in anything the tour shows.
@@ -246,9 +246,9 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
   Setup's flow or the text-in replies change, update `onboardingTour.ts` in the
   same change.
 
-### Connect (the attendee form)
+### Kiosk (the attendee form, `/connect`)
 
-`/connect` (formerly `/intake`; the old path redirects) is the public form an
+`/connect` (formerly `/intake`; the old path redirects; the signed-in tab is labelled **Kiosk** but the URL stays `/connect`, because it is printed on QR codes) is the public form an
 attendee fills in on their own phone or at a booth device. Two rules:
 
 - **Autofill is on only for an attendee's own phone.** `IntakePage.vue` sets
@@ -486,11 +486,10 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 `contacts.followed_up` (`20260928130000_add_contact_followed_up.sql`) is a
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
 any skill or auto-classification — a rep toggles it directly via
-`contacts-patch`, and it saves as they tap. In Classic that's on the card
-(collapsed or expanded, any tab); in Smart it's on every To review and Approved
-row and beside Heat in the editor header (see "Review's two views" below). The
+`contacts-patch`, and it saves as they tap. It's on every To review and Approved
+row and beside Heat in the editor header (see "Review" below). The
 Approved tab's follow-up filter is the only place it drives behavior beyond
-display — Classic's "Follow-up status" dropdown, Smart's All / To follow up /
+display — the All / To follow up /
 Followed up toggle plus a default "Follow up first" sort — and it's a
 client-side filter over the already-loaded list (same mechanism as the
 conference filter), not a server query param. `export-csv` carries it through
@@ -516,21 +515,27 @@ cleared rows, so the button asks first. On a phone the sheet is full screen with
 the header and both buttons pinned; only the middle scrolls. It used to scroll as
 one card, which put Merge ~1800px down.
 
-### Review's two views (Smart and Classic)
+### Review
 
-`/review` renders one of two views, chosen from the ⋮ menu in the page header
-and remembered per browser (`localStorage`, default **Smart**):
+`/review` is `ReviewSmart.vue` + `components/smart/`. (There used to be a second
+"Classic" card-grid view behind a ⋮ switch; it was retired 2026-10-01, and the
+switch did nothing on phones anyway. A browser that still has `ckh.review.view`
+saved just ignores it.) It is a list of compact rows
+with a plain-language flag for why a lead needs a look (or a green "Ready to approve"),
+live tab counts, search and sort, one-tap Approve / Reject with a 6-second
+Undo, "Approve all N", tap-to-call / tap-to-email, and Followed up, Add
+note and (on Approved) Heat straight from the row. On a desktop (≥1024px)
+the list sits beside a sticky editor pane (J / K move, A approves, R
+rejects); below that the same editor is a bottom sheet. Leaving a lead with
+unsaved edits asks first.
 
-- **Classic** (`ReviewClassic.vue` + `ReviewContactCard.vue`) — the original
-  masonry card grid, unchanged apart from carrying the menu.
-- **Smart** (`ReviewSmart.vue`, `components/smart/`) — a list of compact rows
-  with a plain-language flag for why a lead needs a look (or a green "Ready to approve"),
-  live tab counts, search and sort, one-tap Approve / Reject with a 6-second
-  Undo, "Approve all N", tap-to-call / tap-to-email, and Followed up, Add
-  note and (on Approved) Heat straight from the row. On a desktop (≥1024px)
-  the list sits beside a sticky editor pane (J / K move, A approves, R
-  rejects); below that the same editor is a bottom sheet. Leaving a lead with
-  unsaved edits asks first.
+Header, top to bottom: underline tabs (To review / Approved / Rejected, with
+counts); **one row** of ready / incomplete / processing filters plus **Import**
+(each cell stacks number over word so four fit at 320px); then search, sort and,
+for a rep, the this-event / past-events icon. There is no title row (the nav bar
+says Review). The account bar carries a **QR** button (`RepQrDialog.vue`, the
+same phone-screen artwork Setup saves, drawn on screen) for anyone with a
+`repSlug`, or the previewed rep's.
 
 Rules worth knowing before changing Smart:
 
@@ -546,12 +551,17 @@ Rules worth knowing before changing Smart:
   change / tab switch) and kept (`orderByRank`), not re-run live. The background poll
   (`load({ keepOrder: true })`) keeps that order and yields to any write in flight
   rather than putting stale values back. "Save changes" says "Saved <name>".
-- **The status pills are filters.** "N ready to approve / needs info / processing"
+- **The status cells are filters.** "ready / incomplete / processing"
   over To review (`leadBucket`, same rules as the chips) are toggles: one at a time,
   tap again to clear, counts always over the whole tab. The lead just edited stays
   listed even if the edit stops it matching a pill or the search (`pinnedId`), until
   the rep opens another lead or changes the filter. The editor's checklist hides
   "Checked against Zoho" and "Not a duplicate" unless they are the problem.
+- **This event / past events (reps).** One icon, calendar for this event and a
+  filled history icon for past events. Tab counts, the status cells and the lists
+  all follow it, so a number matches the list under it. Past events open folded,
+  one section per conference. Admin and Solutions Success have one flat list and
+  no toggle.
 - **Phone layout.** Below 600px each lead is a card: a › chevron, the whole card
   opens the lead, and the footer holds only what saves in one tap. A ready lead
   has a round ✕ and ✓ (no words); a lead that can't be approved has a cue from

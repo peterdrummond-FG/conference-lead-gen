@@ -1,19 +1,11 @@
 <template>
   <q-page class="rs-page">
     <header class="rs-head">
-      <div class="rs-title-row">
-        <h1 class="rs-title">Review</h1>
-        <div class="rs-head-actions">
-          <q-btn v-if="$q.screen.gt.xs" outline no-caps color="primary" icon="add" label="Contacts from note" to="/notes" data-tour="review-note-button">
-            <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
-          </q-btn>
-          <!-- Labelled on a phone too: a bare + gave no hint it opens the note-paste
-               page, and this button is the only way to reach that page. -->
-          <q-btn v-else flat dense no-caps color="primary" icon="note_add" label="From a note" to="/notes" class="rs-note-link" data-tour="review-note-button" />
-          <ReviewViewMenu />
-        </div>
-      </div>
+      <h1 class="sr-only">Review</h1>
 
+      <!-- Underline tabs: the status control used to be a 52px grey tray, which
+           with the title row above it pushed the first lead off a phone screen.
+           The nav bar already says "Review", so the page has no title row. -->
       <div class="rs-tabs" role="tablist" aria-label="Review status" data-tour="review-tabs">
         <button
           v-for="t in tabDefs"
@@ -29,6 +21,39 @@
         </button>
       </div>
 
+      <!-- What the three states of a lead are, before any card is read, and a way
+           to look at just one of them. Counted by the same rules as each card's
+           chip and button (leadBucket), over the whole tab, so a count never
+           shrinks just because you are filtering by it. Tap again to show
+           everything. Each cell stacks its number over its word, so it is only as
+           wide as its longest word ("processing") and Import fits on the same
+           row at 320px. A lead-count row with the words beside the numbers
+           ("10 ready") did not, and clipped. Import is here because it is the
+           other thing you do with contacts from this page. -->
+      <div class="rs-status-row" role="group" aria-label="Filter leads by status, and import contacts">
+        <template v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0">
+          <button
+            v-for="p in pills"
+            :key="p.key"
+            type="button"
+            class="rs-cell"
+            :class="{ 'is-on': readinessFilter === p.key }"
+            :aria-pressed="readinessFilter === p.key"
+            :aria-label="`${summary[p.key]} ${p.label}`"
+            :disabled="summary[p.key] === 0 && readinessFilter !== p.key"
+            @click="toggleReadiness(p.key)"
+          >
+            <span class="rs-cell-n"><span class="rs-sum-dot" :class="p.dot" />{{ summary[p.key] }}</span>
+            <span class="rs-cell-l">{{ p.label }}</span>
+          </button>
+        </template>
+        <router-link to="/notes" class="rs-cell rs-cell-import" aria-label="Import contacts" data-tour="review-note-button">
+          <span class="rs-cell-n"><q-icon name="note_add" size="22px" /></span>
+          <span class="rs-cell-l">Import</span>
+          <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
+        </router-link>
+      </div>
+
       <div class="rs-tools">
         <q-input
           v-model="search"
@@ -37,7 +62,7 @@
           clearable
           debounce="150"
           class="rs-search"
-          placeholder="Search name, school, email, phone"
+          :placeholder="$q.screen.gt.xs ? 'Search name, school, email, phone' : 'Search'"
           aria-label="Search leads"
           enterkeyhint="search"
         >
@@ -54,6 +79,23 @@
             </q-list>
           </q-menu>
         </q-btn>
+
+        <!-- A rep's leads are this conference's, or everything before it folded
+             away under its own conference. One icon that changes with the view
+             (calendar: this event; history, filled: past events), so the default
+             looks quiet and being somewhere else is obvious. Admin and Solutions
+             Success see one flat list across everyone, so they have no such split. -->
+        <button
+          v-if="isSales"
+          type="button"
+          class="rs-scope"
+          :class="{ 'is-past': scopeView === 'past' }"
+          :aria-label="scopeView === 'current' ? 'Showing this event. Show past events' : 'Showing past events. Show this event'"
+          @click="scopeView = scopeView === 'current' ? 'past' : 'current'"
+        >
+          <q-icon :name="scopeView === 'current' ? 'event' : 'history'" size="22px" />
+          <q-tooltip>{{ scopeView === 'current' ? 'Show past events' : 'Show this event' }}</q-tooltip>
+        </button>
       </div>
 
       <div v-if="tab === 'approved' || !isSales" class="rs-filters">
@@ -94,33 +136,13 @@
           <q-btn unelevated no-caps color="negative" :label="`Delete ${selectedVisibleIds.length} selected`" :disable="selectedVisibleIds.length === 0" class="rs-bulk-btn" @click="confirmBulkDelete" />
         </div>
 
-        <!-- What the three states of a lead are, before any card is read, and a
-             way to look at just one of them. Counted by the same rules as each
-             card's chip and button (leadBucket), over the whole tab, so a count
-             never shrinks just because you are filtering by it. Tap again to
-             show everything. -->
-        <div v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0" class="rs-summary" role="group" aria-label="Filter leads by status">
-          <button
-            v-for="p in pills"
-            :key="p.key"
-            type="button"
-            class="rs-sum-pill"
-            :class="{ 'is-on': readinessFilter === p.key }"
-            :aria-pressed="readinessFilter === p.key"
-            :disabled="summary[p.key] === 0 && readinessFilter !== p.key"
-            @click="toggleReadiness(p.key)"
-          >
-            <span class="rs-sum-dot" :class="p.dot" />{{ summary[p.key] }} {{ p.label }}
-          </button>
-        </div>
-
         <!-- A rep: their current conference first, then each past one. -->
         <template v-if="isSales">
-          <section class="rs-section">
+          <section v-if="scopeView === 'current'" class="rs-section">
             <div class="rs-sec-head">
               <div class="rs-sec-title">
                 <div class="rs-sec-name">{{ currentTitle }}</div>
-                <div class="rs-sec-sub">Current event<template v-if="currentLeads.length"> · {{ currentLeads.length }} {{ currentLeads.length === 1 ? 'lead' : 'leads' }}</template></div>
+                <div class="rs-sec-sub">This event<template v-if="currentLeads.length"> · {{ currentLeads.length }} {{ currentLeads.length === 1 ? 'lead' : 'leads' }}</template></div>
               </div>
               <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(currentLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
               <div class="rs-sec-actions">
@@ -152,7 +174,7 @@
             <div v-else-if="tabLeads.length" class="rs-note">{{ emptyForCurrent }}</div>
           </section>
 
-          <div v-if="pastGroups.length" class="rs-past">
+          <div v-if="scopeView === 'past' && pastGroups.length" class="rs-past">
             <h2 class="rs-past-title">Past events</h2>
             <section v-for="(g, i) in pastGroups" :key="g.eventId" class="rs-section">
               <div class="rs-sec-head">
@@ -267,7 +289,6 @@
 import { ref, reactive, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useQuasar, Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
-import ReviewViewMenu from '@/components/ReviewViewMenu.vue';
 import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
@@ -277,7 +298,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
-  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, isProcessing, leadBucket, orderByRank, READY_LABEL, readyIds, searchLeads, summaryCounts,
+  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, isProcessing, leadBucket, orderByRank, readyIds, searchLeads, summaryCounts,
   type LeadBucket, type LeadRank, type ReviewStatus, type SortKey,
 } from '@/utils/reviewSmart';
 
@@ -306,11 +327,18 @@ const syncedFilter = ref<string | null>(null);
 const profiles = ref<Profile[]>([]);
 // The To review pills double as a filter: one at a time, tap again to clear.
 const readinessFilter = ref<LeadBucket | null>(null);
+// The words are one word each on purpose (see the status row in the template).
+// "Ready" here is the same state as the card's "Ready to approve" chip.
 const pills: { key: LeadBucket; label: string; dot: string }[] = [
-  { key: 'ready', label: READY_LABEL.toLowerCase(), dot: 'rs-dot-ready' },
-  { key: 'needsInfo', label: 'needs info', dot: 'rs-dot-info' },
+  { key: 'ready', label: 'ready', dot: 'rs-dot-ready' },
+  { key: 'needsInfo', label: 'incomplete', dot: 'rs-dot-info' },
   { key: 'processing', label: 'processing', dot: 'rs-dot-proc' },
 ];
+
+// A rep sees this event's leads, or all their past events' (folded). Counts, pills
+// and lists all follow it, so what a number says is what the list below shows.
+// Admin and Solutions Success have no such split.
+const scopeView = ref<'current' | 'past'>('current');
 function toggleReadiness(key: LeadBucket) {
   readinessFilter.value = readinessFilter.value === key ? null : key;
 }
@@ -359,7 +387,12 @@ const eventFilterOptions = computed(() => {
 // ── Lists ────────────────────────────────────────────────────────────────
 
 function byConference(list: ContactListItem[]) {
-  return eventFilter.value ? list.filter((c) => c.eventId === eventFilter.value) : list;
+  let out = eventFilter.value ? list.filter((c) => c.eventId === eventFilter.value) : list;
+  if (isSales.value) {
+    const wantCurrent = scopeView.value === 'current';
+    out = out.filter((c) => currentIds.value.has(c.id) === wantCurrent);
+  }
+  return out;
 }
 
 const counts = computed(() => ({
@@ -401,12 +434,12 @@ const recency = computed(() => eventRecency(REVIEW_STATUSES.flatMap((s) => bucke
 const currentLeads = computed(() => (isSales.value ? tabLeads.value.filter((c) => currentIds.value.has(c.id)) : []));
 const pastGroups = computed(() => (isSales.value ? groupByEvent(tabLeads.value.filter((c) => !currentIds.value.has(c.id)), recency.value) : []));
 
-// Newest past event opens by default; the rest stay folded until asked for.
+// Every past event stays folded until asked for.
 // A search opens everything, so a match can't hide inside a closed section.
 const pastOpen = reactive<Record<string, boolean>>({});
 function isPastOpen(eventId: string, index: number) {
   if (searchText.value) return true;
-  return pastOpen[eventId] ?? index === 0;
+  return pastOpen[eventId] ?? false;
 }
 function togglePast(eventId: string, index: number) {
   pastOpen[eventId] = !isPastOpen(eventId, index);
@@ -462,6 +495,9 @@ const emptyState = computed<{ icon: string; color: string; title: string; body: 
       body: 'Nothing in this tab fits your search or filter.',
       action: { label: 'Clear search and filter', run: () => { search.value = ''; followFilter.value = 'all'; readinessFilter.value = null; } },
     };
+  }
+  if (isSales.value && scopeView.value === 'past' && totalLeads.value === 0) {
+    return { icon: 'history', color: 'grey-6', title: 'No past events yet', body: 'Leads from your earlier conferences show up here, one folded section per conference.' };
   }
   if (totalLeads.value === 0) {
     if (isSales.value && !isLinked.value) {
@@ -673,6 +709,14 @@ watch(tab, () => {
   reorder();
 });
 watch(sortByTab, reorder, { deep: true });
+// The open lead may not be in the other view, and a lead pinned in one is not
+// wanted in the other.
+watch(scopeView, () => {
+  sheetId.value = null;
+  selectedId.value = null;
+  pinnedId.value = null;
+  deleteSel.clear();
+});
 watch([readinessFilter, searchText, followFilter], () => { pinnedId.value = null; });
 watch([repFilter, syncedFilter], () => {
   serverFilters.repId = repFilter.value;
@@ -731,18 +775,19 @@ onBeforeUnmount(() => {
 <style scoped>
 .rs-page { padding: 12px 16px 32px; max-width: 1480px; margin: 0 auto; }
 
-.rs-head { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.rs-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.rs-title { margin: 0; font-size: 24px; font-weight: 500; line-height: 1.2; }
-.rs-head-actions { display: flex; align-items: center; gap: 4px; }
+.rs-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-/* Segmented status control with live counts. Each segment is 44px tall. */
-.rs-tabs { display: flex; gap: 2px; padding: 4px; background: #EAEFF4; border-radius: 12px; }
+/* Underline tabs with live counts. The nav bar already says "Review", so the
+   page has no title row; the tray this used to sit in is gone too. 44px tall. */
+.rs-tabs { display: flex; border-bottom: 1px solid rgba(0, 0, 0, 0.12); margin: 0 -4px; }
 .rs-tab {
   flex: 1;
   min-height: 44px;
+  padding: 0 4px;
   border: 0;
-  border-radius: 9px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   background: transparent;
   color: #4A5B6B;
   font: inherit;
@@ -752,10 +797,11 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
 }
-.rs-tab:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
-.rs-tab.is-on { background: #fff; color: var(--q-primary); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+.rs-tab:focus-visible { outline: 2px solid #0067AC; outline-offset: -2px; }
+.rs-tab.is-on { color: var(--q-primary); border-bottom-color: var(--q-primary); }
 .rs-count {
   min-width: 22px;
   padding: 0 7px;
@@ -766,10 +812,26 @@ onBeforeUnmount(() => {
 }
 .rs-tab.is-on .rs-count { background: #E3F1FA; color: #0067AC; }
 
-.rs-tools { display: flex; align-items: center; gap: 8px; }
+/* Search, sort and the this-event / past-events icon. */
+.rs-tools { display: flex; align-items: center; gap: 4px; }
 .rs-search { flex: 1; min-width: 0; }
 .rs-sort { min-height: 40px; }
-.rs-note-link { min-height: 44px; }
+.rs-scope {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #B9C3CE;
+  border-radius: 8px;
+  background: #fff;
+  color: #5B6B7B;
+  cursor: pointer;
+}
+.rs-scope:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
+/* Filled when you are looking somewhere other than the default. */
+.rs-scope.is-past { background: #1D5C93; border-color: #1D5C93; color: #fff; }
 
 .rs-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .rs-follow-toggle { border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 8px; }
@@ -830,11 +892,37 @@ onBeforeUnmount(() => {
 .rs-link-btn { min-height: 40px; max-width: 100%; }
 .rs-link-btn :deep(.q-btn__content) { white-space: normal; text-align: left; }
 .rs-sec-actions { max-width: 100%; }
-.rs-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.rs-sum-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 12px; border-radius: 999px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.1); font: inherit; font-size: 13px; color: #2F3A44; white-space: nowrap; cursor: pointer; }
-.rs-sum-pill:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
-.rs-sum-pill.is-on { background: #E3F1FA; border-color: #0067AC; color: #0067AC; font-weight: 500; }
-.rs-sum-pill:disabled { opacity: 0.55; cursor: default; }
+/* One row: ready / incomplete / processing filters and Import. Each cell stacks
+   its number over its word, so it is as wide as "processing" and no wider, which
+   is what lets four of them fit at 320px. min-width: 0 and no wrapping on the
+   words are what keep it from overflowing. 46px tall, so a comfortable tap. */
+.rs-status-row { display: flex; gap: 6px; align-items: stretch; }
+.rs-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 46px;
+  padding: 3px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  font: inherit;
+  color: #2F3A44;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+.rs-cell:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
+.rs-cell-n { display: inline-flex; align-items: center; gap: 5px; font-size: 16px; font-weight: 500; line-height: 1.1; }
+.rs-cell-l { font-size: 11px; line-height: 1.2; color: #4A5B6B; }
+.rs-cell.is-on { background: #E3F1FA; border-color: #0067AC; }
+.rs-cell.is-on .rs-cell-l { color: #0067AC; }
+.rs-cell:disabled { opacity: 0.5; cursor: default; }
+.rs-cell-import { margin-left: auto; flex: 0 0 auto; min-width: 64px; padding: 3px 8px; border-color: #1D5C93; color: #1D5C93; }
+.rs-cell-import .rs-cell-l { color: #1D5C93; }
 .rs-sum-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .rs-dot-ready { background: #1E8E3E; }
 .rs-dot-info { background: #E07B00; }
@@ -850,8 +938,16 @@ onBeforeUnmount(() => {
 .rs-empty-title { margin-top: 8px; font-size: 18px; font-weight: 500; }
 .rs-empty-body { margin-top: 4px; max-width: 360px; color: #5B6670; font-size: 14px; }
 
+/* Room for the full tab width and a wide status row only makes sense on a phone;
+   on a desktop they would stretch across the whole page above the two columns. */
+@media (min-width: 600px) {
+  .rs-tabs { max-width: 520px; }
+  .rs-status-row { max-width: 440px; }
+}
+
 @media (max-width: 599px) {
   .rs-page { padding: 10px 12px 28px; }
+  .rs-sec-head > .rs-sec-title, .rs-sec-head > .rs-sec-toggle { flex-basis: 6rem; }
 
   /* Filters sit two to a row instead of one full-width select per row; the
      follow-up toggle and Conference select take a whole row. */
@@ -861,11 +957,10 @@ onBeforeUnmount(() => {
   .rs-follow-toggle :deep(.q-btn) { flex: 1; }
   .rs-filters .rs-select:first-of-type:nth-last-of-type(3) { grid-column: 1 / -1; }
 
-  /* Section title and its menu share the first line; "Approve N ready" gets a
-     full-width line of its own instead of squeezing the title into three. */
-  .rs-sec-head { flex-wrap: wrap; row-gap: 4px; }
-  .rs-sec-head > .rs-sec-actions { order: 2; }
-  .rs-sec-head > .rs-ready-btn { order: 3; flex: 1 0 100%; min-height: 44px; }
+  /* Section title, "Approve all N" and the menu share a line; the title wraps
+     before the button does. */
+  .rs-sec-head { row-gap: 4px; }
+  .rs-ready-btn { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
