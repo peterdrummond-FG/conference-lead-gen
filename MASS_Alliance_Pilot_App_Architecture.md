@@ -978,6 +978,14 @@ past that threshold.
   and every printed URL are unchanged. Front-end only: nothing to deploy to
   Supabase.
 
+- **QR dialog fixed; Lock kiosk moved to the Kiosk page (2026-10-01).** The header
+  QR button opened onto an empty box: the dialog drew the code as a `data:` image
+  and `index.html`'s CSP is `img-src 'self' blob:`. It now uses a `blob:` URL
+  (reproduced and verified in a browser under the production policy). The
+  **Lock kiosk** button moved out of the top bar onto the Kiosk page
+  (`LockKioskButton.vue`); the phone account menu keeps only Log out. Front-end
+  only; nothing to deploy to Supabase.
+
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
   refresh token were readable by permission-skipped agent sessions for the life

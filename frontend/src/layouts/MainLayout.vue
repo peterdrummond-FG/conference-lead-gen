@@ -30,13 +30,6 @@
         </q-btn-dropdown>
         <div v-else class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
 
-        <!-- Locks this physical device down to just the public Kiosk
-             screen — for a shared kiosk iPad/laptop an attendee will be
-             handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
-        <q-btn v-if="!isPhone" flat dense no-caps icon="lock" color="grey-7" label="Lock kiosk" aria-label="Lock kiosk" @click="onLockKiosk">
-          <q-tooltip>Lock this device to the Kiosk only</q-tooltip>
-        </q-btn>
-
         <!-- The rep's own QR on screen in one tap, so showing it to someone is not
              a trip to Setup. Only for an account that has one (Sales); an admin
              previewing a rep gets that rep's. -->
@@ -55,22 +48,14 @@
           <q-tooltip>Log out</q-tooltip>
         </q-btn>
 
-        <!-- Phones: Lock kiosk and Log out were two bare icons (the lock is a real
-             "hand this device to attendees" action, and a first tap on it explained
-             nothing), and together with the tour's ? they squeezed the logo down to
-             "CKH Co…". One labelled menu instead. The ? stays on its own because the
-             tour's last step points at it. -->
+        <!-- Phones: a bare log-out icon beside the QR and ? icons is one slip from
+             signing out, so it sits behind a labelled menu. (Lock kiosk used to
+             live up here too; it is on the Kiosk page now, next to the form it
+             locks.) The ? stays on its own because the tour's last step points
+             at it. -->
         <q-btn v-else flat dense round icon="account_circle" color="grey-8" aria-label="Account menu">
           <q-menu auto-close anchor="bottom right" self="top right">
             <q-list style="min-width: 240px">
-              <q-item clickable @click="onLockKiosk">
-                <q-item-section avatar><q-icon name="lock" /></q-item-section>
-                <q-item-section>
-                  <q-item-label>Lock this device</q-item-label>
-                  <q-item-label caption>For a shared booth iPad or laptop</q-item-label>
-                </q-item-section>
-              </q-item>
-              <q-separator />
               <q-item clickable @click="onLogout">
                 <q-item-section avatar><q-icon name="logout" /></q-item-section>
                 <q-item-section>Log out</q-item-section>
@@ -132,45 +117,6 @@
         <q-card-actions align="right">
           <q-btn flat label="Cancel" v-close-popup />
           <q-btn color="primary" label="Unlock" :loading="unlocking" @click="onUnlockKiosk" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Shown instead of locking immediately when the caller has never set a
-         kiosk PIN -- without one, locking the device would leave no way to
-         unlock it again at the booth. Setting it here means never having to
-         send the rep away to Setup mid-lock. -->
-    <q-dialog v-model="showSetPinDialog" @hide="newPinCode = ''; setPinError = ''">
-      <q-card style="width: 320px">
-        <q-card-section>
-          <div class="text-h6">Set a kiosk PIN</div>
-          <div class="text-caption text-grey">
-            You'll need this to unlock the device again — separate from your login password.
-          </div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-input
-            v-model="newPinCode"
-            type="text"
-            inputmode="numeric"
-            autocomplete="off"
-            autofocus
-            label="New kiosk PIN"
-            hint="At least 4 characters"
-            :error="!!setPinError"
-            :error-message="setPinError"
-            @keyup.enter="onSetPinAndLock"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn
-            color="primary"
-            label="Set PIN & lock"
-            :disable="newPinCode.length < 4"
-            :loading="settingPin"
-            @click="onSetPinAndLock"
-          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -268,40 +214,6 @@ const showUnlockDialog = ref(false);
 const unlockCode = ref('');
 const unlockError = ref('');
 const unlocking = ref(false);
-
-const showSetPinDialog = ref(false);
-const newPinCode = ref('');
-const setPinError = ref('');
-const settingPin = ref(false);
-
-function performLock() {
-  kioskModeStore.lock();
-  void router.push('/connect');
-}
-
-function onLockKiosk() {
-  if (sessionStore.user?.hasKioskPin) {
-    performLock();
-    return;
-  }
-  showSetPinDialog.value = true;
-}
-
-async function onSetPinAndLock() {
-  if (newPinCode.value.length < 4) return;
-  settingPin.value = true;
-  setPinError.value = '';
-  try {
-    await api.post('/kiosk-set-code', { code: newPinCode.value });
-    if (sessionStore.user) sessionStore.user.hasKioskPin = true;
-    showSetPinDialog.value = false;
-    performLock();
-  } catch {
-    setPinError.value = 'Could not set your PIN — try again.';
-  } finally {
-    settingPin.value = false;
-  }
-}
 
 // Kiosk-locking never signs anyone out — the same account is still the one
 // logged in underneath. Unlocking checks that account's own kiosk PIN (set
@@ -421,8 +333,7 @@ async function onLogout() {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-/* Phones: the single row (logo + 4 tabs + "Viewing as …" + "Lock kiosk" +
-   logout) is wider than a 375px screen, so the tabs were cut off at
+/* Phones: the single row (logo + 4 tabs + "Viewing as …" + QR + logout) is wider than a 375px screen, so the tabs were cut off at
    "Revi…" and the page scrolled sideways. Two rows instead: logo and icon
    actions on top, the tabs as equal-width pills underneath. */
 @media (max-width: 599px) {

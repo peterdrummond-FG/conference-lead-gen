@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useQuasar } from 'quasar';
 import { intakeUrlForRep, renderPhoneQrCode } from '@/utils/generateConnectSlide';
 import { cleanConferenceName } from '@/utils/conferenceName';
@@ -52,15 +52,32 @@ const failed = ref(false);
 // every re-render of the header) would just be wasted canvas work.
 let drawnFor = '';
 
+// A blob: URL, never canvas.toDataURL(): index.html's Content-Security-Policy is
+// `img-src 'self' blob:`, so a data: image is refused and the dialog opened onto
+// an empty box with only its alt text (found 2026-10-01 by opening it under the
+// production policy). Revoked when replaced or on unmount so it can't pile up.
+function setSrc(next: string | null) {
+  if (src.value) URL.revokeObjectURL(src.value);
+  src.value = next;
+}
+onBeforeUnmount(() => setSrc(null));
+
+function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode the QR code.'))), 'image/png');
+  });
+}
+
 async function draw() {
   const slug = props.rep.repSlug;
   if (drawnFor === slug && src.value) return;
-  src.value = null;
+  setSrc(null);
   failed.value = false;
   try {
     const canvas = await renderPhoneQrCode({ intakeUrl: intakeUrlForRep(slug), repName: props.rep.name });
+    const blob = await toBlob(canvas);
     if (props.rep.repSlug !== slug) return; // the previewed rep changed while drawing
-    src.value = canvas.toDataURL('image/png');
+    setSrc(URL.createObjectURL(blob));
     drawnFor = slug;
   } catch {
     failed.value = true;
