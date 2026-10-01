@@ -181,9 +181,11 @@ previewing lands on the admin's account**, never the previewed person's.
 
 ### Welcome tour
 
-A new staff account sees a three-screen welcome, then a walkthrough (Setup,
-setting up their phone, what attendees see, Review, and Export / Admin for admin
-and Solutions Success). The wording, step list and per-role filtering are plain
+A new staff account sees a three-screen welcome, then a walkthrough whose
+chapters are the stops that welcome lists: Set up your event and phone,
+Collect leads however you like, Edit, approve and follow up, and, for admin and
+Solutions Success, Export to Zoho (plus a step for Admin).
+The wording, step list and per-role filtering are plain
 data in `frontend/src/utils/onboardingTour.ts`; `stores/tour-store.ts` tracks
 where someone is, and `components/onboarding/` draws it. Things to preserve:
 
@@ -218,6 +220,12 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
   mock's labels must appear in `IntakePage.vue`; the text-message reply must
   appear in `twilio-webhook`; the number comes from `utils/smsNumber.ts`, which
   Setup uses too.
+- **Say what the app does, not what it sounds like.** Export *downloads a file*
+  that someone imports into Zoho; nothing is sent to Zoho, and the old copy said
+  "sends them on to Zoho". Only Sales accounts have a QR, so the QR step is two
+  steps sharing one id (`qr`): a rep's own card, and the Rep QR slides card for
+  managers. "Ready to approve" is explained by the four checks Review's open lead
+  shows (`readinessChecklist`), and a test holds the callout to them.
 - **The tour never offers its own "text now" button.** Texting SETUP is consent,
   and the opt-in disclosure lives once, on Setup, directly under the real button.
   The "Try it now" step spotlights that real button and disclosure instead. A

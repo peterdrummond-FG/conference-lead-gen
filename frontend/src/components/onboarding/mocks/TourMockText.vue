@@ -1,7 +1,6 @@
 <template>
   <!-- A text conversation with our number, for the "Set up your phone" steps.
-       The reply is what twilio-webhook really sends a rep who is already linked
-       to a conference; a test checks the wording against that function. -->
+       The reply is what twilio-webhook really sends a phone that isn't linked yet; a test checks the wording against that function. -->
   <div class="mt" role="img" :aria-label="label">
     <div class="mt-frame" aria-hidden="true">
       <div class="mt-notch" />
@@ -18,7 +17,7 @@
         <div class="mt-thread">
           <template v-if="variant === 'setup'">
             <div class="mt-bubble mt-out">{{ SMS_MOCK.out }}</div>
-            <div class="mt-bubble mt-in">{{ SMS_MOCK.replyPrefix }}{{ SMS_MOCK.conference }}{{ SMS_MOCK.replyRest }}</div>
+            <div class="mt-bubble mt-in">{{ SMS_MOCK.reply }}</div>
           </template>
           <template v-else>
             <div class="mt-bubble mt-out mt-photo">
@@ -31,6 +30,7 @@
                 <circle cx="96" cy="54" r="12" fill="#E6F1F9" />
               </svg>
             </div>
+            <div class="mt-bubble mt-in">{{ SMS_MOCK.received }}</div>
             <div class="mt-bubble mt-out mt-voice">
               <q-icon name="play_arrow" size="20px" />
               <span class="mt-wave">
@@ -38,11 +38,12 @@
               </span>
               <span class="mt-len">{{ SMS_MOCK.voiceLength }}</span>
             </div>
+            <div class="mt-bubble mt-in">{{ SMS_MOCK.received }}</div>
           </template>
         </div>
       </div>
     </div>
-    <p v-if="variant === 'media'" class="mt-caption">{{ SMS_MOCK.caption }}</p>
+    <p class="mt-caption">{{ variant === 'media' ? SMS_MOCK.caption : SMS_MOCK.setupCaption }}</p>
   </div>
 </template>
 
@@ -54,8 +55,8 @@ import { TWILIO_NUMBER_DISPLAY } from '@/utils/smsNumber';
 const props = defineProps<{ variant: 'setup' | 'media' }>();
 
 const label = computed(() => (props.variant === 'setup'
-  ? `Picture of a text message: you send ${SMS_MOCK.out}, and we reply that you're set up for your conference.`
-  : 'Picture of a text message: you send a photo of a business card, then a voice note.'));
+  ? `Picture of a text message: you send ${SMS_MOCK.out}, and we ask which conference you're at.`
+  : 'Picture of a text message: you send a photo of a business card, then a voice note, and we confirm each one.'));
 </script>
 
 <style scoped>

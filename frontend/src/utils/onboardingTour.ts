@@ -36,6 +36,7 @@ export type StepKind = 'spotlight' | 'illustrated';
 export type TourTarget =
   | 'setup-conference'
   | 'setup-text-in'
+  | 'setup-qr'
   | 'review-tabs'
   | 'review-note-button'
   | 'export-button'
@@ -71,48 +72,89 @@ export interface TourStep {
   skipTo?: { id: string; label: string };
 }
 
+// The chapters are the same four stops the welcome screens promise (Set up your
+// event and phone, Collect leads however you like, Edit, approve and follow up,
+// Export to Zoho), in the order someone does
+// them at a conference. The phone used to be its own chapter and the QR code was
+// never shown at all, though it is how most people reach the form.
 export const TOUR_STEPS: TourStep[] = [
   {
     id: 'conference',
     kind: 'spotlight',
     route: '/setup',
     target: 'setup-conference',
-    chapter: 'Get set up',
+    chapter: 'Set up your event and phone',
     title: 'Start here',
-    body: "Pick the conference you're at, so every new lead lands in the right place.",
-    roles: EVERYONE,
+    body: "Choose the conference you're at. All leads are linked to that event.",
+    note: "Your QR code will only work when you're linked to an event.",
+    roles: ['sales'],
+  },
+  {
+    // Managers hold no QR code of their own, so they get the same step without
+    // the line about it. Same id as the rep's, like the QR steps below.
+    id: 'conference',
+    kind: 'spotlight',
+    route: '/setup',
+    target: 'setup-conference',
+    chapter: 'Set up your event and phone',
+    title: 'Start here',
+    body: "Choose the conference you're at. All leads are linked to that event.",
+    roles: MANAGERS,
   },
   {
     id: 'phone-text',
     kind: 'illustrated',
     visual: 'sms-setup',
     route: null,
-    chapter: 'Set up your phone',
-    title: 'Text SETUP to our number',
-    body: 'From your phone, text **SETUP** to **{number}**. That links your phone to your conference.',
-    note: "Haven't joined one in the app yet? We'll ask which one, and you just reply with its name. If Setup says Phone number needed, ask your admin to add yours.",
+    chapter: 'Set up your event and phone',
+    title: 'Link your phone',
+    body: "From your phone, text **SETUP** to **{number}**. We'll ask which conference you're at.",
+    note: "Reply with the conference name and your phone is linked. If you've already chosen one in the app, we just confirm it. If Setup says Phone number needed, ask your Solutions Success rep to add yours.",
     roles: EVERYONE,
-    skipTo: { id: 'connect', label: "I've already done this" },
-  },
-  {
-    id: 'phone-media',
-    kind: 'illustrated',
-    visual: 'sms-media',
-    route: null,
-    chapter: 'Set up your phone',
-    title: 'Then send a photo',
-    body: 'Text a photo of a business card, or a few cards laid out together. If you like, send a voice note about the chat right after.',
-    roles: EVERYONE,
+    skipTo: { id: 'qr', label: "I've already done this" },
   },
   {
     id: 'phone-try',
     kind: 'spotlight',
     route: '/setup',
     target: 'setup-text-in',
-    chapter: 'Set up your phone',
+    chapter: 'Set up your event and phone',
     title: 'Try it now',
     interactive: true,
     body: 'On your phone, tap **Text the code SETUP** here and your message is filled in for you. On a laptop, text SETUP from your phone.',
+    roles: EVERYONE,
+  },
+  {
+    id: 'qr',
+    kind: 'spotlight',
+    route: '/setup',
+    target: 'setup-qr',
+    chapter: 'Set up your event and phone',
+    title: 'Your QR code',
+    body: 'People scan this to fill in their details, and it credits the lead to you. It works at any conference, and leads go to the one you chose. Save it as a slide for your booth, or as a code to hold up on your phone.',
+    roles: ['sales'],
+  },
+  {
+    // Same id as the rep's step on purpose: "I've already done this" targets 'qr',
+    // and stepsForRole only ever keeps one of the two.
+    id: 'qr',
+    kind: 'spotlight',
+    route: '/setup',
+    target: 'setup-qr',
+    chapter: 'Set up your event and phone',
+    title: "Your reps' QR codes",
+    body: 'Every Sales rep has a reusable QR code. Download theirs here to send it to them, as a slide or a code for their phone screen.',
+    note: 'It only works once they have chosen a conference.',
+    roles: MANAGERS,
+  },
+  {
+    id: 'phone-media',
+    kind: 'illustrated',
+    visual: 'sms-media',
+    route: null,
+    chapter: 'Collect leads however you like',
+    title: 'Send leads by text',
+    body: 'Text a photo of a business card, a conference ID or a contact list. If you like, send a voice note about the chat right after. You can also type a short note about one person.',
     roles: EVERYONE,
   },
   {
@@ -120,9 +162,9 @@ export const TOUR_STEPS: TourStep[] = [
     kind: 'illustrated',
     visual: 'connect-form',
     route: null,
-    chapter: 'Collect leads',
-    title: 'What people see',
-    body: "This is what people see when they scan your code. They add a few details and you're connected.",
+    chapter: 'Collect leads however you like',
+    title: 'What people fill in',
+    body: "People reach this form by scanning a QR code or by using the kiosk feature if you set up an iPad at the booth. They add a few details and you're connected.",
     roles: EVERYONE,
   },
   {
@@ -130,9 +172,9 @@ export const TOUR_STEPS: TourStep[] = [
     kind: 'spotlight',
     route: '/review',
     target: 'review-tabs',
-    chapter: 'Review',
+    chapter: 'Edit, approve and follow up',
     title: 'Your leads live here',
-    body: "Every lead you collect shows up here. New ones wait under To review until you've had a look.",
+    body: 'Every lead you collect starts under To review, a few minutes after you send it, already checked against existing Zoho contacts and accounts. Add missing info or add a note before approving the new lead.',
     roles: EVERYONE,
   },
   {
@@ -140,9 +182,9 @@ export const TOUR_STEPS: TourStep[] = [
     kind: 'illustrated',
     visual: 'sample-lead',
     route: null,
-    chapter: 'Review',
+    chapter: 'Edit, approve and follow up',
     title: 'Ready to approve',
-    body: "A green Ready to approve means we've found everything we need, so you can approve it in one tap. Open any lead to add a note about your chat, and it goes to Zoho with the lead.",
+    body: 'A green **Ready to approve** means a lead has everything we need, so you can approve it in one tap.',
     roles: EVERYONE,
   },
   {
@@ -150,7 +192,7 @@ export const TOUR_STEPS: TourStep[] = [
     kind: 'spotlight',
     route: '/review',
     target: 'review-note-button',
-    chapter: 'Review',
+    chapter: 'Edit, approve and follow up',
     title: 'Jotted down a few names?',
     body: "Paste your notes here and we'll turn them into one lead per person.",
     roles: EVERYONE,
@@ -160,9 +202,10 @@ export const TOUR_STEPS: TourStep[] = [
     kind: 'spotlight',
     route: '/export',
     target: 'export-button',
-    chapter: 'Send to Zoho',
-    title: 'Send to Zoho',
-    body: 'When your leads are approved, this sends them on to Zoho.',
+    chapter: 'Export to Zoho',
+    title: 'Export to Zoho',
+    body: 'This downloads a file of your approved leads, ready to import into Zoho. A lead with no Zoho account is flagged so you know to create one.',
+    note: "After it downloads, confirm it here so those leads aren't in your next file.",
     roles: MANAGERS,
   },
   {
@@ -172,7 +215,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: 'nav-admin',
     chapter: 'Your team',
     title: 'Look after your team',
-    body: 'Activate and end conferences, and manage your team, from Admin.',
+    body: 'Activate and end conferences, and manage who is on each event team, from Admin.',
     roles: MANAGERS,
   },
   {
@@ -223,25 +266,25 @@ export interface SplashSlide {
 export function splashSlides(role: Role): SplashSlide[] {
   const manager = MANAGERS.includes(role);
   const stops = [
-    { label: 'Get set up', icon: 'event_available' },
-    { label: 'Collect leads', icon: 'qr_code_2' },
-    { label: 'Check and approve', icon: 'fact_check' },
-    ...(manager ? [{ label: 'Send to Zoho', icon: 'send' }] : []),
+    { label: 'Set up your event and phone', icon: 'event_available' },
+    { label: 'Collect leads however you like', icon: 'qr_code_2' },
+    { label: 'Edit, approve and follow up', icon: 'fact_check' },
+    ...(manager ? [{ label: 'Export to Zoho', icon: 'send' }] : []),
   ];
   return [
     {
       id: 'welcome',
       icon: 'waving_hand',
       title: 'Welcome to CKH Connect',
-      body: "Meet people at your conference, and we'll take care of the paperwork. Let's take a quick look around. It takes about three minutes.",
+      body: "Easily and quickly capture leads. Then review them already matched against Zoho! Let's take a quick look around. It takes about three minutes.",
     },
     {
       id: 'steps',
       icon: 'route',
       title: manager ? 'Four easy steps' : 'Three easy steps',
       body: manager
-        ? 'From the moment you arrive to the moment leads reach Zoho.'
-        : 'Your team sends approved leads on to Zoho, so you can stay with the people in front of you.',
+        ? 'Full live visibility over events, leads and reps.'
+        : 'Intelligent from start to finish so you can focus on the people in front of you.',
       stops,
     },
     {
@@ -249,8 +292,8 @@ export function splashSlides(role: Role): SplashSlide[] {
       icon: 'thumb_up',
       title: 'Ready when you are',
       body: manager
-        ? "You'll do all that, and you can also start conferences, manage your team, and send leads to Zoho."
-        : "You'll pick your conference, share your QR code, and approve the leads you meet.",
+        ? "You can also activate conferences for reps and manage your teams."
+        : "You'll learn how to choose your conference, share your unique QR code and follow up on leads.",
     },
   ];
 }
@@ -276,6 +319,7 @@ export function allTourCopy(): string[] {
     ...SAMPLE_CALLOUTS.map((c) => c.text),
     CONNECT_MOCK.subtitle,
     CONNECT_MOCK.hint,
+    SMS_MOCK.setupCaption,
     SMS_MOCK.caption,
     ...TOUR_FALLBACK_COPY,
   );
@@ -303,23 +347,30 @@ export const CONNECT_MOCK = {
 };
 
 // The text conversation, for the "Set up your phone" steps. The reply is what
-// twilio-webhook sends a rep who is already linked to a conference when they
-// text SETUP; the test fails if that wording changes there.
+// twilio-webhook sends when a phone that isn't linked texts SETUP; the test fails
+// if that wording changes there.
 export const SMS_MOCK = {
   out: 'SETUP',
-  conference: 'Sample conference',
-  replyPrefix: "You're already set up for ",
-  replyRest: ". Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready. Not the right conference? Reply CHANGE.",
+  reply: "What's the name of the conference? (as much as you remember)",
+  // What twilio-webhook sends back for each photo or voice note. Without it the
+  // picture was a one-way conversation, and a new rep couldn't tell a text had
+  // landed.
+  received: 'Got it — 1 item(s) received.',
   voiceLength: '0:14',
+  setupCaption: 'Then reply with the conference name and your phone is linked.',
   caption: 'A few minutes later it shows up in Review.',
 };
 
 // What to notice on the sample lead. A list under the card rather than arrows
-// pointing into it: arrows drift the moment the row's layout changes.
+// pointing into it: arrows drift the moment the row's layout changes. The first
+// line names what a rep has to supply for a lead to be Ready to approve; Review
+// also needs the Zoho match finished and no possible duplicate, which it shows
+// on the lead itself.
 export const SAMPLE_CALLOUTS = [
-  { icon: 'check', text: "Ready to approve means we've found everything we need." },
-  { icon: 'note_add', text: 'Open a lead to add a dated note. It goes to Zoho with the lead.' },
-  { icon: 'thumb_up', text: 'Approve when you are happy with it. One tap.' },
+  { icon: 'check', text: 'Ready to approve means a phone or email and a school or district.' },
+  { icon: 'edit_note', text: "Not ready? The lead says what's missing. Open it to fix it." },
+  { icon: 'note_add', text: 'Open any lead to add a note about your chat. It goes to Zoho with the lead.' },
+  { icon: 'thumb_up', text: "Approve in one tap. You can also indicate that you've already followed up." },
 ];
 
 // A made-up lead, only ever drawn by TourSampleLead. It must never be added to
