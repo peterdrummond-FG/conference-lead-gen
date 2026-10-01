@@ -433,6 +433,24 @@ Tests: `reviewSmart.test.mjs` ("Order").
 
 ---
 
+## 18. Run new UI under the production security policy
+
+**What happened.** The on-screen QR dialog drew its canvas into an `<img>` via
+`toDataURL()`. In development that works; in production `index.html` sets
+`img-src 'self' blob:`, so the browser refused the image and the dialog opened onto
+an empty box. It was reported twice before the cause was found, and the first
+guess (the button hidden for an admin account) was wrong: nobody had looked at the
+running page.
+
+**The rule.** Anything that loads an image, script, font or network host should be
+tried once under the real Content-Security-Policy, not just in dev. The console
+says it outright (`violates … img-src`). Serve the production build (copy
+`dist/spa` somewhere the preview can read) with only the backend host added to
+`connect-src`, and click the feature. When a user reports that something "isn't
+rendering", open it before theorising about accounts or roles.
+
+---
+
 ## Checklist before shipping a feature
 
 - [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
@@ -462,5 +480,7 @@ Tests: `reviewSmart.test.mjs` ("Order").
 - [ ] Anything that highlights or follows live UI tracks it continuously and
       was checked in a brand-new account's state, not just your own
 - [ ] Anything tied to a signed-in user is cleared when that user goes away
+- [ ] New UI that loads images, scripts or hosts was opened once under the
+      production CSP (`index.html`), not only in dev
 - [ ] A list sorted or filtered on a field the user can edit keeps the edited row
       where it was (and listed) until they move on, and Save says it saved

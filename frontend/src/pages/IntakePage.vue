@@ -1,6 +1,11 @@
 <template>
   <q-page class="intake-page flex flex-center">
     <div class="intake-shell">
+      <!-- Staff only, and only on the Kiosk tab itself: not on a rep's QR link, not
+           while previewing someone, and not before there is a form to hand over. -->
+      <div v-if="canLock" class="intake-tools">
+        <LockKioskButton />
+      </div>
       <transition name="fade" mode="out-in">
         <div v-if="!eventStore.loaded || (previewing && !sessionStore.preview)" key="loading" class="text-center">
           <q-spinner size="40px" color="primary" />
@@ -186,6 +191,7 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
+import LockKioskButton from '@/components/LockKioskButton.vue';
 import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
 import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import type { QForm } from 'quasar';
@@ -254,6 +260,11 @@ const needsLink = computed(() => {
   if (previewing.value) return !sessionStore.preview?.currentEventId;
   return !sessionStore.user.currentEventId;
 });
+
+const canLock = computed(() => (
+  !!sessionStore.user && !kioskModeStore.locked && !eventSlug && !repSlug && !previewing.value
+  && !!formEventName.value && !needsLink.value && !submitted.value
+));
 
 const formRef = ref<QForm | null>(null);
 const identityEl = ref<HTMLElement | null>(null);
@@ -486,6 +497,7 @@ onMounted(async () => {
   width: 100%;
   max-width: 640px;
 }
+.intake-tools { display: flex; justify-content: flex-end; margin-bottom: 4px; }
 
 .intake-title {
   font-size: clamp(28px, 4vw, 40px);

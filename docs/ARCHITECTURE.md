@@ -251,6 +251,8 @@ where someone is, and `components/onboarding/` draws it. Things to preserve:
 `/connect` (formerly `/intake`; the old path redirects; the signed-in tab is labelled **Kiosk** but the URL stays `/connect`, because it is printed on QR codes) is the public form an
 attendee fills in on their own phone or at a booth device. Two rules:
 
+**Lock kiosk** (hands the device to attendees) is a button on this page, `LockKioskButton.vue`, shown only to signed-in staff on the bare tab, not in the header (it used to sit next to Log out, one stray tap from locking a device by accident). A rep with no kiosk PIN is asked to set one first; unlocking is in `MainLayout.vue`.
+
 - **Autofill is on only for an attendee's own phone.** `IntakePage.vue` sets
   `autocomplete` tokens (`given-name`, `email`, `tel`, ...) when no staff member
   is signed in on the device and the kiosk isn't locked, and `autocomplete="off"`
@@ -533,7 +535,7 @@ counts); **one row** of ready / incomplete / processing filters plus **Import**
 (each cell stacks number over word so four fit at 320px); then search, sort and,
 for a rep, the this-event / past-events icon. There is no title row (the nav bar
 says Review). The account bar carries a **QR** button (`RepQrDialog.vue`, the
-same phone-screen artwork Setup saves, drawn on screen) for anyone with a
+same phone-screen artwork Setup saves, drawn on screen as a `blob:` image because the CSP forbids `data:`) for anyone with a
 `repSlug`, or the previewed rep's.
 
 Rules worth knowing before changing Smart:

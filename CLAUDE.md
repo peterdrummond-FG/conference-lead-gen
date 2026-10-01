@@ -202,6 +202,18 @@ Supabase CLI on this machine.
   codes, so the route, its redirects and `generateConnectSlide.ts` keep the old
   name. Don't rename them to match the label.
 
+- **`index.html`'s CSP is `img-src 'self' blob:` (no `data:`) and `connect-src
+  'self' https://*.supabase.co`.** An `<img :src="canvas.toDataURL()">` is
+  silently refused: the QR dialog shipped as an empty box with only its alt text
+  (2026-10-01; it worked in dev because nothing enforced the policy). Use
+  `canvas.toBlob` + `URL.createObjectURL` (revoke it), as `RepQrDialog.vue` does.
+  A new external host or inline script needs the policy changed deliberately.
+
+- **Lock kiosk lives on the Kiosk page, not in the header.** `LockKioskButton.vue`
+  (button + the first-time Set PIN prompt) is rendered by `IntakePage.vue` only for
+  signed-in staff on the bare `/connect` tab. The unlock dialog stays in
+  `MainLayout.vue` because the header is hidden while locked.
+
 - **The welcome tour's copy is a set of promises.** Its Review step says a green
   "Ready to approve" lead approves in one tap and that notes reach Zoho; its "Set up your
   phone" steps show the text reply `twilio-webhook` sends and the number from

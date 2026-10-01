@@ -226,7 +226,7 @@
               :disable="previewing"
               @click="promptKioskPin"
             />
-            <div class="text-caption text-grey-8 q-mt-xs">When you're ready, tap Lock kiosk in the top bar.</div>
+            <div class="text-caption text-grey-8 q-mt-xs">When you're ready, open the Kiosk tab and tap Lock kiosk.</div>
           </q-card-section>
         </q-card>
 
@@ -484,7 +484,7 @@ async function loadProfiles() {
   profiles.value = data;
 }
 
-// Setting a PIN is also offered by MainLayout's Lock kiosk button, but only
+// Setting a PIN is also offered by the Kiosk page's Lock kiosk button, but only
 // when the user has never set one -- this is the only place to *change* an
 // existing PIN, which is why the Kiosk setup card keeps a button for it.
 function promptKioskPin() {
