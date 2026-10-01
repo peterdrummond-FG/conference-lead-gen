@@ -9,7 +9,7 @@ import { SAMPLE_CALLOUTS,
   BANNED_WORDS, CONNECT_MOCK, SAMPLE_LEAD, SMS_MOCK, TOUR_STEPS, allTourCopy, splashSlides, stepsForRole, tourStartAction,
 } from './onboardingTour.ts';
 import { TWILIO_NUMBER_DISPLAY } from './smsNumber.ts';
-import { isReady, READY_LABEL } from './reviewSmart.ts';
+import { isReady, READY_LABEL, readinessChecklist } from './reviewSmart.ts';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = join(SRC, '..', '..');
@@ -59,7 +59,7 @@ test('every step sends a role only to pages that role can open', () => {
 // once a conference is joined; the sample lead injected into Review's list), so
 // the list is deliberately short and a new entry has to be argued for here.
 const ALWAYS_THERE = new Set([
-  'setup-conference', 'setup-text-in', 'review-tabs',
+  'setup-conference', 'setup-text-in', 'setup-qr', 'review-tabs',
   'review-note-button', 'export-button', 'nav-admin', 'tour-replay',
 ]);
 
@@ -93,8 +93,7 @@ test('the attendee-form picture uses the labels the real form shows', () => {
 
 test('the text-message picture quotes what twilio-webhook really replies', () => {
   const hook = read(REPO, 'supabase/functions/twilio-webhook/index.ts');
-  assert.ok(hook.includes(SMS_MOCK.replyPrefix), 'reply opening drifted from twilio-webhook');
-  assert.ok(hook.includes(SMS_MOCK.replyRest.replace(/^\.\s*/, '')), 'reply body drifted from twilio-webhook');
+  assert.ok(hook.includes(SMS_MOCK.reply), 'the SETUP reply drifted from twilio-webhook');
   assert.ok(hook.includes('"setup"'), 'twilio-webhook no longer treats SETUP as the start phrase');
 });
 
@@ -111,10 +110,68 @@ test('every role is walked through setting up their phone, and can skip past it'
   for (const role of ['admin', 'solutionsSuccess', 'sales']) {
     const steps = stepsForRole(role);
     const ids = steps.map((s) => s.id);
-    for (const id of ['phone-text', 'phone-media', 'phone-try']) assert.ok(ids.includes(id), `${role} misses ${id}`);
+    for (const id of ['phone-text', 'phone-try', 'phone-media']) assert.ok(ids.includes(id), `${role} misses ${id}`);
     const skip = steps.find((s) => s.skipTo);
     assert.ok(skip && ids.includes(skip.skipTo.id), `${role}: the way past the phone section leads nowhere`);
     assert.ok(ids.indexOf(skip.skipTo.id) > ids.indexOf('phone-try'), `${role}: skipping must land after the phone section`);
+  }
+});
+
+test('the text-message picture shows the confirmation the webhook really sends for a photo or voice note', () => {
+  const hook = read(REPO, 'supabase/functions/twilio-webhook/index.ts');
+  const [head, tail] = SMS_MOCK.received.split('1');
+  assert.ok(hook.includes(head) && hook.includes(tail), 'the "Got it" reply drifted from twilio-webhook');
+});
+
+test('the "Phone number needed" note tells people to ask who Setup says to ask', () => {
+  const setup = read(SRC, 'pages/SetupPage.vue');
+  const note = TOUR_STEPS.find((s) => s.id === 'phone-text').note;
+  assert.ok(/Solutions Success rep/.test(note) && /Solutions Success rep/.test(setup), 'tour and Setup name different people to ask');
+  assert.ok(setup.includes('label="Phone number needed"') && note.includes('Phone number needed'));
+});
+
+// Only Sales accounts have a QR; the Setup card for it is v-if'd on repSlug, and
+// admin / Solutions Success get the Rep QR slides card instead. Telling a manager
+// to share "your QR code" would point them at something they don't have.
+test('a rep is shown their own QR code and a manager the reps\' QR codes, each on the Setup card that exists for them', () => {
+  const qrFor = (role) => stepsForRole(role).filter((s) => s.id === 'qr');
+  assert.equal(qrFor('sales').length, 1);
+  assert.match(qrFor('sales')[0].title, /^Your QR code/);
+  for (const role of ['admin', 'solutionsSuccess']) {
+    assert.equal(qrFor(role).length, 1, `${role} should get exactly one QR step`);
+    assert.match(qrFor(role)[0].title, /reps/i);
+  }
+  const setup = read(SRC, 'pages/SetupPage.vue');
+  assert.ok(/v-if="subject\?\.repSlug" data-tour="setup-qr"/.test(setup), 'the rep QR card lost its tour target');
+  assert.ok(/v-if="canManageEvents" data-tour="setup-qr"/.test(setup), 'the Rep QR slides card lost its tour target');
+  assert.ok(qrFor('sales')[0].body.includes('slide'), 'the QR step should say what can be saved');
+});
+
+test('the walkthrough chapters are the stops the welcome screens list', () => {
+  for (const role of ['sales', 'admin']) {
+    const stops = splashSlides(role)[1].stops.map((x) => x.label);
+    const chapters = [...new Set(stepsForRole(role).map((s) => s.chapter))];
+    for (const stop of stops) assert.ok(chapters.includes(stop), `${role}: no walkthrough chapter called "${stop}"`);
+  }
+});
+
+// Export downloads a file that someone imports into Zoho; it never sends
+// anything to Zoho itself. Copy that said "sends them on to Zoho" was wrong.
+test('nothing claims the app sends leads to Zoho; it exports a file', () => {
+  for (const text of allTourCopy()) assert.ok(!/\bsends? (?:them |leads )?(?:on )?to Zoho\b/i.test(text), text);
+  const exp = TOUR_STEPS.find((s) => s.id === 'export');
+  assert.ok(/downloads/i.test(exp.body) && /import/i.test(exp.body));
+  assert.ok(read(SRC, 'pages/ExportPage.vue').includes('Export to Zoho'), 'the export step names a title the page does not show');
+});
+
+// The callout names only what a rep supplies; Review also needs the Zoho match
+// finished and no possible duplicate. If it starts requiring a fifth thing, this
+// fails so the wording is revisited.
+test('Ready to approve names what a rep has to supply, and Review still checks only four things', () => {
+  const text = SAMPLE_CALLOUTS.map((c) => c.text).join(' ').toLowerCase();
+  assert.equal(readinessChecklist(SAMPLE_LEAD).length, 4, 'Review checks something new: update the tour callout');
+  for (const needle of ['phone or email', 'school or district']) {
+    assert.ok(text.includes(needle), `callouts no longer mention "${needle}"`);
   }
 });
 

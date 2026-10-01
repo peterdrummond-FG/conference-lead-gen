@@ -199,7 +199,8 @@ Supabase CLI on this machine.
   "Ready to approve" lead approves in one tap and that notes reach Zoho; its "Set up your
   phone" steps show the text reply `twilio-webhook` sends and the number from
   `utils/smsNumber.ts`; its Setup steps point at the conference card
-  (`data-tour="setup-conference"`) and the phone card (`setup-text-in`) by name
+  (`data-tour="setup-conference"`), the phone card (`setup-text-in`) and the QR
+  card (`setup-qr`, on both the rep's and the managers' version) by name
   and button label ("Text the code SETUP"). If you change Smart's Ready rule, Setup's flow, the SETUP reply, the
   attendee form's labels or what `export-csv` emits, update
   `frontend/src/utils/onboardingTour.ts` too. Its tests catch the Ready rule, the

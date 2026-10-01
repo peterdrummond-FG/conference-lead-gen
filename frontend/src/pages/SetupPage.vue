@@ -235,7 +235,7 @@
              Available before joining (the code is the rep's own and reusable), but
              it only works once they're linked to a conference. Sales accounts only:
              repSlug is only ever generated for them (profiles-create/-update). -->
-        <q-card v-if="subject?.repSlug">
+        <q-card v-if="subject?.repSlug" data-tour="setup-qr">
           <q-card-section>
             <div class="row items-start no-wrap">
               <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
@@ -263,7 +263,7 @@
         <!-- Admin and Solutions Success: they hold no QR of their own but are who
              sends each rep theirs, so the reps' slides are listed here (and per rep
              in Admin -> Team). Nothing here depends on a conference. -->
-        <q-card v-if="canManageEvents">
+        <q-card v-if="canManageEvents" data-tour="setup-qr">
           <q-card-section>
             <div class="row items-start no-wrap">
               <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
