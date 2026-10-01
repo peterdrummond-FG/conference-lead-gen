@@ -308,8 +308,7 @@ the reserved leads unavailable. Leave the page without confirming and the batch
 simply releases itself. The summary card's "Still needs review" count links to
 Review, since those are the leads that won't be in the file.
 
-The Description column leads with the rep's notes (`Notes: …`); see "Review's
-two views".
+The Description column leads with the rep's notes (`Notes: …`); see "Review".
 
 ### Starting a conference
 
@@ -553,7 +552,7 @@ Rules worth knowing before changing Smart:
   rather than putting stale values back. "Save changes" says "Saved <name>".
 - **The status cells are filters.** "ready / incomplete / processing"
   over To review (`leadBucket`, same rules as the chips) are toggles: one at a time,
-  tap again to clear, counts always over the whole tab. The lead just edited stays
+  tap again to clear, counts always over the whole tab (of the current this-event / past-events view), never just the filtered list. The lead just edited stays
   listed even if the edit stops it matching a pill or the search (`pinnedId`), until
   the rep opens another lead or changes the filter. The editor's checklist hides
   "Checked against Zoho" and "Not a duplicate" unless they are the problem.

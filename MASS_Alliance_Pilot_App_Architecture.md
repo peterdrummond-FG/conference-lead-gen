@@ -957,6 +957,27 @@ past that threshold.
   only when searched for. The tour's "Choose how to meet people" step was dropped
   with the heading it pointed at.
 
+- **A saved lead no longer jumps, and Review's header slims down (2026-10-01).**
+  A rep saved a district on the newest lead and it "disappeared": Review's default
+  sort, *Needs attention first*, ranked on the readiness flags, so the save made
+  it Ready and sent it from row 1 to row 41 (the row was in the database the whole
+  time). To review is now plain newest-first and no sort reads readiness; Hot /
+  Follow up first sort once and hold their order (`buildRank` / `orderByRank`).
+  The ready / incomplete / processing strip became one-at-a-time filters, "Save
+  changes" confirms ("Saved <name>"), the lead being edited stays listed if the
+  edit stops it matching a filter or search, the 8-second poll yields to any write
+  in flight, and the checklist hides "Checked against Zoho" and "Not a duplicate"
+  unless they are the problem. Header: no title row, underline tabs, one status
+  row with **Import**, search and sort, and (reps) a single this-event /
+  past-events icon whose counts and lists follow it, past events folded.
+  **Classic and its ⋮ switch were retired** (the switch did nothing on phones);
+  `ReviewClassic`, `ReviewContactCard`, `ReviewViewMenu`, `ReviewPage`,
+  `useReviewView` and `useMasonryGrid` are deleted. A **QR** button in the top bar
+  shows the rep's phone-screen code full screen (`RepQrDialog.vue`). The
+  signed-in **Connect** tab is now labelled **Kiosk**; `/connect`, its redirects
+  and every printed URL are unchanged. Front-end only: nothing to deploy to
+  Supabase.
+
 **Still open:**
 - **Credential rotation.** The service-role key and the Zoho client secret /
   refresh token were readable by permission-skipped agent sessions for the life

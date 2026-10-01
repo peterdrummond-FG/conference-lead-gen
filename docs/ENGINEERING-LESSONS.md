@@ -410,6 +410,29 @@ thing is tied to a user, tie its lifetime to that user (`tourStartAction`).
 
 ---
 
+## 17. Don't sort or filter a list on the fields the user is editing
+
+**What happened.** A rep added a district to the contact they had just entered
+and hit Save. It "disappeared". The save had worked: the row was in the database,
+unchanged but for the district. Review's default sort was *Needs attention first*,
+which ranks on the same readiness flags the edit had just satisfied, so the save
+moved the lead from row 1 to row 41 of a 41-row list, and the reload they tried
+selected the first lead instead. Nothing was lost, and nothing on screen said so:
+Save's only feedback was its own button vanishing.
+
+**The rule.** If a list is ordered or filtered by something a user can change from
+inside it, the act of saving will move or hide the row they are holding. Order by
+something an edit can't touch (arrival time); where you must sort on an editable
+field, sort once and keep that order until the next deliberate re-sort; keep the
+open item listed until they move on, even if the edit stops it matching a filter;
+and say the save landed. Two corollaries from the same fix: a background refresh
+must yield to any write in flight (it was a snapshot from before the write), and
+when someone reports data "vanished", check the database before assuming it was
+lost: it was a display problem here, and the logs showed it in one query.
+Tests: `reviewSmart.test.mjs` ("Order").
+
+---
+
 ## Checklist before shipping a feature
 
 - [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
@@ -439,3 +462,5 @@ thing is tied to a user, tie its lifetime to that user (`tourStartAction`).
 - [ ] Anything that highlights or follows live UI tracks it continuously and
       was checked in a brand-new account's state, not just your own
 - [ ] Anything tied to a signed-in user is cleared when that user goes away
+- [ ] A list sorted or filtered on a field the user can edit keeps the edited row
+      where it was (and listed) until they move on, and Save says it saved
