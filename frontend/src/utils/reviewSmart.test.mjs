@@ -81,16 +81,6 @@ test('a new account with no school or district gets no misleading "New district"
   assert.equal(accountBadge(lead({ matchStatus: 'new_account', schoolDistrictId: null, districtName: null })), null);
 });
 
-test('attention sort floats blocked leads up, newest first within each group', () => {
-  const list = [
-    lead({ id: 'ok-old', createdAt: '2026-09-01T00:00:00Z' }),
-    lead({ id: 'bad-old', email: null, phone: null, createdAt: '2026-09-02T00:00:00Z' }),
-    lead({ id: 'ok-new', createdAt: '2026-09-04T00:00:00Z' }),
-    lead({ id: 'bad-new', matchStatus: 'pending', createdAt: '2026-09-03T00:00:00Z' }),
-  ];
-  assert.deepEqual(sortLeads(list, 'attention').map((c) => c.id), ['bad-new', 'bad-old', 'ok-new', 'ok-old']);
-});
-
 test('follow-up sort: not-yet-called first, hottest first, followed-up last; input not mutated', () => {
   const list = [
     lead({ id: 'done-hot', followedUp: true, contactIntent: 'hot' }),
@@ -215,4 +205,84 @@ test('the checklist is all ticks exactly when the lead is ready to approve', () 
   const waiting = readinessChecklist(lead({ matchStatus: 'pending' })).find((i) => i.key === 'match');
   assert.equal(waiting.state, 'wait');
   assert.equal(readinessChecklist(lead({ matchStatus: 'pending', matchAttempts: 3 })).find((i) => i.key === 'match').state, 'todo');
+});
+
+// ── Order ────────────────────────────────────────────────────────────────
+// 2026-10-01: "Needs attention first" sorted on the readiness flags, so adding
+// a district to the newest lead flipped it to Ready and sent it from row 1 to
+// row 41; the rep reloaded twice and never found it. To review is now plain
+// arrival order, and the sorts that still read editable fields are frozen.
+
+import { buildRank, leadBucket, orderByRank, SORT_OPTIONS, DEFAULT_SORT } from './reviewSmart.ts';
+
+const SORTS = { needs_review: 'newest', approved: 'followup', rejected: 'newest' };
+
+function crowd() {
+  const older = Array.from({ length: 12 }, (_, i) => lead({
+    id: `old${i}`, schoolDistrictId: null, districtName: null, contactIntent: 'warm', // all need info
+    createdAt: `2026-09-${String(10 + i).padStart(2, '0')}T10:00:00Z`,
+  }));
+  const jim = lead({ id: 'jim', schoolDistrictId: null, districtName: null, contactIntent: 'hot', createdAt: '2026-10-01T15:11:00Z' });
+  return { older, jim };
+}
+
+test('To review is newest first, and readiness is not a sort option', () => {
+  assert.equal(DEFAULT_SORT.needs_review, 'newest');
+  assert.deepEqual(SORT_OPTIONS.needs_review.map((o) => o.value), ['newest', 'hot', 'name']);
+});
+
+test('making a lead Ready does not move it', () => {
+  const { older, jim } = crowd();
+  const list = [...older, jim];
+  assert.equal(sortLeads(list, 'newest')[0].id, 'jim');
+  Object.assign(jim, { schoolDistrictId: 'd9', districtName: 'Mesa USD' });
+  assert.equal(sortLeads(list, 'newest')[0].id, 'jim');
+});
+
+test('the live Hot sort moves a lead the moment its heat is set (why it is frozen)', () => {
+  const { older, jim } = crowd();
+  const list = [...older, jim];
+  assert.equal(sortLeads(list, 'hot')[0].id, 'jim');
+  Object.assign(jim, { contactIntent: 'cold' });
+  assert.notEqual(sortLeads(list, 'hot')[0].id, 'jim');
+});
+
+test('a frozen order keeps an edited lead where it was', () => {
+  const { older, jim } = crowd();
+  const buckets = { needs_review: [...older, jim], approved: [], rejected: [] };
+  const sorts = { ...SORTS, needs_review: 'hot' };
+  const rank = buildRank(buckets, sorts);
+  Object.assign(jim, { contactIntent: 'cold' });
+  assert.equal(orderByRank(buckets.needs_review, 'needs_review', rank)[0].id, 'jim');
+  // A fresh rank (a deliberate re-sort) does apply the edit.
+  assert.notEqual(orderByRank(buckets.needs_review, 'needs_review', buildRank(buckets, sorts))[0].id, 'jim');
+});
+
+test('leads the order has not seen yet float to the top, newest first', () => {
+  const { older, jim } = crowd();
+  const buckets = { needs_review: older, approved: [], rejected: [] };
+  const rank = buildRank(buckets, SORTS);
+  const fresh = lead({ id: 'fresh', createdAt: '2026-10-02T09:00:00Z' });
+  const ordered = orderByRank([...older, jim, fresh], 'needs_review', rank);
+  assert.deepEqual(ordered.slice(0, 2).map((c) => c.id), ['fresh', 'jim']);
+  assert.equal(ordered.length, 14);
+});
+
+test('a lead keeps its place across approve then undo', () => {
+  const { older, jim } = crowd();
+  const rank = buildRank({ needs_review: [...older, jim], approved: [], rejected: [] }, SORTS);
+  const back = orderByRank([...older.slice(0, 5), jim, ...older.slice(5)], 'needs_review', rank);
+  assert.equal(back[0].id, 'jim');
+});
+
+test('leadBucket puts every to-review lead in exactly one pill, matching summaryCounts', () => {
+  const list = [
+    lead({ id: 'a' }),
+    lead({ id: 'b', schoolDistrictId: null, districtName: null }),
+    lead({ id: 'c', matchStatus: 'pending', matchAttempts: 0 }),
+    lead({ id: 'd', matchStatus: 'pending', matchAttempts: 3 }),
+    lead({ id: 'e', reviewStatus: 'approved' }),
+  ];
+  assert.deepEqual(list.map(leadBucket), ['ready', 'needsInfo', 'processing', 'needsInfo', null]);
+  assert.deepEqual(summaryCounts(list), { ready: 1, needsInfo: 2, processing: 1 });
 });

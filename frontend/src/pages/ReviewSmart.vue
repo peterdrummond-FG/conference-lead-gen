@@ -94,13 +94,24 @@
           <q-btn unelevated no-caps color="negative" :label="`Delete ${selectedVisibleIds.length} selected`" :disable="selectedVisibleIds.length === 0" class="rs-bulk-btn" @click="confirmBulkDelete" />
         </div>
 
-        <!-- What the three states of a lead are, before any card is read. Counted by
-             the same rules as each card's chip and button (summaryCounts), so it can
-             never disagree with them. Read-only on purpose. -->
-        <div v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0" class="rs-summary" role="status" aria-label="Lead status summary">
-          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-ready" />{{ summary.ready }} {{ READY_LABEL.toLowerCase() }}</span>
-          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-info" />{{ summary.needsInfo }} needs info</span>
-          <span class="rs-sum-pill"><span class="rs-sum-dot rs-dot-proc" />{{ summary.processing }} processing</span>
+        <!-- What the three states of a lead are, before any card is read, and a
+             way to look at just one of them. Counted by the same rules as each
+             card's chip and button (leadBucket), over the whole tab, so a count
+             never shrinks just because you are filtering by it. Tap again to
+             show everything. -->
+        <div v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0" class="rs-summary" role="group" aria-label="Filter leads by status">
+          <button
+            v-for="p in pills"
+            :key="p.key"
+            type="button"
+            class="rs-sum-pill"
+            :class="{ 'is-on': readinessFilter === p.key }"
+            :aria-pressed="readinessFilter === p.key"
+            :disabled="summary[p.key] === 0 && readinessFilter !== p.key"
+            @click="toggleReadiness(p.key)"
+          >
+            <span class="rs-sum-dot" :class="p.dot" />{{ summary[p.key] }} {{ p.label }}
+          </button>
         </div>
 
         <!-- A rep: their current conference first, then each past one. -->
@@ -216,7 +227,7 @@
           @restore="onRestore"
           @update="onUpdate"
           @retry-match="retryMatch"
-          @duplicates-resolved="load"
+          @duplicates-resolved="load({ keepOrder: true })"
           @prev="step(-1)"
           @next="step(1)"
         />
@@ -242,7 +253,7 @@
           @restore="onRestore"
           @update="onUpdate"
           @retry-match="retryMatch"
-          @duplicates-resolved="load"
+          @duplicates-resolved="load({ keepOrder: true })"
           @close="closeSheet"
           @prev="step(-1)"
           @next="step(1)"
@@ -253,7 +264,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useQuasar, Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import ReviewViewMenu from '@/components/ReviewViewMenu.vue';
@@ -266,14 +277,14 @@ import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
-  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, eventRecency, fullName, groupByEvent, isProcessing, READY_LABEL, readyIds, searchLeads, sortLeads, summaryCounts,
-  type ReviewStatus, type SortKey,
+  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, isProcessing, leadBucket, orderByRank, READY_LABEL, readyIds, searchLeads, summaryCounts,
+  type LeadBucket, type LeadRank, type ReviewStatus, type SortKey,
 } from '@/utils/reviewSmart';
 
 const $q = useQuasar();
 const sessionStore = useSessionStore();
 const eventStore = useEventStore();
-const { buckets, currentIds, loaded, busy, serverFilters, load, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
+const { buckets, currentIds, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');
 // Quasar's md breakpoint (1024px) and up: room for the list and the editor
@@ -293,6 +304,36 @@ const eventFilter = ref<string | null>(null);
 const repFilter = ref<string | null>(null);
 const syncedFilter = ref<string | null>(null);
 const profiles = ref<Profile[]>([]);
+// The To review pills double as a filter: one at a time, tap again to clear.
+const readinessFilter = ref<LeadBucket | null>(null);
+const pills: { key: LeadBucket; label: string; dot: string }[] = [
+  { key: 'ready', label: READY_LABEL.toLowerCase(), dot: 'rs-dot-ready' },
+  { key: 'needsInfo', label: 'needs info', dot: 'rs-dot-info' },
+  { key: 'processing', label: 'processing', dot: 'rs-dot-proc' },
+];
+function toggleReadiness(key: LeadBucket) {
+  readinessFilter.value = readinessFilter.value === key ? null : key;
+}
+// The lead the rep just edited stays listed even if the edit stops it matching
+// the search or the pill filter (it became Ready while "needs info" was on):
+// otherwise it vanishes mid-edit and the pane quietly switches to another lead.
+// It is dropped as soon as the rep opens a different lead, closes the sheet, or
+// changes the search / filter / tab, so it never lingers.
+const pinnedId = ref<string | null>(null);
+const selectedId = ref<string | null>(null); // desktop
+const sheetId = ref<string | null>(null); // phone
+
+// The order the lists are shown in, fixed when it is computed rather than
+// recomputed from each lead's current flags (see "Frozen order" in
+// reviewSmart.ts): saving a lead must not send it to the bottom of the list.
+// It is rebuilt on a (re)load, and when the rep changes the sort; a quiet
+// background refresh keeps it, so leads don't reshuffle under someone typing.
+const rank = shallowRef<LeadRank>(new Map());
+function reorder() { rank.value = buildRank(buckets, sortByTab); }
+async function load(opts: { keepOrder?: boolean } = {}) {
+  await loadLeads({ quiet: Boolean(opts.keepOrder) });
+  if (!opts.keepOrder) reorder();
+}
 
 const sortLabel = computed(() => SORT_OPTIONS[tab.value].find((o) => o.value === sortByTab[tab.value])?.label ?? 'Sort');
 const searchText = computed(() => (search.value ?? '').trim());
@@ -328,13 +369,30 @@ const counts = computed(() => ({
 }));
 const totalLeads = computed(() => counts.value.needs_review + counts.value.approved + counts.value.rejected);
 
-const tabLeads = computed(() => {
+// Everything the rep has asked for except the status pill: conference,
+// follow-up toggle and search. The pill counts come from here, so they describe
+// the tab rather than the filtered view.
+const matching = computed(() => {
   let list = byConference(buckets[tab.value]);
   if (tab.value === 'approved' && followFilter.value !== 'all') {
     const wantDone = followFilter.value === 'done';
     list = list.filter((c) => c.followedUp === wantDone);
   }
-  return sortLeads(searchLeads(list, searchText.value), sortByTab[tab.value]);
+  return searchLeads(list, searchText.value);
+});
+
+const tabLeads = computed(() => {
+  let found = matching.value;
+  if (tab.value === 'needs_review' && readinessFilter.value) {
+    const want = readinessFilter.value;
+    found = found.filter((c) => leadBucket(c) === want);
+  }
+  const keep = pinnedId.value;
+  if (keep && !found.some((c) => c.id === keep)) {
+    const kept = buckets[tab.value].find((c) => c.id === keep);
+    if (kept) found = [...found, kept];
+  }
+  return orderByRank(found, tab.value, rank.value);
 });
 
 // Event order comes from every status, not the visible tab, so the sections
@@ -363,7 +421,7 @@ const flatLeads = computed<ContactListItem[]>(() => (
 ));
 
 const readyCount = (list: ContactListItem[]) => readyIds(list).length;
-const summary = computed(() => summaryCounts(tabLeads.value));
+const summary = computed(() => summaryCounts(matching.value));
 
 // ── The rep's current event ──────────────────────────────────────────────
 
@@ -398,11 +456,11 @@ async function setMyEvent(eventId: string | null) {
 // ── Empty states ─────────────────────────────────────────────────────────
 
 const emptyState = computed<{ icon: string; color: string; title: string; body: string; action?: { label: string; run: () => void } }>(() => {
-  if (searchText.value || followFilter.value !== 'all') {
+  if (searchText.value || followFilter.value !== 'all' || readinessFilter.value) {
     return {
       icon: 'search_off', color: 'grey-6', title: 'No leads match',
       body: 'Nothing in this tab fits your search or filter.',
-      action: { label: 'Clear search and filter', run: () => { search.value = ''; followFilter.value = 'all'; } },
+      action: { label: 'Clear search and filter', run: () => { search.value = ''; followFilter.value = 'all'; readinessFilter.value = null; } },
     };
   }
   if (totalLeads.value === 0) {
@@ -427,8 +485,6 @@ const emptyState = computed<{ icon: string; color: string; title: string; body: 
 
 // ── The open lead (desktop pane / phone sheet) ───────────────────────────
 
-const selectedId = ref<string | null>(null); // desktop
-const sheetId = ref<string | null>(null); // phone
 const editorRef = ref<InstanceType<typeof ReviewLeadEditor> | null>(null);
 
 const activeLead = computed<ContactListItem | null>(() => {
@@ -445,6 +501,7 @@ const position = computed(() => {
 });
 
 function setActive(id: string | null) {
+  if (pinnedId.value !== id) pinnedId.value = null;
   if (isDesktop.value) selectedId.value = id;
   else sheetId.value = id;
 }
@@ -471,6 +528,7 @@ async function openLead(id: string) {
 async function closeSheet() {
   if (!(await confirmDiscard())) return;
   sheetId.value = null;
+  pinnedId.value = null;
 }
 async function step(delta: number) {
   const idx = flatLeads.value.findIndex((c) => c.id === activeLead.value?.id);
@@ -496,7 +554,12 @@ async function thenAdvance(id: string, run: () => Promise<boolean>) {
 const onApprove = (p: { id: string; edits?: UpdateContactPayload | undefined; display?: DisplayPatch | undefined }) => thenAdvance(p.id, () => approve(p.id, p.edits, p.display));
 const onReject = (id: string) => thenAdvance(id, () => reject(id));
 const onRestore = (id: string) => thenAdvance(id, () => restore(id));
-const onUpdate = (p: { id: string; payload: UpdateContactPayload; display?: DisplayPatch | undefined }) => update(p.id, p.payload, p.display);
+// Pinned BEFORE the request: the edit changes the lead in place as soon as it
+// lands, and the list must already be holding it by then.
+const onUpdate = (p: { id: string; payload: UpdateContactPayload; display?: DisplayPatch | undefined; message?: string | undefined }) => {
+  pinnedId.value = p.id;
+  return update(p.id, p.payload, p.display, p.message);
+};
 
 // Row-level events, shared by every list on the page.
 const rowHandlers = {
@@ -603,8 +666,14 @@ function onKeydown(e: KeyboardEvent) {
 
 watch(tab, () => {
   sheetId.value = null;
+  pinnedId.value = null;
+  readinessFilter.value = null;
   deleteSel.clear();
+  // Switching tabs is a fresh look at the list, so it sorts again.
+  reorder();
 });
+watch(sortByTab, reorder, { deep: true });
+watch([readinessFilter, searchText, followFilter], () => { pinnedId.value = null; });
 watch([repFilter, syncedFilter], () => {
   serverFilters.repId = repFilter.value;
   serverFilters.synced = syncedFilter.value;
@@ -645,13 +714,13 @@ const anyProcessing = computed(() => buckets.needs_review.some(isProcessing));
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 function pollTick() {
   if (document.hidden || busy.size > 0) return;
-  void load();
+  void load({ keepOrder: true });
 }
 watch(anyProcessing, (on) => {
   if (on && pollTimer === null) pollTimer = setInterval(pollTick, POLL_MS);
   else if (!on && pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
 }, { immediate: true });
-function onVisible() { if (!document.hidden && anyProcessing.value && busy.size === 0) void load(); }
+function onVisible() { if (!document.hidden && anyProcessing.value && busy.size === 0) void load({ keepOrder: true }); }
 document.addEventListener('visibilitychange', onVisible);
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisible);
@@ -762,7 +831,10 @@ onBeforeUnmount(() => {
 .rs-link-btn :deep(.q-btn__content) { white-space: normal; text-align: left; }
 .rs-sec-actions { max-width: 100%; }
 .rs-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.rs-sum-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.1); font-size: 13px; color: #2F3A44; white-space: nowrap; }
+.rs-sum-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 12px; border-radius: 999px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.1); font: inherit; font-size: 13px; color: #2F3A44; white-space: nowrap; cursor: pointer; }
+.rs-sum-pill:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
+.rs-sum-pill.is-on { background: #E3F1FA; border-color: #0067AC; color: #0067AC; font-weight: 500; }
+.rs-sum-pill:disabled { opacity: 0.55; cursor: default; }
 .rs-sum-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .rs-dot-ready { background: #1E8E3E; }
 .rs-dot-info { background: #E07B00; }

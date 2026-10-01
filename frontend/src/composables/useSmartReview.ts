@@ -39,6 +39,11 @@ export function useSmartReview() {
   const serverFilters = reactive<{ repId: string | null; synced: string | null }>({ repId: null, synced: null });
 
   let loadSeq = 0;
+  // Bumped when a write starts and again when it ends. A background refresh
+  // that straddles either is a snapshot of the server from before the write
+  // landed; applying it would put the old values back under the rep (the
+  // editor's Save button reappearing as if nothing had saved).
+  let writes = 0;
 
   function isSales() {
     return sessionStore.effectiveRole === 'sales';
@@ -57,10 +62,14 @@ export function useSmartReview() {
     return data;
   }
 
-  async function load() {
+  // quiet: the page's own background refresh (processing poll, tab refocus).
+  // It yields to any write that overlaps it; the next tick fetches again.
+  async function load(opts: { quiet?: boolean } = {}) {
     // Two overlapping loads (a filter change during the first fetch) must not
     // let the older, slower response overwrite the newer one.
     const seq = ++loadSeq;
+    const writesAtStart = writes;
+    const writingAtStart = busy.size > 0;
     loading.value = true;
     try {
       const sales = isSales();
@@ -78,6 +87,7 @@ export function useSmartReview() {
       });
       const results = await Promise.all(jobs);
       if (seq !== loadSeq) return;
+      if (opts.quiet && (writes !== writesAtStart || writingAtStart || busy.size > 0)) return;
 
       const next: Record<ReviewStatus, ContactListItem[]> = { needs_review: [], approved: [], rejected: [] };
       const ids = new Set<string>();
@@ -116,6 +126,7 @@ export function useSmartReview() {
   async function guarded<T>(id: string, fn: () => Promise<T>): Promise<T | undefined> {
     if (busy.has(id)) return undefined;
     busy.add(id);
+    writes++;
     try {
       return await fn();
     } catch {
@@ -124,6 +135,7 @@ export function useSmartReview() {
       return undefined;
     } finally {
       busy.delete(id);
+      writes++;
     }
   }
 
@@ -172,7 +184,10 @@ export function useSmartReview() {
 
   // Heat and Followed-up save the instant they change; text fields wait for
   // Save. Both go through here.
-  async function update(id: string, payload: UpdateContactPayload, display?: DisplayPatch) {
+  // message: said once the save has landed. Heat and Followed-up change on
+  // screen as you tap, but "Save changes" used to just make its button vanish,
+  // which reads the same as the lead vanishing.
+  async function update(id: string, payload: UpdateContactPayload, display?: DisplayPatch, message?: string) {
     const contact = find(id);
     if (!contact) return false;
     const done = await guarded(id, async () => {
@@ -180,6 +195,7 @@ export function useSmartReview() {
       Object.assign(contact, payload, display);
       return true;
     });
+    if (done && message) Notify.create({ type: 'positive', message, timeout: 2500 });
     return Boolean(done);
   }
 
@@ -194,10 +210,11 @@ export function useSmartReview() {
   // contacts-bulk-approve answers 200 with { approved, skipped } even when it
   // skipped some — the response has to be read (Classic's Finding 11).
   async function bulkApprove(ids: string[]) {
+    writes++;
     const { data } = await api.post<{ approved: string[]; skipped: { id: string; reason: string }[] }>(
       '/contacts-bulk-approve',
       { ids },
-    );
+    ).finally(() => { writes++; });
     for (const id of data.approved) moveTo(id, 'approved');
     const skippedCount = data.skipped.length;
     const n = data.approved.length;
@@ -217,10 +234,11 @@ export function useSmartReview() {
   }
 
   async function bulkDelete(ids: string[]) {
+    writes++;
     const { data } = await api.post<{ deleted: string[]; skipped: { id: string; reason: string }[] }>(
       '/contacts-bulk-delete',
       { ids },
-    );
+    ).finally(() => { writes++; });
     const gone = new Set(data.deleted);
     buckets.rejected = buckets.rejected.filter((c) => !gone.has(c.id));
     if (data.skipped.length) {
