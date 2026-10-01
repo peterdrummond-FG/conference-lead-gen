@@ -233,7 +233,7 @@ const eventSlug = typeof route.query.eventSlug === 'string' ? route.query.eventS
 // (events-active/contacts-create), never anything this page decides itself.
 const repSlug = typeof route.query.repSlug === 'string' ? route.query.repSlug : undefined;
 
-// Admin "View as" on the Connect tab. It used to show the admin's own
+// Admin "View as" on the Kiosk tab. It used to show the admin's own
 // conference under the rep's name (eventStore.activeEvent is always the
 // caller's), which answered "what does this rep see?" wrongly. A QR link
 // (eventSlug / repSlug) names its own conference, so only the bare tab changes.
@@ -242,7 +242,7 @@ const formEventName = computed(() => (
   previewing.value ? sessionStore.preview?.currentEventName ?? null : eventStore.activeEvent?.name ?? null
 ));
 
-// A signed-in visitor on a bare /connect (the Connect tab) submits into their
+// A signed-in visitor on a bare /connect (the Kiosk tab) submits into their
 // OWN linked conference -- contacts-create resolves it from their token.
 // events-active still returns the most recently activated event for display
 // when they have none linked, so without this the form would name a

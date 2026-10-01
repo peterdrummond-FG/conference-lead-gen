@@ -2,8 +2,8 @@
 // account badge, sorting, search and past-event grouping. Kept free of Vue and
 // Quasar so it can be exercised directly (see reviewSmart.test.mjs).
 //
-// Deliberately NOT shared with ReviewContactCard.vue: the Classic view stays as
-// it was, and its own copies of these rules keep working untouched.
+// (There used to be a second, "Classic" Review view with its own copies of these
+// rules; it was retired, so this is the only place they live.)
 import type { ContactListItem } from '@/types/review';
 
 export type ReviewStatus = 'needs_review' | 'approved' | 'rejected';

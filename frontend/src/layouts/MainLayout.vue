@@ -5,7 +5,7 @@
         <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
         <q-tabs class="nav-pills" indicator-color="transparent" no-caps dense>
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
-          <q-route-tab to="/connect" label="Connect" />
+          <q-route-tab to="/connect" label="Kiosk" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
           <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" data-tour="nav-admin" />
@@ -30,11 +30,18 @@
         </q-btn-dropdown>
         <div v-else class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
 
-        <!-- Locks this physical device down to just the public Connect
+        <!-- Locks this physical device down to just the public Kiosk
              screen — for a shared kiosk iPad/laptop an attendee will be
              handed. Doesn't sign anyone out; see kiosk-mode-store.ts. -->
         <q-btn v-if="!isPhone" flat dense no-caps icon="lock" color="grey-7" label="Lock kiosk" aria-label="Lock kiosk" @click="onLockKiosk">
-          <q-tooltip>Lock this device to Connect only</q-tooltip>
+          <q-tooltip>Lock this device to the Kiosk only</q-tooltip>
+        </q-btn>
+
+        <!-- The rep's own QR on screen in one tap, so showing it to someone is not
+             a trip to Setup. Only for an account that has one (Sales); an admin
+             previewing a rep gets that rep's. -->
+        <q-btn v-if="qrRep" flat dense round icon="qr_code_2" color="grey-7" aria-label="Show my QR code" data-tour="qr-button" @click="showQr = true">
+          <q-tooltip>Show my QR code</q-tooltip>
         </q-btn>
 
         <!-- Replays the welcome tour. Never touches the saved "seen it" mark:
@@ -100,6 +107,8 @@
       color="grey-6"
       @click="showUnlockDialog = true"
     />
+
+    <RepQrDialog v-if="qrRep" v-model="showQr" :rep="qrRep" :event-name="qrEventName" />
 
     <q-dialog v-model="showUnlockDialog" @hide="unlockCode = ''; unlockError = ''">
       <q-card style="width: 320px">
@@ -167,7 +176,7 @@
     </q-dialog>
 
     <!-- The first-time welcome. Only for a signed-in person on an unlocked
-         device: attendees on the public Connect form, and a booth iPad locked
+         device: attendees on the public Kiosk form, and a booth iPad locked
          to it, must never see staff onboarding. -->
     <template v-if="sessionStore.user && !kioskModeStore.locked">
       <OnboardingSplash />
@@ -184,6 +193,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { useTourStore } from '@/stores/tour-store';
 import { tourStartAction } from '@/utils/onboardingTour';
+import RepQrDialog from '@/components/RepQrDialog.vue';
 import OnboardingSplash from '@/components/onboarding/OnboardingSplash.vue';
 import TourOverlay from '@/components/onboarding/TourOverlay.vue';
 import { api } from '@/boot/axios';
@@ -242,6 +252,17 @@ watch(previewBarEl, (el) => {
   previewBarObserver.observe(el);
 });
 onBeforeUnmount(() => previewBarObserver?.disconnect());
+
+// Whose QR the header button shows: the previewed rep's while an admin is
+// viewing as someone, otherwise the signed-in account's own.
+const showQr = ref(false);
+const qrRep = computed(() => {
+  const who = sessionStore.viewingAs ?? sessionStore.user;
+  return who?.repSlug ? { name: who.name, repSlug: who.repSlug } : null;
+});
+const qrEventName = computed(() => (
+  sessionStore.viewingAs ? (sessionStore.preview?.currentEventName ?? null) : (sessionStore.user?.currentEventName ?? null)
+));
 
 const showUnlockDialog = ref(false);
 const unlockCode = ref('');
