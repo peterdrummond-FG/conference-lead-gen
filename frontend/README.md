@@ -43,10 +43,10 @@ npm test            # node --test on src/utils/*.test.mjs (Review's Smart-view l
 | Route | Access |
 |---|---|
 | `/login` | public; the default landing page |
-| `/connect`, `/booth`, `/session` | **public** — the attendee form and its QR aliases |
+| `/connect`, `/booth`, `/session` | **public** — the attendee form and its QR aliases. Signed-in staff reach it from the **Kiosk** tab; only the label changed, the URL is printed on QR codes and must not |
 | `/privacy`, `/terms` | **public** — required by the Twilio A2P 10DLC campaign |
-| `/review` | any logged-in role; a `sales` rep sees only their own contacts. Two views, **Smart** (default) and **Classic**, switched from the ⋮ menu and remembered per browser |
-| `/notes` | any logged-in role; paste a typed note |
+| `/review` | any logged-in role; a `sales` rep sees only their own contacts: this event's, or (icon toggle) their past events folded by conference. Status filters (ready / incomplete / processing) and Import contacts sit on one row under the tabs |
+| `/notes` | any logged-in role; paste a typed note (Review's **Import** button) |
 | `/setup` | any logged-in role — a card per step, each turning into a green check: choose your conference, set up your phone (text-in), kiosk setup (PIN), then your QR code as a resource |
 | `/admin` | `admin` / `solutionsSuccess` only — activate/end conferences, manage the team and each rep's "Working at" conference |
 | `/export` | `admin` / `solutionsSuccess` only |
