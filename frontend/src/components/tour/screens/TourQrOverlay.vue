@@ -11,7 +11,12 @@
         <q-spinner v-if="!src" color="white" size="40px" />
         <img v-else :src="src" class="rq-img" alt="" />
       </div>
-      <div class="rq-foot" data-tt="qr-foot">Scans go to <strong>{{ TOUR_CONFERENCE }}</strong></div>
+      <!-- RepQrDialog's footer, both states. With no conference the scan is held for
+           Solutions Success to file instead of failing, and the footer says so. -->
+      <div class="rq-foot" :class="{ 'is-warn': noConference }" data-tt="qr-foot">
+        <template v-if="!noConference">Scans go to <strong>{{ TOUR_CONFERENCE }}</strong></template>
+        <template v-else>You're not at a conference, so scans wait for Solutions Success to file them.</template>
+      </div>
     </div>
   </div>
 </template>
@@ -22,7 +27,7 @@ import { useQuasar } from 'quasar';
 import { intakeUrlForRep, renderPhoneQrCode } from '@/utils/generateConnectSlide';
 import { TOUR_CONFERENCE } from '../tourSampleData';
 
-defineProps<{ open: boolean }>();
+defineProps<{ open: boolean; noConference?: boolean }>();
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 const src = ref<string | null>(null);
@@ -46,4 +51,5 @@ onBeforeUnmount(() => { if (src.value) URL.revokeObjectURL(src.value); });
 .rq-stage { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; padding: 8px; }
 .rq-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .rq-foot { flex: none; padding: 8px 16px 14px; text-align: center; font-size: 14px; }
+.rq-foot.is-warn { color: #FFD9A0; }
 </style>

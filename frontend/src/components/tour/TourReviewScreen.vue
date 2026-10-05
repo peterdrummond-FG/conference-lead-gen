@@ -38,6 +38,10 @@
           </div>
         </header>
 
+        <!-- Managers only, like the real page: scans nobody could place under a
+             conference wait here for Solutions Success. -->
+        <TourScansBanner v-if="manager && scansWaiting" :expanded="!!scansExpanded" @toggle="$emit('toggleScans')" />
+
         <div class="rs-split" :class="{ 'is-split': !isPhone }">
           <div class="rs-left">
             <section class="rs-section">
@@ -101,6 +105,7 @@ import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
+import TourScansBanner from './screens/TourScansBanner.vue';
 import { TOUR_CONFERENCE } from './tourSampleData';
 import { isReady } from '@/utils/reviewSmart';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
@@ -111,12 +116,15 @@ const props = defineProps<{
   activeId?: string | null;
   sheetOpen?: boolean;
   approvedBase?: number;
+  scansWaiting?: boolean;
+  scansExpanded?: boolean;
 }>();
 defineEmits<{
   open: [id: string];
   approve: [p: { id: string; edits?: UpdateContactPayload | undefined }];
   update: [p: { id: string; payload: UpdateContactPayload }];
   close: [];
+  toggleScans: [];
 }>();
 
 const $q = useQuasar();

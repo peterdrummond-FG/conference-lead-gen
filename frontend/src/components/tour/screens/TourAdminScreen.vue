@@ -26,7 +26,6 @@
                 <q-badge class="q-ml-xs" :color="e.live ? 'positive' : 'grey-6'" :label="e.live ? 'Live' : 'Ended'" />
               </q-item-label>
               <q-item-label caption>{{ e.state }} · started {{ e.started }}<template v-if="e.reps"> · {{ e.reps }} {{ e.reps === 1 ? 'rep' : 'reps' }}</template></q-item-label>
-              <div v-if="e.live"><q-btn flat dense no-caps color="primary" class="q-px-none admin-link" label="Show conference code" /></div>
             </q-item-section>
             <q-item-section v-if="e.live" side>
               <q-btn outline no-caps color="negative" label="End" class="admin-btn" :data-tt="e.first ? 'end' : undefined" />
@@ -42,7 +41,7 @@
             <q-btn color="primary" no-caps icon="add" label="Add person" class="admin-btn" data-tt="add-person" />
           </div>
           <div class="text-caption text-grey-8 q-mt-xs">
-            Sales accounts. A rep can only be at one conference at a time, and their QR code only works while they're at one.
+            Sales accounts. A rep can only be at one conference at a time. A scan for a rep who isn't at one waits in Review for you to file it.
           </div>
         </q-card-section>
         <q-list separator>
