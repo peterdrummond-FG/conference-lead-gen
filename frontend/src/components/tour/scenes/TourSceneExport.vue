@@ -4,7 +4,7 @@
        the same leads out of the next file. -->
   <TourAppShell :manager="manager" :active="page" :menu-open="menuOpen">
     <TourExportScreen v-if="page === 'export'" :phase="phase" />
-    <TourReviewScreen v-else :manager="manager" :leads="leads" />
+    <TourReviewScreen v-else :manager="manager" :leads="leads" :approved-base="8" />
   </TourAppShell>
 </template>
 

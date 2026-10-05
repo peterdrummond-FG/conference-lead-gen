@@ -23,6 +23,10 @@ export interface TourScene extends SceneCopy {
   managersOnly?: boolean;
   // Where a manager's version of the scene says something different.
   forManagers?: Partial<SceneCopy>;
+  // What the scene says instead when the account has no mobile number yet: SETUP
+  // can't link a phone to an account that doesn't have one, so texted leads would
+  // not be credited to anyone. (The real value comes from `me`'s hasPhone.)
+  noPhoneNote?: { rep: string; manager: string };
   component: Component;
 }
 
@@ -32,6 +36,10 @@ export const TOUR_SCENES: TourScene[] = [
     title: 'Text SETUP to start',
     body: "From your phone, text **SETUP** to **{number}**, then reply with your conference's name and pick it from the list.",
     note: "Already picked one in the app? We'll just confirm it. You can change it any time on **Setup**.",
+    noPhoneNote: {
+      rep: 'Your account needs your mobile number first. Ask your Solutions Success rep to add it.',
+      manager: 'Your account needs your mobile number first. Ask an admin to add it.',
+    },
     component: TourSceneSetup,
   },
   {
@@ -76,10 +84,11 @@ export const TOUR_SCENES: TourScene[] = [
   },
 ];
 
-export function scenesFor(manager: boolean): TourScene[] {
+export function scenesFor(manager: boolean, hasPhone = true): TourScene[] {
   return TOUR_SCENES
     .filter((s) => manager || !s.managersOnly)
-    .map((s) => (manager && s.forManagers ? { ...s, ...s.forManagers } : s));
+    .map((s) => (manager && s.forManagers ? { ...s, ...s.forManagers } : s))
+    .map((s) => (!hasPhone && s.noPhoneNote ? { ...s, note: manager ? s.noPhoneNote.manager : s.noPhoneNote.rep } : s));
 }
 
 // Copy markup to HTML: escaped first, then **bold** and {number}.
@@ -101,13 +110,15 @@ export const ONBOARDING_COPY = {
     fine: 'You can watch the tour any time from the ? at the top of the app.',
   },
   quickText: {
-    title: 'Text us your leads',
-    body: 'Snap a business card, conference ID or contact list, or send a voice memo. We turn it into a lead.',
+    title: 'Then text us your leads',
+    // Honest about the order: a first text from a phone that isn't linked yet
+    // gets "Text SETUP to link it", so linking comes first (next screen).
+    body: 'Once your phone is linked, snap a business card, conference ID or contact list, or send a voice memo. We turn it into a lead.',
     note: 'Typing it yourself? One person per text.',
   },
   quickLink: {
     title: 'Link your phone',
-    body: 'Text **SETUP** and follow the prompts. We reply with the conference you are linked to.',
+    body: "Text **SETUP**, then reply with your conference's name and pick it from the list.",
     noPhoneBody: 'Texting your leads in needs your mobile number on your account.',
     footer: 'Want the full picture? Tap **?** at the top any time for the 1-minute tour.',
   },
@@ -116,6 +127,14 @@ export const ONBOARDING_COPY = {
     body: 'Start by texting **SETUP** from your phone. It takes about a minute.',
     go: 'Go to Setup',
     again: 'Watch again',
+    // Someone who already texted SETUP (the quick start), or who replays the tour
+    // later, is linked already: telling them to start by texting SETUP would be
+    // wrong. The real value comes from `me`'s sms status (phoneConnected).
+    connected: {
+      title: "You're all set",
+      body: "Your phone is linked, so text your leads in whenever you're ready.",
+      go: 'Go to Review',
+    },
   },
   skipped: 'No problem. Tap ? at the top any time to watch the tour.',
   reminder: {

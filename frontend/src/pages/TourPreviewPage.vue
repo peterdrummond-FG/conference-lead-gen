@@ -13,6 +13,7 @@
         class="tpp-start" label="Start at"
       />
       <q-toggle v-model="hasPhone" dense size="sm" label="Phone on account" class="tpp-toggle" />
+      <q-toggle v-model="phoneConnected" dense size="sm" label="Phone linked (SETUP done)" class="tpp-toggle" />
     </div>
     <div class="tpp-stage">
       <!-- Stands in for the app behind the welcome. -->
@@ -28,12 +29,12 @@
 
       <OnboardingFlow
         v-if="!ended && !reminder && !startScene"
-        :key="flowKey" :manager="manager" :has-phone="hasPhone" :start="startPhase"
+        :key="flowKey" :manager="manager" :has-phone="hasPhone" :phone-connected="phoneConnected" :start="startPhase"
         @close="onClose"
       />
       <TourPlayer
         v-else-if="!ended && !reminder && startScene"
-        :key="flowKey" :manager="manager" :start="startScene - 1"
+        :key="flowKey" :manager="manager" :has-phone="hasPhone" :start="startScene - 1"
         @skip="onClose('skipped')" @done="onClose('finished')"
       />
       <TourReminder v-if="reminder" @watch="reminder = false; ended = null; start = 'tour'; flowKey++" @later="reminder = false" />
@@ -52,6 +53,7 @@ import { scenesFor, ONBOARDING_COPY, type OnboardingEnd } from '@/components/tou
 const role = ref<'rep' | 'manager'>('rep');
 const manager = computed(() => role.value === 'manager');
 const hasPhone = ref(true);
+const phoneConnected = ref(false);
 const start = ref<string>('splash');
 const flowKey = ref(0);
 const ended = ref<OnboardingEnd | null>(null);
@@ -67,7 +69,7 @@ const startOptions = computed(() => [
 const startScene = computed(() => (start.value.startsWith('scene') ? Number(start.value.slice(5)) : 0));
 const startPhase = computed(() => (start.value === 'tour' || startScene.value ? 'tour' : (start.value as 'splash' | 'quick1' | 'quick2' | 'finish')));
 
-watch([role, start, hasPhone], () => restart());
+watch([role, start, hasPhone, phoneConnected], () => restart());
 
 function restart() {
   ended.value = null;
@@ -79,7 +81,9 @@ const endText = computed(() => ({
   quick: 'Closed the quick start. The app opens on Setup; the reminder comes next time.',
   'quick-texted': 'Tapped Text the code SETUP. Messages opens, and the app goes to Setup; the reminder comes next time.',
   skipped: 'Skipped the tour. The app carries on where it was; the reminder comes next time.',
-  finished: 'Finished the tour. The app goes to Setup. No reminder.',
+  finished: phoneConnected.value
+    ? 'Finished the tour. The phone is already linked, so the app goes to Review. No reminder.'
+    : 'Finished the tour. The app goes to Setup. No reminder.',
 })[ended.value ?? 'finished']);
 
 function onClose(end: OnboardingEnd) {

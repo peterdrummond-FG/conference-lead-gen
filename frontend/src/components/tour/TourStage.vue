@@ -40,17 +40,23 @@ const sceneRef = ref<{ run: (t: TourRun) => Promise<void>; reset: () => void } |
 // between phone and laptop) bumps the token, and the old script stops at its
 // next await (TourCancelled) instead of driving a screen that has gone.
 let token = 0;
+// Development only: /tour-preview?fast plays every script with its waits cut to
+// ~10 ms, and each completed run adds one to <html data-tour-cycles>. A script
+// that can't find what it points at logs an error and stops instead, so
+// "cycles went up and the console is clean" means the scene played to the end.
+const FAST = import.meta.env.DEV && new URLSearchParams(window.location.search).has('fast');
 async function play() {
   const mine = ++token;
   await nextTick();
   const alive = () => mine === token && !!device.value && !!sceneRef.value;
   while (alive()) {
-    const run = createRun(device.value!, { paused: () => paused.value, alive });
+    const run = createRun(device.value!, { paused: () => paused.value, alive, fast: FAST });
     try {
       sceneRef.value!.reset();
       run.hideFinger();
       await nextTick();
       await sceneRef.value!.run(run);
+      if (FAST) document.documentElement.dataset.tourCycles = String(Number(document.documentElement.dataset.tourCycles ?? 0) + 1);
       await run.wait(2500);
     } catch (e) {
       if (e instanceof TourCancelled) return;

@@ -26,10 +26,10 @@ import OnboardingFrame from './OnboardingFrame.vue';
 import TourStage from './TourStage.vue';
 import { scenesFor } from './tourFlow';
 
-const props = defineProps<{ manager: boolean; start?: number }>();
+const props = defineProps<{ manager: boolean; start?: number; hasPhone?: boolean }>();
 const emit = defineEmits<{ skip: []; done: [] }>();
 
-const scenes = computed(() => scenesFor(props.manager));
+const scenes = computed(() => scenesFor(props.manager, props.hasPhone ?? true));
 const index = ref(props.start ?? 0);
 const scene = computed(() => scenes.value[Math.min(index.value, scenes.value.length - 1)]!);
 

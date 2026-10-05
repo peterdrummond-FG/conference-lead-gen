@@ -63,28 +63,14 @@ export const SAMPLE_CARD = {
   phone: '(936) 555-0187',
 };
 
-// The attendee who scans the rep's QR code, and the lead it makes.
+// The attendee who scans the rep's QR code. Their lead is TOUR_PEOPLE.grace below.
 export const SAMPLE_LEAD_FORM = {
   firstName: 'Grace',
   lastName: 'Kim',
   email: 'gkim@cedarisd.org',
   title: 'Dean of Students',
-  get lead(): ContactListItem {
-    return lead({
-      id: 'tour-grace',
-      firstName: 'Grace',
-      lastName: 'Kim',
-      title: 'Dean of Students',
-      email: 'gkim@cedarisd.org',
-      phone: null,
-      schoolDistrictId: 'tour-cedar',
-      districtName: 'Cedar ISD',
-      matchStatus: 'new_account',
-      source: 'form',
-      qrChannel: null,
-      createdAt: '2026-01-01T15:20:00Z',
-    });
-  },
+  state: 'Texas',
+  district: 'Cedar ISD',
 };
 
 // What the real page would get back from the server after a save, applied to
@@ -102,53 +88,81 @@ export function patchLead(
   });
 }
 
-// Review's "To review" list for the Check it, then approve it scene. Maria is
-// the one the finger works on: she arrives missing a phone and email, so she
-// shows the real "Needs a phone or email" chip, and adding her email is what
-// turns her Ready. The other two are already Ready, so the list looks like a
-// real morning after a conference.
+// The people one first-time rep sends over the whole tour, in the order they
+// send them, so the tour reads as one story and every scene agrees:
+//   Dana   a card photo (and the voice memo right after it)
+//   Sam    one person typed out in a text
+//   Priya, Tom, Ana   the pasted note (Priya has no phone or email in the note,
+//          so she is the real "Needs a phone or email" lead the Check it scene fixes)
+//   Grace  the attendee who scanned the QR code
+// A brand-new rep has nothing else: Approved and Rejected start at 0.
+export type TourPerson = 'dana' | 'sam' | 'priya' | 'tom' | 'ana' | 'grace';
+
+// How the lead looks once the Zoho match has finished.
+const MATCHED: Record<TourPerson, ContactListItem> = {
+  dana: lead({
+    id: 'tour-dana', firstName: 'Dana', lastName: 'Whitfield', title: 'Principal',
+    email: 'dwhitfield@oakridgeisd.org', phone: '(936) 555-0187',
+    schoolDistrictId: 'tour-oak-ridge', districtName: 'Oak Ridge ISD', schoolId: 'tour-oak-ridge-ms', schoolName: 'Oak Ridge Middle School',
+    matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Oak Ridge ISD', matchedZohoAccountLevel: 'district',
+    source: 'card_photo', interactionNotes: 'Wants to bring her leadership team to the fall workshop.',
+    createdAt: '2026-01-01T14:00:00Z',
+  }),
+  sam: lead({
+    id: 'tour-sam', firstName: 'Sam', lastName: 'Ortiz', title: 'Assistant Principal',
+    email: 'sortiz@lakeviewisd.org', phone: null,
+    schoolDistrictId: 'tour-lakeview', districtName: 'Lakeview ISD', schoolId: 'tour-lakeview-hs', schoolName: 'Lakeview High School',
+    matchStatus: 'existing_contact', matchedZohoContactName: 'Sam Ortiz', matchedZohoAccountName: 'Lakeview High School', matchedZohoAccountLevel: 'school',
+    source: 'note', createdAt: '2026-01-01T14:06:00Z',
+  }),
+  priya: lead({
+    id: 'tour-priya', firstName: 'Priya', lastName: 'Shah', title: 'Superintendent', email: null, phone: null,
+    schoolDistrictId: 'tour-cedar', districtName: 'Cedar ISD',
+    matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Cedar ISD', matchedZohoAccountLevel: 'district',
+    source: 'note', interactionNotes: 'Wants a call about spring PD.', createdAt: '2026-01-01T14:21:00Z',
+  }),
+  tom: lead({
+    id: 'tour-tom', firstName: 'Tom', lastName: 'Reyes', title: 'Counselor', email: 'tom.reyes@pvisd.org', phone: null,
+    schoolDistrictId: 'tour-pine-valley', districtName: 'Pine Valley ISD', schoolId: 'tour-pine-valley-hs', schoolName: 'Pine Valley High School',
+    matchStatus: 'new_account', source: 'note', createdAt: '2026-01-01T14:21:20Z',
+  }),
+  ana: lead({
+    id: 'tour-ana', firstName: 'Ana', lastName: 'Cruz', title: 'Assistant Principal', email: null, phone: null,
+    schoolDistrictId: 'tour-westlake', districtName: 'Westlake ISD', schoolId: 'tour-westlake-ms', schoolName: 'Westlake Middle School',
+    matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Westlake ISD', matchedZohoAccountLevel: 'district',
+    source: 'note', interactionNotes: 'Met at the keynote.', createdAt: '2026-01-01T14:21:40Z',
+  }),
+  grace: lead({
+    id: 'tour-grace', firstName: 'Grace', lastName: 'Kim', title: 'Dean of Students', email: 'gkim@cedarisd.org', phone: null,
+    schoolDistrictId: 'tour-cedar', districtName: 'Cedar ISD',
+    matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Cedar ISD', matchedZohoAccountLevel: 'district',
+    source: 'form', qrChannel: null, createdAt: '2026-01-01T15:20:00Z',
+  }),
+};
+
+const NEWEST_FIRST: TourPerson[] = ['grace', 'ana', 'tom', 'priya', 'sam', 'dana'];
+
+// A lead that has just arrived: matching takes minutes, so for a while it is
+// the real "Checking match…" chip and counts under "processing", not Ready. The
+// "already checked against Zoho" part belongs to the Review scene, after matching.
+function processing(l: ContactListItem): ContactListItem {
+  return {
+    ...l,
+    matchStatus: 'pending',
+    matchAttempts: 0,
+    matchedZohoAccountName: null,
+    matchedZohoAccountLevel: null,
+    matchedZohoContactName: null,
+  };
+}
+
+// Review's "To review" list for a scene: the people who exist at that point in
+// the story, newest first. `processing` are the ones whose match hasn't finished.
+export function tourLeads(who: TourPerson[], opts: { processing?: TourPerson[] } = {}): ContactListItem[] {
+  return NEWEST_FIRST.filter((k) => who.includes(k)).map((k) => (opts.processing?.includes(k) ? processing(MATCHED[k]) : MATCHED[k]));
+}
+
+// Everyone, matched: the Review and manager scenes, a while after the leads came in.
 export function reviewLeads(): ContactListItem[] {
-  return [
-    lead({
-      id: 'tour-maria',
-      firstName: 'Maria',
-      lastName: 'Lopez',
-      title: 'Curriculum Director',
-      email: null,
-      phone: null,
-      state: 'Texas',
-      schoolDistrictId: 'tour-elm-grove',
-      districtName: 'Elm Grove ISD',
-      matchStatus: 'new_contact_existing_account',
-      matchedZohoAccountName: 'Elm Grove ISD',
-      matchedZohoAccountLevel: 'district',
-      source: 'card_photo',
-      createdAt: '2026-01-01T15:10:00Z',
-    }),
-    lead({
-      id: 'tour-sam',
-      firstName: 'Sam',
-      lastName: 'Ortiz',
-      title: 'Assistant Principal',
-      email: 'sortiz@lakeviewisd.org',
-      phone: '(512) 555-0142',
-      state: 'Texas',
-      schoolDistrictId: 'tour-lakeview',
-      districtName: 'Lakeview ISD',
-      schoolId: 'tour-lakeview-hs',
-      schoolName: 'Lakeview High School',
-      matchStatus: 'existing_contact',
-      matchedZohoContactName: 'Sam Ortiz',
-      matchedZohoAccountName: 'Lakeview High School',
-      matchedZohoAccountLevel: 'school',
-      source: 'voice_memo',
-      createdAt: '2026-01-01T14:55:00Z',
-    }),
-    lead({
-      id: 'tour-jordan',
-      source: 'form',
-      qrChannel: 'booth',
-      createdAt: '2026-01-01T14:40:00Z',
-    }),
-  ];
+  return tourLeads(['dana', 'sam', 'priya', 'tom', 'ana', 'grace']);
 }
