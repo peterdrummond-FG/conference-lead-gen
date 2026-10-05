@@ -400,14 +400,17 @@ it: read its position every frame rather than once, and don't show the card
 until it has stopped moving. And only point at things a *brand-new* account
 sees; anything that depends on app state gets a self-contained picture instead,
 so it can't depend on the page behind it. Test the first-run state, not your
-own. The tests hold this: `onboardingTour.test.mjs` keeps a short allow-list of
-spotlight targets, and checks the pictures against the real form and the real
-text-message reply.
+own. (The first tour pointed at live UI and followed it. Its replacement went the
+other way and renders the app's own components with sample data, so there is
+nothing to follow; the first-run state is still the one to test, and
+`onboardingCopy.test.mjs` checks the words against the real form and the real
+text-message replies.)
 
 A related trap from the same work: state that outlives the person it belongs to.
 A 401 signs someone out but left their half-finished tour in memory, so the next
 person to sign in on that tab resumed it, in the previous person's role. When a
-thing is tied to a user, tie its lifetime to that user (`tourStartAction`).
+thing is tied to a user, tie its lifetime to that user (`flowStartAction` and the
+per-person refresh-resume in `tour-store`).
 
 ---
 

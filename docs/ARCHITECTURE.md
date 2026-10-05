@@ -261,72 +261,92 @@ previewing lands on the admin's account**, never the previewed person's.
 - A purple "Viewing as …" bar sits under the header on every page. On a phone
   the switcher is an unlabelled icon, so nothing else says whose view it is.
 
-### Welcome tour
+### Onboarding (splash, quick start, animated tour, reminder)
 
-A new staff account sees a three-screen welcome, then a walkthrough whose
-chapters are the stops that welcome lists: Set up your event and phone,
-Collect leads however you like, Edit, approve and follow up, and, for admin and
-Solutions Success, Export to Zoho (plus a step for Admin).
-The wording, step list and per-role filtering are plain
-data in `frontend/src/utils/onboardingTour.ts`; `stores/tour-store.ts` tracks
-where someone is, and `components/onboarding/` draws it. Things to preserve:
+A signed-in staff account that hasn't seen it gets a splash with two choices:
+**Just get me texting** (two screens ending at the SETUP text) or **Show me how it
+works** (an animated tour of 4 scenes, or 6 for admin and Solutions Success). The
+tour plays the app's own components with sample data and a scripted finger; nothing in
+it is clickable and nothing is sent anywhere. Where things live:
 
-- **A step is a spotlight or an illustration, and the difference is
-  reliability.** A `spotlight` step points at a real element that is always on
-  its page for a brand-new account (a nav tab, a header button, a Setup card). An
-  `illustrated` step draws its own picture (`components/onboarding/mocks/`), so it
-  can't depend on the page behind it or on any data. The first version broke
-  both ways: the Connect step pointed at the attendee form, which only renders
-  once a conference is joined (a new user saw "Join a conference first" inside
-  the highlight), and the sample lead was injected into Review's list, which
-  pushed the list down and left the highlight behind. Anything that needs a
-  mock-up is illustrated; the test keeps an explicit short list of allowed
-  spotlight targets.
-- **The highlight follows its target every frame.** `useTourTarget` reads the
-  element's position on each animation frame (and every 50 ms as a fallback, for
-  browsers that throttle frames), waits for fonts and for the element to hold
-  still before showing the card, and clamps the window to the screen. Measuring
-  once was the bug: the header's icon buttons change width when the icon font
-  loads, so the highlight sat a button to the left of what it described.
-- **"Seen it" is the account's, not the device's.** `profiles.onboarded_at`,
-  returned by `me` as `onboarded` and written by `profiles-complete-onboarding`
-  (own row only, idempotent). The migration backfilled every account that
-  existed, so only accounts created afterwards start it. The tour starts only on
-  an explicit `onboarded === false`, and `me` answers `true` if its lookup
-  errors: a hiccup must never show it to someone who finished.
-- **The sample lead is a picture, never data.** `SAMPLE_LEAD` is drawn inside the
-  illustrated card and is on no Review page, list, count, filter or bulk
-  selection, because "Approve all N" acts on lead ids and this one doesn't
-  exist. A test checks it really is Ready under `reviewSmart.isReady`.
-- **The pictures quote the real thing, and tests hold them to it.** The form
-  mock's labels must appear in `IntakePage.vue`; the text-message reply must
-  appear in `twilio-webhook`; the number comes from `utils/smsNumber.ts`, which
-  Setup uses too.
-- **Say what the app does, not what it sounds like.** Export *downloads a file*
-  that someone imports into Zoho; nothing is sent to Zoho, and the old copy said
-  "sends them on to Zoho". Only Sales accounts have a QR, so the QR step is two
-  steps sharing one id (`qr`): a rep's own card, and the Rep QR slides card for
-  managers. "Ready to approve" is explained by the four checks Review's open lead
-  shows (`readinessChecklist`), and a test holds the callout to them.
-- **The tour never offers its own "text now" button.** Texting SETUP is consent,
-  and the opt-in disclosure lives once, on Setup, directly under the real button.
-  The "Try it now" step spotlights that real button and disclosure instead. A
-  test fails if the disclosure wording or an `sms:` link appears in the tour.
-- **A missing target is a plain card, not a stuck tour.** If a spotlight target
-  never appears, the card is
-  centred and says so.
+| Piece | File |
+|---|---|
+| The rules (when the splash shows, what's recorded, the reminder, what the remainder plays) | `frontend/src/utils/onboardingFlow.ts` (pure, tested) |
+| The words | `components/tour/tourCopy.ts` (scenes, splash, quick start, "Your turn") and `tourText.ts` (what our number texts back) |
+| Wiring words to scene components | `components/tour/tourFlow.ts` (`playlist`) |
+| The screens | `components/tour/OnboardingFlow.vue` (splash, quick start, tour, "Your turn"), `TourPlayer.vue`, `TourReminder.vue` |
+| Connecting it to the account and router | `components/tour/OnboardingHost.vue`, `stores/tour-store.ts` (per-tab progress), `stores/session-store.ts` (`recordOnboarding`) |
+| What the account remembers | `profiles.onboarding_*` / `tour_resume_from` (migration `20261006120000_onboarding_v2.sql`), read by `me`, written by `profiles-complete-onboarding` |
+| A review page | `/tour-preview` (development builds only): any role, `?role=admin\|solutionsSuccess`, `?phone=0`, `?linked=1`, and `?fast` |
+
+Things to preserve:
+
+- **The tour draws the app's own components, not copies.** Each page's markup was split
+  into a presentational part that both the page and the tour render: `AppHeader` and
+  `AppMenu` (MainLayout), `ReviewHeader`, `NotesBody`, `ExportCard`,
+  `AdminConferencesCard` / `AdminTeamCard`, `IntakeFormFields` (with the fold-up),
+  `RepQrContent` and `UnassignedScansList`. The page keeps its data, requests and
+  dialogs; the tour passes sample data and no handlers. The app's components carry no
+  tour hooks (scripts find things by their own labels), and a test fails if a tour
+  screen stops rendering the same component as its page. What the tour still draws
+  itself: the phone's texting app (it isn't ours), Review's list/pane layout around the
+  real header and rows, and the intake page's title.
+- **"Seen it" is the account's, not the device's, and each way in records differently.**
+  `me` returns `onboarding { seen, path, endedAt, resumeFrom, reminderShown }`.
+  The first onboarding is `mode = first`: choosing on the splash stamps `seen` (closing
+  the tab on the splash shows it again); closing the quick start records
+  `path=quick, resumeFrom=send-import` (the texting half and Text SETUP count as seen);
+  skipping the tour at scene *k* records `path=tour, resumeFrom=k`; reaching the end
+  records `complete`. The **reminder** (`mode = remainder`) is shown once, on app open,
+  an hour or more after they left, only if something was left, and plays just the rest;
+  either of its buttons spends it, and a skip inside it records nothing. The **? button**
+  (`mode = replay`) always plays the whole tour, records only `complete` at the end, and
+  never touches `seen`, so it can't re-open the splash or move a resume point back. Every
+  account that existed when this shipped has `seen = false`: each sees the new splash
+  once, as asked. `me` answers `seen = true` with nothing to resume if its lookup errors:
+  a hiccup must never re-show it. `profiles-complete-onboarding` validates every value
+  (`resumeFrom` must be a known scene id) and writes the caller's own row only.
+- **The rules are pure and tested** (`onboardingFlow.test.mjs`): the splash conditions,
+  the resume points for a skip at each scene, the one-hour gate and one-time use, the
+  quick-start remainder (`send-import` is the Import half of "Send us leads", then QR,
+  Review, Export and Admin for managers), and the reminder's words generated from what is
+  actually left ("See the rest: …. About 40 seconds.").
+- **Never for attendees or a locked kiosk, and never outlives its user.** The host only
+  mounts for a signed-in user on an unlocked device and never starts while an admin is
+  previewing someone ("View as"). `flowStartAction` decides splash / reminder / reset /
+  leave-alone; "no user" resets, because a 401 signs the person out (`boot/axios.ts`)
+  without going through Log out. Refresh-resume lives in sessionStorage and is tied to
+  the person who started it, so a different account on that tab never resumes it.
+- **It tells a first-time rep what is actually true.** A new rep isn't linked yet, so the
+  tour shows the real from-scratch conversation (SETUP, "What's the name of the
+  conference?", a partial name, the list, a number, "You're linked to…"), quoted from
+  `twilio-webhook`. Their leads arrive in the real **processing** state (`Checking
+  match…`), Approved and Rejected start at 0, and the people are one story across scenes
+  (`tourSampleData.ts`). With no mobile number on the account (`me.hasPhone`), scene 1's
+  note says who can add it, by role; once the phone is linked (`me.phoneConnected`),
+  "Your turn" says "You're all set" and goes to Review instead of Setup.
+- **The pictures quote the real thing, and tests hold them to it** (`onboardingCopy.test.mjs`):
+  every reply our number sends is checked against `twilio-webhook`'s source; the form is
+  `IntakeFormFields`; the number comes from `utils/smsNumber.ts`; the scene ids match the
+  rules and the Edge Function's allow-list; none of the sample leads' ids look real, a
+  fresh lead is processing and never Ready, and no tour file talks to the server (apart
+  from the host that records the outcome).
+- **The tour never offers its own "text now" button.** Texting SETUP is consent. The quick
+  start's SETUP action and Setup's phone card are the same component (`TextSetupAction`),
+  so the opt-in disclosure lives in one place directly under the action; on a laptop it
+  offers a QR code that opens a text with SETUP filled in.
+- **Say what the app does, not what it sounds like.** Export *downloads a file* that
+  someone imports into Zoho; nothing is sent to Zoho. Only Sales accounts have a QR, and a
+  scan from a rep with no conference waits in Review for Solutions Success to file
+  (see "Scans that need a conference"), so the tour says so.
 - **The wording is for a rep at a booth.** A test fails if technical vocabulary
-  (`BANNED_WORDS`) appears in anything the tour shows.
-- **Never for attendees or a locked kiosk, and never outlives its user.** The
-  splash and overlay only mount for a signed-in user on an unlocked device, and
-  never start while an admin is previewing someone else ("View as").
-  `tourStartAction` (in `onboardingTour.ts`, tested) decides start / reset /
-  leave-alone; "no user" resets, because a 401 signs the person out
-  (`boot/axios.ts`) without going through Log out, and their tour would
-  otherwise be resumed by whoever signs in next on that tab.
-- **The copy makes promises about Setup and Review.** If Smart's Ready rule,
-  Setup's flow or the text-in replies change, update `onboardingTour.ts` in the
-  same change.
+  (`BANNED_WORDS`) appears in anything the tour shows, including the generated reminder.
+- **Playing every scene is checkable headlessly.** `/tour-preview?fast` plays each script
+  with its waits cut and counts completed runs in `<html data-tour-cycles>`; a scene that
+  can't find what it points at logs an error and stops. "Cycles went up and the console is
+  clean" for every scene, per role and width, is the check run before shipping.
+- **The copy makes promises about Setup and Review.** If Smart's Ready rule, Setup's flow,
+  the text-in replies or the intake form change, update the tour's copy in the same change.
 
 ### Kiosk (the attendee form, `/connect`)
 
@@ -340,7 +360,7 @@ attendee fills in on their own phone or at a booth device. Two rules:
   is signed in on the device and the kiosk isn't locked, and `autocomplete="off"`
   otherwise — a shared booth device's browser would otherwise offer its owner's
   saved name, email and phone to every attendee who taps a field.
-- **Everything is open from the start; the first block folds once it's done.** The
+- **Everything is open from the start; the first block folds once it's done.** (The fields are `IntakeFormFields`, which the onboarding tour renders too.) The
   name / email / phone block collapses to a one-line summary (name plus contact,
   with Edit) when the attendee moves into a field *outside* it and has a name plus
   a valid-looking email or a phone. It folds on focus **entering** another field,
