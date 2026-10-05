@@ -42,6 +42,14 @@ import { pathToFileURL } from 'node:url';
 const MODEL = 'Anthropic account 2';
 const SUPABASE = 'Supabase account';
 const DB_WEBHOOK_SECRET = 'Supabase DB Webhook Secret';
+// Transcription only (pipeline-voice-transcription's Call OpenAI Transcription
+// node). The rule above says pipelines never hold the model credential because
+// a model's output must not drive a pipeline's writes unvalidated. That still
+// holds here: the transcript is stored as text and then goes through
+// skill-attribute-voice-memo, whose schema-validated output is what decides
+// anything. This credential can't read or write our data. Keep it off every
+// other workflow.
+const TRANSCRIPTION = 'OpenAI account 2';
 const ALERT_SMTP = 'Alert SMTP';
 
 export const WORKFLOW_CREDENTIAL_POLICY = {
@@ -54,7 +62,7 @@ export const WORKFLOW_CREDENTIAL_POLICY = {
   'skill-process-cards': [MODEL],
 
   'pipeline-note-extraction': [SUPABASE, DB_WEBHOOK_SECRET],
-  'pipeline-voice-transcription': [SUPABASE, DB_WEBHOOK_SECRET],
+  'pipeline-voice-transcription': [SUPABASE, DB_WEBHOOK_SECRET, TRANSCRIPTION],
   'pipeline-process-cards-sms': [SUPABASE, DB_WEBHOOK_SECRET],
   'pipeline-match-contact': [SUPABASE, DB_WEBHOOK_SECRET],
 
