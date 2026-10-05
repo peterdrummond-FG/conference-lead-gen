@@ -1,33 +1,39 @@
 // Runs on the 1-minute pg_cron schedule "session-notifications-dispatch"
-// (see the session_reminders_and_confirmations migration). Two independent
-// sweeps, both sending an SMS Twilio never asked for — unlike
-// twilio-webhook, which only ever replies via TwiML to an inbound request,
-// this calls the Messages REST API directly:
+// (see the session_reminders_and_confirmations migration). Sends an SMS
+// Twilio never asked for — unlike twilio-webhook, which only ever replies
+// via TwiML to an inbound request, this calls the Messages REST API
+// directly — so it is the one place A2P 10DLC's rules on unsolicited
+// outbound texts bite. Keep what it sends short, true and few.
 //
-// 1. Expiry reminder — a phone bound to an event that's gone 60 minutes
-//    without any inbound Twilio request gets one nudge to re-send the
-//    event's folder code. This is a courtesy nudge, not a hard lock: the
-//    binding itself is never cleared, and photos keep working right
-//    through and after the reminder. twilio-webhook keeps
-//    last_activity_at/expiry_notified_at current on every inbound request
-//    from a bound phone.
+// Contact-received confirmation: once a rep's batch of card photos/voice
+// memos has gone quiet for 2 minutes AND finished OCR/transcription (or has
+// been pending long enough that we stop waiting on it), text back how many
+// contacts were actually created from that batch.
 //
-// 2. Contact-received confirmation — once a rep's batch of card
-//    photos/voice memos has gone quiet for 2 minutes AND finished
-//    OCR/transcription (or has been pending long enough that we stop
-//    waiting on it), text back how many contacts were actually created
-//    from that batch.
+// There used to be a second sweep, retired 2026-10-05: an "expiry reminder"
+// texted to any bound phone idle for 60 minutes —
+//   "Your session is about to pause. Text in more contacts now or respond
+//    <folder code> to reactivate your session."
+// It was untrue on both counts. Nothing pauses (the binding is never
+// cleared; photos work right through and after the reminder), and no code
+// is needed (twilio-webhook's SETUP flow links a phone without one, and
+// binds a rep already linked in the app instantly). It also contradicted
+// the onboarding, which tells reps to just text SETUP, and an hour's quiet
+// mid-conference (lunch, a session) is normal, not a sign the rep moved
+// conferences. One fewer unprompted text is also one fewer 10DLC risk.
+// phone_event_bindings.expiry_notified_at is left in place, unused
+// (migrations are append-only; see supabase/migrations/README.md).
 //
-// Both sweeps skip any binding idle past PAUSE_IDLE_MS (120 min) —
+// The sweep skips any binding idle past PAUSE_IDLE_MS (120 min) —
 // otherwise a send that keeps failing (bad number, Twilio outage) would
-// retry every single cron tick forever, since neither watermark
-// (expiry_notified_at / contacts_confirmed_through) advances on failure.
-// Nothing legitimate is lost by this: a stuck-pending confirmation batch
-// already force-flushes after PENDING_TIMEOUT_MS (10 min), so anything
-// truly owed would have gone out well before 120 minutes of pure
-// inactivity. The pause needs no separate state or wake-up logic —
-// twilio-webhook already refreshes last_activity_at on every inbound
-// request, so the very next cron tick after new activity picks it back up.
+// retry every single cron tick forever, since the watermark
+// (contacts_confirmed_through) doesn't advance on failure. Nothing
+// legitimate is lost by this: a stuck-pending batch already force-flushes
+// after PENDING_TIMEOUT_MS (10 min), so anything truly owed would have gone
+// out well before 120 minutes of pure inactivity. "Pause" here is internal
+// to this sweep, not something the rep sees: twilio-webhook refreshes
+// last_activity_at on every inbound request, so the very next cron tick
+// after new activity picks it back up.
 //
 // Deployed with verify_jwt: false since pg_cron/pg_net carries no Supabase
 // JWT; verify_cron_secret (defined in the same migration) checks a
@@ -36,7 +42,6 @@
 // var this tool has no way to set.
 import { serviceClient } from "../_shared/supabase-client.ts";
 
-const EXPIRY_IDLE_MS = 60 * 60 * 1000;
 const CONFIRMATION_IDLE_MS = 2 * 60 * 1000;
 // A stuck OCR/transcription job shouldn't hold a confirmation hostage
 // forever — flush the batch anyway once a pending item is this old.
@@ -101,64 +106,7 @@ Deno.serve(async (req) => {
   let sent = 0;
   let failures = 0;
 
-  // 1. Expiry reminders.
-  const { data: idleBindings, error: idleError } = await supabase
-    .from("phone_event_bindings")
-    .select("phone_number, events(folder_code)")
-    .lt("last_activity_at", new Date(now - EXPIRY_IDLE_MS).toISOString())
-    .gte("last_activity_at", new Date(now - PAUSE_IDLE_MS).toISOString())
-    .is("expiry_notified_at", null);
-
-  if (idleError) console.error("expiry lookup failed", idleError);
-
-  for (const binding of idleBindings ?? []) {
-    // deno-lint-ignore no-explicit-any
-    const folderCode = (binding as any).events?.folder_code;
-    if (!folderCode) continue;
-
-    const fromNumber = await lookupSendingNumber(supabase, binding.phone_number);
-    if (!fromNumber) continue;
-    if (sent >= MAX_SENDS_PER_TICK) break;
-
-    // CLAIM BEFORE SENDING (audit N3). pg_cron fires every 60s without
-    // waiting for the previous run, and both sweeps do slow per-binding HTTP
-    // work, so overlapping ticks are expected. Reading a set and writing the
-    // watermark afterwards meant the next tick re-read the same rows and
-    // re-sent -- a rep got the same text two or three times, which on an A2P
-    // 10DLC campaign is a carrier-filtering risk, not just an annoyance.
-    // This is the same optimistic claim photoLoop/transcriptionLoop use.
-    const { data: claimed } = await supabase
-      .from("phone_event_bindings")
-      .update({ expiry_notified_at: new Date().toISOString() })
-      .eq("phone_number", binding.phone_number)
-      .is("expiry_notified_at", null)
-      .select("phone_number")
-      .maybeSingle();
-    if (!claimed) continue; // another tick got there first
-
-    try {
-      await sendSms(
-        accountSid,
-        authToken,
-        binding.phone_number,
-        fromNumber,
-        `Your session is about to pause. Text in more contacts now or respond ${folderCode} to reactivate your session.`,
-      );
-      sent++;
-    } catch (err) {
-      // Release the claim so a transient failure retries, rather than being
-      // swallowed by our own watermark. PAUSE_IDLE_MS still caps how long
-      // that retry loop can run.
-      await supabase
-        .from("phone_event_bindings")
-        .update({ expiry_notified_at: null })
-        .eq("phone_number", binding.phone_number);
-      failures++;
-      console.error(`expiry reminder failed for ${binding.phone_number}`, err);
-    }
-  }
-
-  // 2. Contact-received confirmations.
+  // Contact-received confirmations.
   const { data: bindings, error: bindingsError } = await supabase
     .from("phone_event_bindings")
     .select("phone_number, contacts_confirmed_through")
@@ -207,9 +155,15 @@ Deno.serve(async (req) => {
 
     if (sent >= MAX_SENDS_PER_TICK) break;
 
-    // Same claim-before-send as the expiry sweep: advance the high-water mark
-    // conditional on it still holding the value this tick read, so an
-    // overlapping tick finds nothing to do instead of re-sending.
+    // CLAIM BEFORE SENDING (audit N3). pg_cron fires every 60s without
+    // waiting for the previous run, and this sweep does slow per-binding HTTP
+    // work, so overlapping ticks are expected. Reading a set and writing the
+    // watermark afterwards meant the next tick re-read the same rows and
+    // re-sent -- a rep got the same text two or three times, which on an A2P
+    // 10DLC campaign is a carrier-filtering risk, not just an annoyance.
+    // So advance the high-water mark conditional on it still holding the
+    // value this tick read; an overlapping tick then finds nothing to do.
+    // This is the same optimistic claim photoLoop/transcriptionLoop use.
     const { data: claimedConfirm } = await supabase
       .from("phone_event_bindings")
       .update({ contacts_confirmed_through: newest.received_at })
@@ -223,6 +177,9 @@ Deno.serve(async (req) => {
       await sendSms(accountSid, authToken, binding.phone_number, fromNumber, `${label} received.`);
       sent++;
     } catch (err) {
+      // Release the claim so a transient failure retries, rather than being
+      // swallowed by our own watermark. PAUSE_IDLE_MS still caps how long
+      // that retry loop can run.
       await supabase
         .from("phone_event_bindings")
         .update({ contacts_confirmed_through: binding.contacts_confirmed_through })

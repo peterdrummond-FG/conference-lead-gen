@@ -44,32 +44,6 @@
               <q-item-label v-if="event.status === 'active' && !repCount(event.id)" caption class="text-orange-9">
                 <q-icon name="warning" size="14px" /> No reps yet
               </q-item-label>
-
-              <!-- The conference code (folder_code in the database) does two jobs: it is
-                   the card-photo watcher's subfolder name, and a rep can text it to
-                   link their phone to this conference (twilio-webhook), so it is not
-                   only for the laptop -- this used to be labelled "laptop folder
-                   code", which described half of it. It is also an SMS bind token
-                   (events-active's audit S11 comment), so it's fetched on demand for
-                   the one conference asked about instead of riding along on the
-                   list, and tucked behind a link. -->
-              <template v-if="event.status === 'active'">
-                <div>
-                  <q-btn
-                    flat dense no-caps color="primary" class="q-px-none admin-link"
-                    :label="folderCodes[event.id] === undefined ? 'Show conference code' : 'Hide conference code'"
-                    :loading="loadingFolder === event.id"
-                    @click="toggleFolderCode(event)"
-                  />
-                </div>
-                <div v-if="folderCodes[event.id]" class="q-mt-xs">
-                  <span class="text-subtitle2 text-weight-bold">{{ folderCodes[event.id] }}</span>
-                  <div class="text-caption text-grey-8">
-                    Reps can text this code to link their phone to this conference. For the
-                    card-photo watcher, name its inbox subfolder exactly this.
-                  </div>
-                </div>
-              </template>
             </q-item-section>
             <q-item-section v-if="event.status === 'active'" side>
               <q-btn
@@ -91,7 +65,7 @@
           </div>
           <div class="text-caption text-grey-8 q-mt-xs">
             {{ isAdmin ? 'Solutions Success and Sales accounts.' : 'Sales accounts.' }}
-            A rep can only be at one conference at a time, and their QR code only works while they're at one.
+            A rep can only be at one conference at a time. A scan for a rep who isn't at one waits in Review for you to file it.
           </div>
         </q-card-section>
 
@@ -131,7 +105,7 @@
                 v-if="p.role === 'sales' && !p.currentEventId && activeEvents.length"
                 caption class="text-orange-9 q-mt-xs"
               >
-                <q-icon name="warning" size="14px" /> Not at a conference, so their QR code won't work yet
+                <q-icon name="warning" size="14px" /> Not at a conference, so their scans wait in Review
               </q-item-label>
 
               <!-- Labelled rather than an icon in the corner: this is how an
@@ -297,11 +271,6 @@ const eventRows = computed<RecentEventOption[]>(() => {
   return Array.from(byId.values()).sort((a, b) => b.activatedAt.localeCompare(a.activatedAt));
 });
 
-// folder code per conference id, loaded on demand; undefined = not loaded (or
-// hidden again), string = shown.
-const folderCodes = ref<Record<string, string | undefined>>({});
-const loadingFolder = ref<string | null>(null);
-
 // Rough enough to disambiguate same-named test/duplicate conferences -- not a
 // general-purpose formatter.
 function formatRelativeTime(iso: string): string {
@@ -323,22 +292,6 @@ async function loadEvents() {
     recentEvents.value = recent.data;
   } finally {
     eventsLoaded.value = true;
-  }
-}
-
-async function toggleFolderCode(event: RecentEventOption) {
-  if (folderCodes.value[event.id] !== undefined) {
-    folderCodes.value = { ...folderCodes.value, [event.id]: undefined };
-    return;
-  }
-  loadingFolder.value = event.id;
-  try {
-    // By slug, not the caller's own linked conference: staff may read any
-    // event's folder code (events-active's canSeeFolderCode).
-    const { data } = await api.get<{ folderCode?: string } | null>('/events-active', { params: { slug: event.slug } });
-    folderCodes.value = { ...folderCodes.value, [event.id]: data?.folderCode ?? '(none)' };
-  } finally {
-    loadingFolder.value = null;
   }
 }
 

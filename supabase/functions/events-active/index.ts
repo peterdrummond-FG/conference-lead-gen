@@ -16,7 +16,7 @@
 // (/connect/<repSlug> -- see 20260916212541_add_profiles_rep_slug.sql);
 // SetupPage relies on the logged-in user's own current_event_id.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
-import { hasRole, requireUser } from "../_shared/auth.ts";
+import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { optionalString, LIMITS } from "../_shared/validate.ts";
 
@@ -122,19 +122,17 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Audit S11 (and its regression, found 2026-09-16): folder_code is the SMS
-  // bind token -- anyone holding it can text the Twilio number, bind a phone
-  // to this event, and push photos and voice memos into the intake pipeline.
-  // "Returned only to a logged-in caller" was not the right boundary: with
-  // multiple conferences active at once, ANY authenticated user (a sales rep
-  // included) could pass a DIFFERENT event's public slug here and get that
-  // event's folder_code -- e.g. a rep still logged into the SPA on a booth
-  // device who opens another conference's /connect/<slug>/<repId> link. The
-  // real boundary is staff, or a rep actually linked to *this* event -- both
-  // already computed above. slug is not sensitive -- it's the whole point of
-  // the QR code being public -- so it's returned either way; SetupPage needs
-  // it to build the /connect/<slug>/<repId> URL.
-  const canSeeFolderCode = !!user && (hasRole(user, ["admin", "solutionsSuccess"]) || isLinkedRep);
+  // folder_code is deliberately NOT returned. It is the SMS bind token (anyone
+  // holding it can text the Twilio number, bind a phone to this event and push
+  // photos and voice memos into the intake pipeline), and for a long time this
+  // response handed it to staff and linked reps so Admin could show a "Show
+  // conference code" link (audit S11, and its 2026-09-16 regression where any
+  // authenticated user could read another conference's code by passing its public
+  // slug). The Admin link is gone and nothing in the browser reads the field, so
+  // the safest way to keep the token private is to not send it at all. n8n and
+  // local-agent read folder_code straight from the database. slug is not
+  // sensitive (it is the whole point of a public QR), so it stays: SetupPage
+  // needs it to build the /connect/<slug>/<repId> URL.
   return jsonResponse(req, {
     id: data.id,
     name: data.name,
@@ -143,6 +141,5 @@ Deno.serve(async (req) => {
     activatedAt: data.activated_at,
     ...(user ? { isLinkedRep } : {}),
     ...(smsBound !== undefined ? { smsBound } : {}),
-    ...(canSeeFolderCode ? { folderCode: data.folder_code } : {}),
   });
 });

@@ -170,8 +170,9 @@ problem:
   in production would be an outage that looks like anything but config.
 - `events-active` falls back to the most recently activated conference when a
   user has none linked. Fine for display; but Setup treated "a conference is
-  shown" as "you're at it", while the rep's QR only works once they're
-  actually linked. A default that *displays* a value must not be read as the
+  shown" as "you're at it", while the rep's QR only reached their Review once
+  they were actually linked (an unlinked rep's scan now waits for Solutions
+  Success instead of failing). A default that *displays* a value must not be read as the
   user having *chosen* it.
 
 **The rule.** For each default, ask: *if this fires in production, is it safe

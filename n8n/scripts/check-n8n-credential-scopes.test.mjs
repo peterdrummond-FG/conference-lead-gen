@@ -56,3 +56,18 @@ test('reads the MCP get_workflow_details shape too', () => {
   assert.deepEqual(failures, []);
   assert.equal(checked, 1);
 });
+
+test('lets the voice pipeline hold the transcription credential', () => {
+  const { failures } = auditWorkflows([wf('pipeline-voice-transcription', ['Supabase account', 'Supabase DB Webhook Secret', 'OpenAI account 2'])]);
+  assert.deepEqual(failures, []);
+});
+
+test('fails the transcription credential on any other pipeline or a skill', () => {
+  // It is allowed on exactly one workflow. Spreading it to others would give a
+  // second place where untrusted text reaches a model without a validated schema.
+  for (const name of ['pipeline-match-contact', 'pipeline-note-extraction', 'skill-attribute-voice-memo']) {
+    const { failures } = auditWorkflows([wf(name, ['OpenAI account 2'])]);
+    assert.equal(failures.length, 1, name);
+    assert.match(failures[0], /"OpenAI account 2", outside its policy/);
+  }
+});

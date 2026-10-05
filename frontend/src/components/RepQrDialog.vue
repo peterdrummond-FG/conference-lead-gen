@@ -18,11 +18,13 @@
         />
         <div v-else class="rq-fail" role="alert">Couldn't draw the QR code. Close this and try again.</div>
       </div>
-      <!-- Says where a scan goes right now, and is honest when nothing is chosen:
-           contacts-create answers 409 for a rep with no conference. -->
+      <!-- Says where a scan goes right now, and is honest when nothing is chosen: with
+           no conference the scan is held (unassigned_submissions) for Solutions
+           Success to file, so the attendee still gets "Thanks" and nothing is lost,
+           but it won't reach this rep's Review until someone files it. -->
       <div class="rq-foot" :class="{ 'is-warn': !eventName }" role="status">
         <template v-if="eventName">Scans go to <strong>{{ eventName }}</strong></template>
-        <template v-else>Choose a conference in Setup first. Scans won't go through until you do.</template>
+        <template v-else>You're not at a conference, so scans wait for Solutions Success to file them.</template>
       </div>
     </q-card>
   </q-dialog>

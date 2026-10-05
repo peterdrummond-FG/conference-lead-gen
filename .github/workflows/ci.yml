@@ -23,6 +23,8 @@ jobs:
           deno-version: v2.x
       - name: Lint Edge Functions
         run: deno lint supabase/functions
+      - name: Edge Function unit tests
+        run: deno test --no-lock supabase/functions/_shared/
 
       - uses: actions/setup-node@v4
         with:
@@ -66,6 +68,11 @@ jobs:
       # audit A1/A2: no skill may run unsandboxed, none may hold a credential.
       - name: Skill sandboxing
         run: node scripts/check-skill-profiles.mjs
+
+      # One conference everywhere: nothing writes profiles.current_event_id
+      # directly, and the webhook re-checks is_active for a bound phone.
+      - name: Conference writers
+        run: node scripts/check-conference-writers.mjs
 
       # audit N1: a deployed function with no source in the repo, or a
       # "retired" one that doesn't actually answer 410.
