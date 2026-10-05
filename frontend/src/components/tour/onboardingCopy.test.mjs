@@ -1,0 +1,178 @@
+// Run: cd frontend && npm test
+// The onboarding's words are promises about the app: what our number texts back,
+// what the form asks, who can fix a missing phone number. These tests hold the
+// copy to the real thing (or the real thing's source) so it can't drift quietly.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ONBOARDING_COPY, SCENE_COPY } from './tourCopy.ts';
+import { SETUP_CANDIDATES, SMS_REPLIES, TOUR_CONFERENCE } from './tourText.ts';
+import { reviewLeads, tourLeads } from './tourSampleData.ts';
+import { SCENES, IMPORT_ONLY, fullSteps, remainderSteps, reminderCopy } from '../../utils/onboardingFlow.ts';
+import { TWILIO_NUMBER_DISPLAY } from '../../utils/smsNumber.ts';
+import { isProcessing, isReady, leadFlags } from '../../utils/reviewSmart.ts';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SRC = join(HERE, '..', '..');
+const REPO = join(SRC, '..', '..');
+const read = (...p) => readFileSync(join(...p), 'utf8');
+const webhook = read(REPO, 'supabase/functions/twilio-webhook/index.ts');
+
+function files(dir) {
+  return readdirSync(dir).flatMap((n) => {
+    const p = join(dir, n);
+    return statSync(p).isDirectory() ? files(p) : /\.(vue|ts)$/.test(n) ? [p] : [];
+  });
+}
+
+// Every fragment of `text` that isn't one of the sample `values` must appear in
+// the webhook, in order. Catches a reworded reply on either side.
+function quotedFromWebhook(text, values) {
+  let rest = text;
+  const frags = [];
+  for (const v of values) {
+    const [head, ...tail] = rest.split(v);
+    frags.push(head);
+    rest = tail.join(v);
+  }
+  frags.push(rest);
+  for (const f of frags.filter((x) => x.trim().length >= 6)) {
+    // `${...}` in the source stands for a value here.
+    const pattern = f.split('\n').map((line) => line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\S]*?');
+    assert.ok(new RegExp(pattern).test(webhook), `twilio-webhook does not say: ${JSON.stringify(f)}`);
+  }
+}
+
+// ── our number's replies ──
+test('SMS_REPLIES say what twilio-webhook really sends', () => {
+  quotedFromWebhook(SMS_REPLIES.askName, []);
+  quotedFromWebhook(SMS_REPLIES.linked('@C@'), ['@C@']);
+  quotedFromWebhook(SMS_REPLIES.alreadySetUp('@C@'), ['@C@']);
+  quotedFromWebhook(SMS_REPLIES.noteLogged, []);
+  quotedFromWebhook(SMS_REPLIES.received(1).replace('1', '@N@'), ['@N@']);
+  // The list: the wrapper lines and both kinds of line.
+  const list = SMS_REPLIES.candidates(SETUP_CANDIDATES);
+  quotedFromWebhook(list.split('\n')[0], []);
+  quotedFromWebhook(list.split('\n').at(-1), []);
+  const [a, b] = SETUP_CANDIDATES;
+  quotedFromWebhook(SMS_REPLIES.candidateLine({ ...a, name: '@N@', state: '@S@' }, 0).replace('1. ', ''), ['@N@', '@S@']);
+  // The webhook adds the state in a nested template for a campaign; the words
+  // after it are what we hold it to.
+  quotedFromWebhook(SMS_REPLIES.candidateLine({ ...b, name: '@N@', state: null }, 0).replace('1. ', ''), ['@N@']);
+  assert.ok(SMS_REPLIES.candidateLine(b, 1).startsWith(`2. ${b.name} (${b.state}) — `));
+});
+
+test('a new rep is walked through the conversation a first SETUP really starts', () => {
+  assert.match(webhook, /START_TRIGGER_PHRASES[\s\S]*"setup"/);
+  assert.ok(SMS_REPLIES.candidates(SETUP_CANDIDATES).includes(TOUR_CONFERENCE));
+});
+
+// ── the form ──
+test('the attendee form in the tour asks what IntakePage asks', () => {
+  const intake = read(SRC, 'pages/IntakePage.vue');
+  const screen = read(HERE, 'screens/TourIntakeScreen.vue');
+  const labels = [...screen.matchAll(/label="([^"]+)"/g)].map((m) => m[1]).filter((l) => !['Edit', 'Submit'].includes(l));
+  assert.ok(labels.length >= 8, 'expected the form labels');
+  for (const l of labels) assert.ok(intake.includes(`label="${l}"`), `IntakePage has no field labelled "${l}"`);
+  for (const h of ['Add your email and phone number', 'Pick a state first', 'Pick a district first', 'Tell us a bit about yourself.']) {
+    assert.ok(screen.includes(h) && intake.includes(h), `hint drifted: ${h}`);
+  }
+  assert.ok(intake.includes('label="Submit"'));
+});
+
+// ── the number ──
+test('our number is written once, in utils/smsNumber.ts', () => {
+  assert.match(TWILIO_NUMBER_DISPLAY, /^\+1 \(\d{3}\) \d{3}-\d{4}$/);
+  const digits = TWILIO_NUMBER_DISPLAY.replace(/\D/g, '').slice(-7);
+  for (const f of files(HERE).filter((f) => !f.endsWith('.test.mjs'))) {
+    assert.ok(!read(f).replace(/\D/g, '').includes(digits) || /smsNumber/.test(read(f)), `${f} has its own copy of the number`);
+  }
+  const everyBody = SCENE_COPY.flatMap((s) => [s.body, s.forManagers?.body]).filter(Boolean);
+  assert.ok(everyBody.some((b) => b.includes('{number}')), 'the setup scene should use {number}');
+  assert.ok(read(HERE, 'screens/TourMessages.vue').includes("from '@/utils/smsNumber'"));
+});
+
+// ── the words ──
+// Words that mean something to us but nothing to a rep at a booth.
+const BANNED_WORDS = [
+  'api', 'csv', 'json', 'database', 'sync', 'pipeline', 'ocr', 'token', 'endpoint',
+  'webhook', 'flag', 'badge', 'pin', 'session', 'function', 'query',
+];
+function allCopy() {
+  const out = [];
+  for (const s of SCENE_COPY) {
+    for (const c of [s, s.forManagers, s.importOnly]) if (c) out.push(c.title, c.body, c.note);
+    if (s.noPhoneNote) out.push(...Object.values(s.noPhoneNote));
+  }
+  const strings = (o) => (typeof o === 'string' ? [o] : o && typeof o === 'object' ? Object.values(o).flatMap(strings) : []);
+  out.push(...strings(ONBOARDING_COPY));
+  for (const manager of [false, true]) {
+    for (const id of [null, 'send-import', 'qr', 'review', 'admin']) {
+      const c = reminderCopy(remainderSteps(manager, id));
+      out.push(c.title, c.body);
+    }
+  }
+  return out.filter(Boolean);
+}
+test('nothing a rep reads uses developer words', () => {
+  for (const text of allCopy()) {
+    for (const w of BANNED_WORDS) {
+      assert.ok(!new RegExp(`\\b${w}\\b`, 'i').test(text), `"${w}" in: ${text}`);
+    }
+  }
+});
+
+test('the no-phone note names who can fix it, by role', () => {
+  const setup = SCENE_COPY.find((s) => s.id === 'setup');
+  assert.match(setup.noPhoneNote.sales, /Solutions Success rep/);
+  assert.match(setup.noPhoneNote.solutionsSuccess, /admin/);
+  assert.match(setup.noPhoneNote.admin, /Admin, under Team/);
+  // Live Admin: Solutions Success sees Sales accounts only; an admin sees both kinds, an Edit on each.
+  const admin = read(SRC, 'pages/AdminPage.vue');
+  assert.ok(admin.includes("'Solutions Success and Sales accounts.' : 'Sales accounts.'"), 'Admin no longer lists accounts the way the note assumes');
+});
+
+// ── the scenes ──
+test('the scene ids are the same in the copy, the rules and the components', () => {
+  assert.deepEqual(SCENE_COPY.map((s) => s.id), SCENES.map((s) => s.id));
+  const flow = read(HERE, 'tourFlow.ts');
+  for (const s of SCENES) assert.ok(new RegExp(`\\b${s.id}:\\s*TourScene`).test(flow), `no component for ${s.id}`);
+  assert.equal(SCENE_COPY.find((s) => s.id === 'send').importOnly != null, true);
+  assert.equal(IMPORT_ONLY.id, 'send-import');
+});
+
+test('managers get Export and Admin and reps do not', () => {
+  assert.ok(SCENE_COPY.filter((s) => s.managersOnly).map((s) => s.id).join() === 'export,admin');
+  assert.equal(fullSteps(false).length, 4);
+});
+
+// ── the sample people ──
+test('the tour\'s leads are made up, and look like a new rep\'s Review', () => {
+  const all = reviewLeads();
+  assert.equal(all.length, 6);
+  assert.ok(all.every((l) => l.id.startsWith('tour-')), 'sample lead ids must never look real');
+  assert.ok(all.every((l) => l.reviewStatus === 'needs_review'), 'a new rep has approved nothing');
+  const by = Object.fromEntries(all.map((l) => [l.firstName, l]));
+  // Priya's note had no phone or email: the real "Needs a phone or email" lead.
+  assert.ok(leadFlags(by.Priya).some((f) => f.key === 'no-contact'));
+  assert.equal(isReady(by.Priya), false);
+  // Adding her phone is what makes her ready.
+  assert.equal(isReady({ ...by.Priya, phone: '(512) 555-0176' }), true);
+  for (const n of ['Dana', 'Sam', 'Tom', 'Grace']) assert.equal(isReady(by[n]), true, `${n} should be Ready`);
+});
+
+test('a lead that has just arrived is processing, never ready', () => {
+  const fresh = tourLeads(['dana', 'sam', 'priya'], { processing: ['dana', 'sam', 'priya'] });
+  assert.ok(fresh.length === 3 && fresh.every(isProcessing));
+  assert.ok(fresh.every((l) => !isReady(l)));
+  assert.ok(fresh.every((l) => l.matchedZohoAccountName === null), 'no Zoho result before matching finishes');
+});
+
+test('the tour never talks to the server, apart from the host that records the outcome', () => {
+  for (const f of files(HERE).filter((f) => !f.endsWith('OnboardingHost.vue'))) {
+    const src = read(f);
+    assert.ok(!/boot\/axios|stores\/session-store|stores\/event-store/.test(src), `${f} reaches the server or the account`);
+  }
+});

@@ -6,7 +6,7 @@
       <!-- Underline tabs: the status control used to be a 52px grey tray, which
            with the title row above it pushed the first lead off a phone screen.
            The nav bar already says "Review", so the page has no title row. -->
-      <div class="rs-tabs" role="tablist" aria-label="Review status" data-tour="review-tabs">
+      <div class="rs-tabs" role="tablist" aria-label="Review status">
         <button
           v-for="t in tabDefs"
           :key="t.value"
@@ -47,7 +47,7 @@
             <span class="rs-cell-l">{{ p.label }}</span>
           </button>
         </template>
-        <router-link to="/notes" class="rs-cell rs-cell-import" aria-label="Import contacts" data-tour="review-note-button">
+        <router-link to="/notes" class="rs-cell rs-cell-import" aria-label="Import contacts">
           <span class="rs-cell-n"><q-icon name="note_add" size="22px" /></span>
           <span class="rs-cell-l">Import</span>
           <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>

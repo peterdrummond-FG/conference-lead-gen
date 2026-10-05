@@ -11,7 +11,7 @@
     />
     <div class="ts-device-wrap">
       <TourDevice :key="String(isPhone)" ref="device" :width="size.w" :height="size.h">
-        <component :is="scene" ref="sceneRef" :manager="manager" @size="(s: { w: number; h: number }) => (sceneSize = s)" />
+        <component :is="scene" ref="sceneRef" :manager="manager" v-bind="importOnly ? { importOnly: true } : {}" @size="(s: { w: number; h: number }) => (sceneSize = s)" />
       </TourDevice>
     </div>
   </div>
@@ -23,7 +23,9 @@ import { useQuasar } from 'quasar';
 import TourDevice from './TourDevice.vue';
 import { createRun, TourCancelled, type TourDeviceApi, type TourRun } from './useTourScript';
 
-defineProps<{ scene: Component; manager: boolean }>();
+// importOnly: the version of "Send us leads" that starts at Import (see tourCopy.ts).
+// Bound only when true, so a scene that has no such prop never receives the attribute.
+defineProps<{ scene: Component; manager: boolean; importOnly?: boolean }>();
 
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);

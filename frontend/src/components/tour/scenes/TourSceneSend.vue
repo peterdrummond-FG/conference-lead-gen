@@ -20,7 +20,9 @@ import TourReviewScreen from '../TourReviewScreen.vue';
 import { tourLeads, SAMPLE_CARD, SMS_REPLIES, type TourText } from '../tourSampleData';
 import type { TourRun } from '../useTourScript';
 
-defineProps<{ manager: boolean }>();
+// importOnly: a quick-start rep has already seen the texting half, so their
+// reminder plays this scene starting at Review's Import button.
+const props = defineProps<{ manager: boolean; importOnly?: boolean }>();
 const emit = defineEmits<{ size: [s: { w: number; h: number }] }>();
 const $q = useQuasar();
 
@@ -33,13 +35,16 @@ const NOTE_RESULTS = [
   { name: 'Ana Cruz', line: 'Assistant Principal · Westlake Middle School', notes: 'Met at the keynote.' },
 ];
 
-const part = ref<'text' | 'review' | 'notes'>('text');
+const part = ref<'text' | 'review' | 'notes'>(props.importOnly ? 'review' : 'text');
 const messages = ref<TourText[]>([]);
 const draft = ref('');
 // What is in Review at each point: Dana and Sam have just been texted in, so they
 // are still being matched (it takes minutes), not Ready.
-const textedLeads = () => tourLeads(['dana', 'sam'], { processing: ['dana', 'sam'] });
-const allSentLeads = () => tourLeads(['dana', 'sam', 'priya', 'tom', 'ana'], { processing: ['dana', 'sam', 'priya', 'tom', 'ana'] });
+const textedLeads = () => (props.importOnly ? [] : tourLeads(['dana', 'sam'], { processing: ['dana', 'sam'] }));
+const allSentLeads = () => {
+  const who = props.importOnly ? (['priya', 'tom', 'ana'] as const) : (['dana', 'sam', 'priya', 'tom', 'ana'] as const);
+  return tourLeads([...who], { processing: [...who] });
+};
 const leads = ref(textedLeads());
 const noteText = ref('');
 const notePhase = ref<'idle' | 'working' | 'done'>('idle');
@@ -49,14 +54,14 @@ const phoneSize = { w: 375, h: 600 };
 function appSize() { return $q.screen.lt.sm ? phoneSize : { w: 1280, h: 800 }; }
 
 function reset() {
-  part.value = 'text';
+  part.value = props.importOnly ? 'review' : 'text';
   messages.value = [];
   draft.value = '';
   leads.value = textedLeads();
   noteText.value = '';
   notePhase.value = 'idle';
   noteContacts.value = [];
-  emit('size', phoneSize);
+  emit('size', props.importOnly ? appSize() : phoneSize);
 }
 
 function say(m: Omit<TourText, 'id'>) {
@@ -71,24 +76,28 @@ async function reply(t: TourRun, text: string) {
 }
 
 async function run(t: TourRun) {
-  // Texting: a card photo, a voice memo right after, one person typed out.
-  await t.wait(600);
-  await t.tap(t.find('.tm-compose .q-icon'), { press: true });
-  say({ from: 'me', kind: 'card', card: SAMPLE_CARD });
-  t.hideFinger();
-  await reply(t, SMS_REPLIES.received(1));
-  await t.wait(700);
-  say({ from: 'me', kind: 'voice', text: '0:14' });
-  await reply(t, SMS_REPLIES.received(1));
-  await t.wait(700);
-  await t.tap(t.find('.tm-field'), { press: true });
-  for (const c of 'Sam Ortiz, AP Lakeview HS, sortiz@lakeviewisd.org') { draft.value += c; await t.wait(28); }
-  await t.tap(t.find('[data-tt="send"]'), { press: true });
-  say({ from: 'me', kind: 'text', text: draft.value });
-  draft.value = '';
-  t.hideFinger();
-  await reply(t, SMS_REPLIES.noteLogged);
-  await t.wait(1800);
+  if (!props.importOnly) {
+    // Texting: a card photo, a voice memo right after, one person typed out.
+    await t.wait(600);
+    await t.tap(t.find('.tm-compose .q-icon'), { press: true });
+    say({ from: 'me', kind: 'card', card: SAMPLE_CARD });
+    t.hideFinger();
+    await reply(t, SMS_REPLIES.received(1));
+    await t.wait(700);
+    say({ from: 'me', kind: 'voice', text: '0:14' });
+    await reply(t, SMS_REPLIES.received(1));
+    await t.wait(700);
+    await t.tap(t.find('.tm-field'), { press: true });
+    for (const c of 'Sam Ortiz, AP Lakeview HS, sortiz@lakeviewisd.org') { draft.value += c; await t.wait(28); }
+    await t.tap(t.find('[data-tt="send"]'), { press: true });
+    say({ from: 'me', kind: 'text', text: draft.value });
+    draft.value = '';
+    t.hideFinger();
+    await reply(t, SMS_REPLIES.noteLogged);
+    await t.wait(1800);
+  } else {
+    await t.wait(600);
+  }
 
   // The other way in: typed notes, from Review's Import button.
   part.value = 'review';
