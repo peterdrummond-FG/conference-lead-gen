@@ -40,6 +40,14 @@ if (!/\.eq\("is_active", true\)/.test(hook)) {
   problems.push('twilio-webhook: the folder-code lookup no longer requires an active event.');
 }
 
+// The conference code is the SMS bind token; no response may carry it to a browser.
+for (const name of ['events-active', 'events-activate']) {
+  const src = readFileSync(join(FUNCTIONS, name, 'index.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+  if (/folderCode|folder_code\s*[,}]/.test(src.replace(/\.select\([^)]*\)/g, ''))) {
+    problems.push(`${name}: returns the conference code (folder_code) to the browser. It is the SMS bind token; keep it server-side.`);
+  }
+}
+
 if (problems.length) {
   console.error(problems.map((p) => `FAIL ${p}`).join('\n'));
   process.exit(1);
