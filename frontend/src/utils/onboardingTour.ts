@@ -216,6 +216,9 @@ export const TOUR_STEPS: TourStep[] = [
     chapter: 'Your team',
     title: 'Look after your team',
     body: 'Activate and end conferences, and manage who is on each event team, from Admin.',
+    // On a phone the page links are in the menu, and this step points at the
+    // menu button (MainLayout gives it the same data-tour id as the Admin tab).
+    note: 'On a phone, open the menu button at the top right to find Admin.',
     roles: MANAGERS,
   },
   {
