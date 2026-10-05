@@ -233,7 +233,8 @@
         <!-- Your QR code: a resource, not a step. No number and no check, so the page
              doesn't read as finished at the point a rep still has nothing to do.
              Available before joining (the code is the rep's own and reusable), but
-             it only works once they're linked to a conference. Sales accounts only:
+             a scan only reaches their Review once they're linked to a conference (otherwise it
+             waits for Solutions Success to file it). Sales accounts only:
              repSlug is only ever generated for them (profiles-create/-update). -->
         <q-card v-if="subject?.repSlug" data-tour="setup-qr">
           <q-card-section>
@@ -243,14 +244,15 @@
                 <div class="text-subtitle1 text-weight-medium">Your QR code</div>
                 <div class="text-body2 text-grey-8">Your QR is unique to you and works at any conference.</div>
                 <!-- Says where a scan goes *right now*, and is true when nothing is
-                     chosen: contacts-create answers 409 for a rep with no conference,
-                     it doesn't file the lead under the previous one. -->
+                     chosen: contacts-create holds the scan (unassigned_submissions)
+                     for Solutions Success instead of filing it under the previous
+                     conference or losing it. -->
                 <div v-if="joinedEvent" class="text-body2 q-mt-xs">
                   Right now, contacts who scan it are attached to
                   <span class="text-weight-bold">{{ cleanConferenceName(joinedEvent.name) }}</span>.
                 </div>
                 <div v-else class="text-body2 text-orange-10 q-mt-xs">
-                  Choose a conference first. Scans won't go through until you do.
+                  You're not at a conference, so scans wait for Solutions Success to file them. Choose one and they go straight to your Review.
                 </div>
                 <qr-save-buttons
                   :rep="{ name: subject.name, repSlug: subject.repSlug }" class="q-mt-sm"

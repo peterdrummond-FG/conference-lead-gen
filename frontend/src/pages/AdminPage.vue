@@ -65,7 +65,7 @@
           </div>
           <div class="text-caption text-grey-8 q-mt-xs">
             {{ isAdmin ? 'Solutions Success and Sales accounts.' : 'Sales accounts.' }}
-            A rep can only be at one conference at a time, and their QR code only works while they're at one.
+            A rep can only be at one conference at a time. A scan for a rep who isn't at one waits in Review for you to file it.
           </div>
         </q-card-section>
 
@@ -105,7 +105,7 @@
                 v-if="p.role === 'sales' && !p.currentEventId && activeEvents.length"
                 caption class="text-orange-9 q-mt-xs"
               >
-                <q-icon name="warning" size="14px" /> Not at a conference, so their QR code won't work yet
+                <q-icon name="warning" size="14px" /> Not at a conference, so their scans wait in Review
               </q-item-label>
 
               <!-- Labelled rather than an icon in the corner: this is how an
