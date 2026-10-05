@@ -76,6 +76,11 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
+  // PROTOTYPE: the new animated tour on its own page, for review. Development
+  // builds only, and outside MainLayout so no account is needed: it shows
+  // nothing but sample data.
+  ...(import.meta.env.DEV ? [{ path: '/tour-preview', component: () => import('@/pages/TourPreviewPage.vue') }] : []),
+
   // Always leave this as last one,
   // but you can also remove it
   {
