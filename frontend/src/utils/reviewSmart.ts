@@ -208,11 +208,77 @@ export function accountDetailLabel(c: ContactListItem): string {
   }
 }
 
-export function intentTone(intent: ContactListItem['contactIntent']): Tone {
-  if (intent === 'hot') return 'red';
-  if (intent === 'warm') return 'orange';
-  if (intent === 'cold') return 'blue';
-  return 'grey';
+// ── Signup source ────────────────────────────────────────────────────────
+//
+// How a lead got into the system: contacts.source, plus qr_channel for a typed
+// form (the public Kiosk/QR form is the only intake that records which QR the
+// visitor scanned: the booth's or a breakout session's). Booth vs session is
+// part of the key, not a second filter, so "where did this lead come from" is
+// one question with one answer. Source never changes after capture, which is
+// why (unlike the heat it replaced) it can sort live without a row jumping
+// under a rep's finger.
+
+export type SourceKey =
+  | 'form_booth' | 'form_session' | 'form_none'
+  | 'card_photo' | 'directory_photo' | 'note' | 'voice_memo'
+  | 'other';
+
+// Also the order the "Source" sort groups by.
+export const SOURCE_OPTIONS: { value: SourceKey; label: string }[] = [
+  { value: 'form_booth', label: 'Form · Booth' },
+  { value: 'form_session', label: 'Form · Session' },
+  { value: 'form_none', label: 'Form · no QR' },
+  { value: 'card_photo', label: 'Card photo' },
+  { value: 'directory_photo', label: 'Directory photo' },
+  { value: 'note', label: 'Note' },
+  { value: 'voice_memo', label: 'Voice memo' },
+];
+
+const OTHER_OPTION = { value: 'other' as SourceKey, label: 'Other' };
+
+export function sourceKey(c: Pick<ContactListItem, 'source' | 'qrChannel'>): SourceKey {
+  switch (c.source) {
+    case 'form':
+      return c.qrChannel === 'booth' ? 'form_booth' : c.qrChannel === 'session' ? 'form_session' : 'form_none';
+    case 'card_photo':
+    case 'directory_photo':
+    case 'note':
+    case 'voice_memo':
+      return c.source;
+    // contacts_source_check has grown twice (directory_photo, voice_memo). A
+    // value this file does not know yet shows as "Other" rather than vanishing
+    // from the filter; the test below fails when the DB list and this one drift.
+    default:
+      return 'other';
+  }
+}
+
+// The chip on a row. A form with no QR is just "Form": the "no QR" wording is
+// only needed to tell it apart in the filter.
+export function sourceLabel(c: Pick<ContactListItem, 'source' | 'qrChannel'>): string {
+  const key = sourceKey(c);
+  if (key === 'form_none') return 'Form';
+  return [...SOURCE_OPTIONS, OTHER_OPTION].find((o) => o.value === key)?.label ?? 'Other';
+}
+
+export function sourceTone(c: Pick<ContactListItem, 'source' | 'qrChannel'>): Tone {
+  return c.source === 'form' ? 'blue' : 'grey';
+}
+
+// The filter's choices: the known sources always, "Other" only when a loaded
+// lead needs it.
+export function sourceFilterOptions(list: Pick<ContactListItem, 'source' | 'qrChannel'>[]): { value: SourceKey | null; label: string }[] {
+  const extra = list.some((c) => sourceKey(c) === 'other') ? [OTHER_OPTION] : [];
+  return [{ value: null, label: 'All sources' }, ...SOURCE_OPTIONS, ...extra];
+}
+
+export function filterBySource(list: ContactListItem[], key: SourceKey | null): ContactListItem[] {
+  return key ? list.filter((c) => sourceKey(c) === key) : list;
+}
+
+function sourceRank(c: ContactListItem): number {
+  const i = SOURCE_OPTIONS.findIndex((o) => o.value === sourceKey(c));
+  return i === -1 ? SOURCE_OPTIONS.length : i;
 }
 
 export function fullName(c: ContactListItem): string {
@@ -230,22 +296,23 @@ export function orgLine(c: ContactListItem): string {
 
 // ── Sorting ──────────────────────────────────────────────────────────────
 
-export type SortKey = 'newest' | 'hot' | 'name' | 'followup';
+export type SortKey = 'newest' | 'source' | 'name' | 'followup';
 
 export const SORT_OPTIONS: Record<ReviewStatus, { value: SortKey; label: string }[]> = {
   needs_review: [
     { value: 'newest', label: 'Newest first' },
-    { value: 'hot', label: 'Hot first' },
+    { value: 'source', label: 'Source' },
     { value: 'name', label: 'Name A–Z' },
   ],
   approved: [
     { value: 'followup', label: 'Follow up first' },
     { value: 'newest', label: 'Newest first' },
-    { value: 'hot', label: 'Hot first' },
+    { value: 'source', label: 'Source' },
     { value: 'name', label: 'Name A–Z' },
   ],
   rejected: [
     { value: 'newest', label: 'Newest first' },
+    { value: 'source', label: 'Source' },
     { value: 'name', label: 'Name A–Z' },
   ],
 };
@@ -256,10 +323,6 @@ export const DEFAULT_SORT: Record<ReviewStatus, SortKey> = {
   rejected: 'newest',
 };
 
-const INTENT_RANK: Record<string, number> = { hot: 0, warm: 1, cold: 2 };
-function intentRank(c: ContactListItem): number {
-  return c.contactIntent ? (INTENT_RANK[c.contactIntent] ?? 3) : 3;
-}
 function created(c: ContactListItem): number {
   const t = Date.parse(c.createdAt);
   return Number.isNaN(t) ? 0 : t;
@@ -268,13 +331,11 @@ export function sortLeads(list: ContactListItem[], key: SortKey): ContactListIte
   const out = [...list];
   const newestFirst = (a: ContactListItem, b: ContactListItem) => created(b) - created(a);
   switch (key) {
-    case 'hot':
-      return out.sort((a, b) => intentRank(a) - intentRank(b) || newestFirst(a, b));
+    case 'source':
+      return out.sort((a, b) => sourceRank(a) - sourceRank(b) || newestFirst(a, b));
     case 'followup':
-      // Who still needs a call, hottest first. Already-followed-up sink.
-      return out.sort(
-        (a, b) => Number(a.followedUp) - Number(b.followedUp) || intentRank(a) - intentRank(b) || newestFirst(a, b),
-      );
+      // Who still needs a call, newest first. Already-followed-up sink.
+      return out.sort((a, b) => Number(a.followedUp) - Number(b.followedUp) || newestFirst(a, b));
     case 'name':
       return out.sort(
         (a, b) => a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
@@ -291,8 +352,8 @@ export function sortLeads(list: ContactListItem[], key: SortKey): ContactListIte
 // change. It used to sort "Needs attention first" on the readiness flags: on
 // 2026-10-01 a rep added a district to the newest lead, it flipped to Ready and
 // dropped from row 1 to row 41, and they reloaded twice without finding it.
-// "Hot first" and "Follow up first" still read fields an edit changes (tap Hot
-// and the row would move under the finger), so the page sorts once (on load, or
+// "Follow up first" still reads a field an edit changes (tick Followed up and
+// the row would move under the finger), so the page sorts once (on load, or
 // when the rep picks a sort) and keeps that order until the next deliberate
 // re-sort.
 //
@@ -334,7 +395,7 @@ function digits(s: string): string {
 }
 
 // Plain substring match over what a rep would type to find someone: name,
-// email, phone, school / district, title and event. Phone is compared on
+// email, phone, school / district, title, event and source. Phone is compared on
 // digits only so "(615) 555" finds "615-555-0100". Never a regex or ILIKE —
 // what's typed is data, not a pattern.
 export function searchLeads(list: ContactListItem[], query: string): ContactListItem[] {
@@ -344,7 +405,7 @@ export function searchLeads(list: ContactListItem[], query: string): ContactList
   return list.filter((c) => {
     const haystack = [
       c.firstName, c.lastName, `${c.firstName} ${c.lastName}`, c.email, c.title, c.districtName,
-      c.schoolDistrictNameRaw, c.schoolName, c.schoolNameRaw, c.eventName, c.repName, c.interactionNotes,
+      c.schoolDistrictNameRaw, c.schoolName, c.schoolNameRaw, c.eventName, c.repName, c.interactionNotes, sourceLabel(c),
     ].filter(Boolean).join(' ').toLowerCase();
     if (haystack.includes(q)) return true;
     return qDigits.length >= 3 && digits(c.phone ?? '').includes(qDigits);

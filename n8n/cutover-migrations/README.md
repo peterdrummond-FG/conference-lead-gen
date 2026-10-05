@@ -30,7 +30,7 @@ migration here (never `supabase db push`). After each one, move the file into
 
    | File | Pipeline | Webhook path |
    |---|---|---|
-   | `10_trigger_contact_intent.sql` | pipeline-contact-intent | `ckh-contact-intent` |
+   | ~~`10_trigger_contact_intent.sql`~~ | ~~pipeline-contact-intent~~ | retired 2026-10-05 (heat removed; see `supabase/migrations/20261005120000_retire_contact_intent_classifier.sql`) |
    | `20_trigger_note_extraction.sql` | pipeline-note-extraction | `ckh-note-extraction` |
    | `30_trigger_voice_transcription.sql` | pipeline-voice-transcription | `ckh-voice-transcription` |
    | `40_trigger_process_cards_sms.sql` | pipeline-process-cards-sms | `ckh-process-cards-sms` |

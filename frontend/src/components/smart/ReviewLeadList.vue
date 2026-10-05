@@ -17,7 +17,6 @@
         @restore="$emit('restore', c.id)"
         @add-note="$emit('addNote', c.id)"
         @followed-up="(v: boolean) => $emit('followedUp', c.id, v)"
-        @intent="(v: 'hot' | 'warm' | 'cold' | null) => $emit('intent', c.id, v)"
         @update:selected="(v: boolean) => $emit('select', c.id, v)"
       />
     </div>
@@ -48,7 +47,6 @@ defineEmits<{
   restore: [id: string];
   followedUp: [id: string, value: boolean];
   addNote: [id: string];
-  intent: [id: string, value: 'hot' | 'warm' | 'cold' | null];
   select: [id: string, value: boolean];
 }>();
 </script>

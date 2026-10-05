@@ -36,7 +36,6 @@ import {
   AttributionOutput,
   MAX_UNPLACED_PER_MEMO,
   CardExtractionOutput,
-  IntentOutput,
   MatchOutput,
   NoteExtractionOutput,
   ResearchOutput,
@@ -83,7 +82,7 @@ function sleep(ms) {
 // tick, so "last stamped at" reflects the loop is still cycling even while
 // that tick's own work is slow -- a hang inside one tick freezes only that
 // loop's own timestamp.
-const heartbeat = { matching: Date.now(), photo: Date.now(), transcription: Date.now(), intent: Date.now(), note: Date.now() };
+const heartbeat = { matching: Date.now(), photo: Date.now(), transcription: Date.now(), note: Date.now() };
 
 // Generous margin above the longest legitimate single-tick duration in this
 // process: photoLoop's own process-cards ceiling is 15 minutes
@@ -1035,7 +1034,7 @@ async function claimAudioMessage(candidate) {
 // Audit A8. The roster comes from OCR of attacker-supplied card photos, and
 // Whisper's --initial_prompt biases the TEXT IT EMITS -- so a "name" that is
 // really a sentence gets biased straight into the transcript, which then feeds
-// attribute-voice-memo and classify-contact-intent and lands in
+// attribute-voice-memo and lands in
 // interaction_notes. Two hops from a hostile card to a poisoned CRM note.
 //
 // Accept only things shaped like names, and cap the roster: Whisper silently
@@ -1185,116 +1184,13 @@ async function transcriptionLoop() {
 }
 
 // ---------------------------------------------------------------------
-// Contact-intent classification poll loop
-// ---------------------------------------------------------------------
-// Runs the classify-contact-intent skill against interaction_notes (rep-
-// typed text and voice-memo transcripts alike) whenever that text differs
-// from contact_intent_classified_notes — the snapshot last fed to the
-// classifier, standing in for an updated_at column contacts doesn't have —
-// and only while contact_intent_is_manual is false. A reviewer's own pick on
-// the review card always wins and is never revisited here; see
-// 20260910140000_add_contact_intent.sql.
-const INTENT_POLL_INTERVAL_MS = Number(process.env.INTENT_POLL_INTERVAL_MS ?? 20_000);
-
-// Audit Q4. Two problems with the old version: it fetched 200 rows with NO
-// ORDER BY (so PostgREST could return the same arbitrary subset every tick
-// while other rows starved indefinitely), then processed every match
-// sequentially with no cap -- and each match is a `claude -p` call at up to
-// 180s x 2 attempts, so one tick could in principle run for hours with no way
-// to rebalance. Every other loop here is bounded by construction;
-// this one was the outlier.
-const INTENT_BATCH_SIZE = Number(process.env.INTENT_BATCH_SIZE ?? 5);
-const INTENT_CONCURRENCY = Number(process.env.INTENT_CONCURRENCY ?? 2);
-
-async function findContactsNeedingIntentClassification() {
-  // Ordered and server-side filtered: claim_contacts_needing_intent expresses
-  // the column-to-column comparison PostgREST cannot, so there is no
-  // over-fetch and the backlog drains oldest-first instead of arbitrarily.
-  const { data, error } = await supabase.rpc('claim_contacts_needing_intent', {
-    p_limit: INTENT_BATCH_SIZE,
-  });
-  if (error) throw error;
-  return data ?? [];
-}
-
-// Small fixed-size worker pool -- enough to keep up with a busy event,
-// bounded so this loop can never monopolise the machine or the token budget.
-// Safe to run concurrently because classifyContactIntent's write re-asserts
-// both contact_intent_is_manual and the exact notes text it classified.
-async function runPool(items, limit, fn) {
-  const queue = [...items];
-  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
-    while (queue.length > 0) {
-      const item = queue.shift();
-      try {
-        await fn(item);
-      } catch (err) {
-        log(`intent classification FAIL: ${item.id} — ${err.message ?? err}`);
-      }
-    }
-  });
-  await Promise.all(workers);
-}
-
-async function classifyContactIntent(contact) {
-  // The hot/warm/cold enum (and null) is enforced by IntentOutput in
-  // schemas.mjs; an invalid value throws inside runSkill rather than here.
-  const result = await runSkill(
-    'classify-contact-intent',
-    { contactId: contact.id, interactionNotes: contact.interaction_notes },
-    AGENT_WORKDIR,
-    { schema: IntentOutput },
-  );
-  const intent = result.contactIntent ?? null;
-
-  // Optimistic write: the WHERE clause re-asserts both contact_intent_is_manual=false
-  // and the exact interaction_notes text this result was classified from — a
-  // reviewer's manual pick, or a newer note landing mid-classification,
-  // lands a no-op update here instead of clobbering something fresher. The
-  // next tick re-reads current state and (for a newer note) reclassifies it.
-  const { error } = await supabase
-    .from('contacts')
-    .update({ contact_intent: intent, contact_intent_classified_notes: contact.interaction_notes })
-    .eq('id', contact.id)
-    .eq('contact_intent_is_manual', false)
-    .eq('interaction_notes', contact.interaction_notes);
-  if (error) throw error;
-}
-
-async function intentTick() {
-  let candidates;
-  try {
-    candidates = await findContactsNeedingIntentClassification();
-  } catch (err) {
-    log(`ERROR finding contacts needing intent classification: ${err.message ?? err}`);
-    return;
-  }
-
-  await runPool(candidates, INTENT_CONCURRENCY, async (contact) => {
-    await classifyContactIntent(contact);
-    log(`intent classified: ${contact.id}`);
-  });
-}
-
-async function intentLoop() {
-  log(`intent loop starting (poll every ${INTENT_POLL_INTERVAL_MS}ms)`);
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    heartbeat.intent = Date.now();
-    await intentTick();
-    await sleep(INTENT_POLL_INTERVAL_MS);
-  }
-}
-
-// ---------------------------------------------------------------------
 // Pasted-note extraction poll loop (Stage 17)
 // ---------------------------------------------------------------------
 // A rep pastes a whole typed note — usually covering several people — into
 // NotesPage.vue; notes-submit records it and this loop turns it into one
 // contact per person via extract-note-contacts, then posts each to
 // contacts-from-note. From there it's the ordinary pipeline: matchingLoop
-// researches and matches each new row, and intentLoop classifies whichever
-// of them arrived with interaction notes.
+// researches and matches each new row.
 //
 // Same claim-then-mark-processing mechanics as photoLoop, against
 // note_submissions rather than inbound_messages (a web paste has no
@@ -1503,17 +1399,16 @@ async function reconcileStaleNoteSubmissions() {
 
 log('=== local-agent starting ===');
 
-// AGENT_LOOPS (comma-separated) runs a subset of the five loops. Added for the
-// n8n cutover (2026-09-25): n8n took over matching, photo, intent and note, and
+// AGENT_LOOPS (comma-separated) runs a subset of the four loops. Added for the
+// n8n cutover (2026-09-25): n8n took over matching, photo and note, and
 // voice stays here until Whisper is hosted somewhere n8n can reach, so the
-// agent runs with AGENT_LOOPS=transcription. Unset means all five, i.e. no
+// agent runs with AGENT_LOOPS=transcription. Unset means all four, i.e. no
 // behavior change. An unknown name exits loudly rather than silently running
 // less than intended.
 const ALL_LOOPS = {
   matching: matchingLoop,
   photo: photoLoop,
   transcription: transcriptionLoop,
-  intent: intentLoop,
   note: noteLoop,
 };
 const enabledLoops = (process.env.AGENT_LOOPS ?? Object.keys(ALL_LOOPS).join(','))
@@ -1533,10 +1428,10 @@ log(`loops enabled: ${enabledLoops.join(', ')}`);
 await reconcileStaleInboundMessages();
 await reconcileStaleNoteSubmissions();
 
-// Up to five independent, concurrently-running loops in one process — a slow
+// Up to four independent, concurrently-running loops in one process — a slow
 // process-cards run (up to 15 min) or note extraction (up to 5) must not
-// delay the 20s matching poll, and transcription/intent classification each
-// run independently of the others. heartbeatWatchdog never does pipeline
+// delay the 20s matching poll, and transcription runs independently of the
+// others. heartbeatWatchdog never does pipeline
 // work, only exits the process if an enabled loop stops advancing (see its
 // own comment above).
 await Promise.all([...enabledLoops.map((name) => ALL_LOOPS[name]()), heartbeatWatchdog()]);

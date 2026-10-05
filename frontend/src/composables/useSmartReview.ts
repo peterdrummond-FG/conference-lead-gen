@@ -182,9 +182,9 @@ export function useSmartReview() {
     return setStatus(id, 'needs_review', { message: c ? `${fullName(c)} moved back to Needs Review` : 'Moved back' });
   };
 
-  // Heat and Followed-up save the instant they change; text fields wait for
+  // Followed-up saves the instant it changes; text fields wait for
   // Save. Both go through here.
-  // message: said once the save has landed. Heat and Followed-up change on
+  // message: said once the save has landed. Followed-up changes on
   // screen as you tap, but "Save changes" used to just make its button vanish,
   // which reads the same as the lead vanishing.
   async function update(id: string, payload: UpdateContactPayload, display?: DisplayPatch, message?: string) {

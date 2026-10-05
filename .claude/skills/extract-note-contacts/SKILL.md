@@ -80,8 +80,8 @@ You'll be told a file path containing JSON shaped like:
    already their own fields above. Use `""` when the note gives only
    identity details and no commentary at all.
 
-   This field is load-bearing: it's what `classify-contact-intent` reads to
-   decide hot/warm/cold, and what a reviewer sees on the contact's card.
+   This field is load-bearing: it's what a reviewer sees on the contact's card
+   and what goes into the Zoho import's Description.
 
 5. **Set one overall `extractionConfidence` per person** (not per field):
    - `high` — who this person is and which details belong to them are both

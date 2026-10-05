@@ -63,7 +63,6 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     notes: c.notes,
     glanceSummary: c.glance_summary ?? null,
     interactionNotes: c.interaction_notes ?? null,
-    contactIntent: c.contact_intent ?? null,
     followedUp: c.followed_up,
     hasPhoto: !!c.source_image_path,
     hasCroppedPhoto: !!c.cropped_image_path,

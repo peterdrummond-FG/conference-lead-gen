@@ -47,14 +47,12 @@ const ALERT_SMTP = 'Alert SMTP';
 export const WORKFLOW_CREDENTIAL_POLICY = {
   // The Zoho MCP tool on skill-match-contact authenticates via the URL held in
   // the n8n_config data table, not an n8n credential, so it doesn't appear here.
-  'skill-classify-contact-intent': [MODEL],
   'skill-extract-note-contacts': [MODEL],
   'skill-attribute-voice-memo': [MODEL],
   'skill-research-contact': [MODEL],
   'skill-match-contact': [MODEL],
   'skill-process-cards': [MODEL],
 
-  'pipeline-contact-intent': [SUPABASE, DB_WEBHOOK_SECRET],
   'pipeline-note-extraction': [SUPABASE, DB_WEBHOOK_SECRET],
   'pipeline-voice-transcription': [SUPABASE, DB_WEBHOOK_SECRET],
   'pipeline-process-cards-sms': [SUPABASE, DB_WEBHOOK_SECRET],

@@ -37,26 +37,10 @@
     </div>
 
     <div class="le-scroll">
-      <div class="le-intent" role="group" aria-label="How the conversation went">
-        <span class="le-intent-label">Heat</span>
-        <div class="le-intent-seg">
-          <button
-            v-for="opt in intentOptions"
-            :key="opt.value"
-            type="button"
-            class="le-intent-btn"
-            :class="[`is-${opt.value}`, { 'is-on': contact.contactIntent === opt.value }]"
-            :aria-pressed="contact.contactIntent === opt.value"
-            @click="setIntent(contact.contactIntent === opt.value ? null : opt.value)"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <!-- Beside Heat, not down in the footer: a rep who was quick on the
-             follow-up marks it here with the other "how did it go" answers.
-             Saves as you tap, like Heat. -->
+      <!-- Followed up saves as you tap: a rep who was quick on the follow-up
+           marks it here, above the fields. -->
+      <div v-if="contact.reviewStatus !== 'rejected'" class="le-followed">
         <q-checkbox
-          v-if="contact.reviewStatus !== 'rejected'"
           :model-value="contact.followedUp"
           label="Followed up"
           class="le-follow"
@@ -494,14 +478,6 @@ function notAMatch() {
   });
 }
 
-const intentOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
-  { value: 'hot', label: 'Hot' },
-  { value: 'warm', label: 'Warm' },
-  { value: 'cold', label: 'Cold' },
-];
-function setIntent(value: 'hot' | 'warm' | 'cold' | null) {
-  emit('update', { id: props.contact.id, payload: { contactIntent: value } });
-}
 function toggleFollowedUp(value: boolean) {
   emit('update', { id: props.contact.id, payload: { followedUp: value } });
 }
@@ -538,7 +514,7 @@ function approveNow() {
   });
 }
 
-// Adds a dated line to the notes and saves it immediately, like Heat and
+// Adds a dated line to the notes and saves it immediately, like
 // Followed up. It builds on the DRAFT, not the saved value, so a note the rep
 // was midway through typing isn't lost — and sets the draft to the same text, so
 // the notes field isn't left looking edited once the save lands.
@@ -614,24 +590,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-nav { display: flex; align-items: center; gap: 0; margin: -4px -8px 0 0; flex: none; }
 .le-pos { font-size: 12px; color: #5B6670; margin-right: 4px; white-space: nowrap; }
 
-.le-intent { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 0 8px; margin-bottom: 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
-.le-intent-label { font-size: 13px; color: #5B6670; }
-.le-intent-seg { display: inline-flex; border: 1px solid rgba(0, 0, 0, 0.24); border-radius: 8px; overflow: hidden; }
-.le-intent-btn {
-  border: 0;
-  background: transparent;
-  color: #5B6670;
-  font: inherit;
-  font-size: 14px;
-  padding: 0 16px;
-  height: 36px;
-  cursor: pointer;
-}
-.le-intent-btn + .le-intent-btn { border-left: 1px solid rgba(0, 0, 0, 0.12); }
-.le-intent-btn:focus-visible { outline: 2px solid #0067AC; outline-offset: -2px; }
-.le-intent-btn.is-on.is-hot { background: #FBEAEA; color: #B23B3B; font-weight: 500; }
-.le-intent-btn.is-on.is-warm { background: #FDEEE3; color: #9A4D00; font-weight: 500; }
-.le-intent-btn.is-on.is-cold { background: #E3F1FA; color: #0067AC; font-weight: 500; }
+.le-followed { padding: 0 0 8px; margin-bottom: 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
 
 .le-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 16px; overscroll-behavior: contain; }
 
@@ -723,13 +682,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   .le-head { padding: 10px 12px 8px; }
   .le-scroll { padding: 8px 12px 12px; }
   .le-foot { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
-  /* Heat label and its three choices share one line; Followed up sits under
-     them. The choices are 40px tall — still a comfortable tap, and it gives the
-     fields more of the sheet. */
-  .le-intent { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; }
-  .le-intent-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
-  .le-intent-btn { height: 40px; }
-  .le-follow { grid-column: 1 / -1; margin-left: 0; }
+  .le-follow { margin-left: 0; }
 
   .le-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   /* The photo becomes a one-line strip: enough to tap open, and the fields

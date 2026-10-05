@@ -162,3 +162,11 @@ been replaced, the replacement is noted here instead of rewriting history.
 - **Applying migrations.** Use the Supabase MCP tools. Do **not** run
   `supabase db push` — it would replay ~30 migrations against production, and
   there is no Supabase CLI on the deploy host anyway.
+
+- **`20261005120000_retire_contact_intent_classifier.sql`** — drops the
+  `contacts_notify_n8n_contact_intent` trigger and the two RPCs behind the heat
+  classifier. `20260910140000_add_contact_intent.sql`, `20260915120500` and
+  `20260925222514_trigger_contact_intent.sql` describe a feature that no longer
+  runs; the `contact_intent*` columns are kept on purpose, and
+  `insert_contact_with_duplicate_check` still maps a `contact_intent` payload key
+  (nothing sends one). Recreate that function before ever dropping the columns.

@@ -15,9 +15,9 @@ Read `docs/ARCHITECTURE.md` for the component map and
 | `frontend/` | Quasar/Vue SPA on Vercel. Talks only to Edge Functions. |
 | `supabase/functions/` | The only server-side API. One function per route. |
 | `supabase/migrations/` | Schema + stored functions. **Append-only.** |
-| `local-agent/` | Five poll loops. The only caller of `claude -p`. |
+| `local-agent/` | Four poll loops. The only caller of `claude -p`. |
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
-| `.claude/skills/` | The six skills. |
+| `.claude/skills/` | The five skills. |
 | `mcp/` | MCP configs for headless skill runs. |
 | `scripts/` | Repo guards and the deploy script. |
 
@@ -128,7 +128,7 @@ Supabase CLI on this machine.
 ## Gotchas found the hard way
 
 - **PostgREST can't express a column-to-column comparison.** That's why
-  `claim_contacts_needing_intent()` exists rather than filtering client-side.
+  the `claim_*` RPCs exist rather than filtering client-side.
 - **PostgREST can't disambiguate a self-referencing FK's direction** from a
   column-name embed hint — `contacts!local_duplicate_of_contact_id(...)`
   silently resolves backwards. Use a follow-up query (`attachDuplicateNames`).

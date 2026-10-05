@@ -229,13 +229,6 @@ Deno.serve(async (req) => {
     if (caller.role === "sales") repId = caller.id;
   }
 
-  // Signing up from a breakout session is a stronger self-selected engagement
-  // signal than a booth walk-up, so it starts hot instead of unclassified.
-  // contact_intent_is_manual defaults to false, so local-agent's intentLoop
-  // still takes over (and can downgrade this) the moment real interaction
-  // notes show up — this is a starting value, not a lock.
-  const contactIntent = qrChannel === "session" ? "hot" : null;
-
   if (body.schoolDistrictId) {
     const { data: district, error: districtError } = await supabase
       .from("school_districts")
@@ -271,7 +264,6 @@ Deno.serve(async (req) => {
         source: "form",
         qr_channel: qrChannel,
         rep_id: repId,
-        contact_intent: contactIntent,
         first_name: firstName,
         last_name: lastName,
         email,

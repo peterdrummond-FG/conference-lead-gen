@@ -14,7 +14,7 @@ function wf(name, credentialNames, { wrapped = false } = {}) {
 }
 
 test('passes a skill holding only the model credential', () => {
-  assert.deepEqual(auditWorkflows([wf('skill-classify-contact-intent', ['Anthropic account 2'])]).failures, []);
+  assert.deepEqual(auditWorkflows([wf('skill-extract-note-contacts', ['Anthropic account 2'])]).failures, []);
 });
 
 test('fails a skill that reaches the Supabase service-role credential', () => {

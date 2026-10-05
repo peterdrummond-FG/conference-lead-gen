@@ -16,7 +16,6 @@
       <button type="button" class="lr-open" :aria-current="active ? 'true' : undefined" @click="$emit('open')">
         <span class="lr-line1">
           <span class="lr-name">{{ name }}</span>
-          <LeadChip v-if="contact.contactIntent && tab !== 'approved'" :tone="intentTone(contact.contactIntent)">{{ intentLabel }}</LeadChip>
           <!-- Says "this opens". Phone only: the desktop list sits beside its pane. -->
           <q-icon v-if="phone" name="chevron_right" size="24px" class="lr-chev" aria-hidden="true" />
         </span>
@@ -28,6 +27,7 @@
             <LeadChip v-if="flags.length === 0" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
             <LeadChip v-for="f in shownFlags" :key="f.key" :tone="f.tone">{{ f.label }}</LeadChip>
           </template>
+          <LeadChip :tone="sourceTone(contact)">{{ sourceLabel(contact) }}</LeadChip>
           <LeadChip v-if="badge" :tone="badge.tone">{{ badge.label }}</LeadChip>
           <LeadChip v-if="contact.syncedAt" tone="grey">Sent to Zoho</LeadChip>
         </span>
@@ -42,7 +42,7 @@
       </div>
 
       <!-- One action bar, not two stacked rows: Followed up and Add note on the
-           left, the decision (or heat, or restore) on the right. It wraps
+           left, the decision (or restore) on the right. It wraps
            rather than overflows if a phone is too narrow for all of it. The
            follow-up and note controls save straight away, so they stay on the
            compact desktop rows too; Approve / Reject live in the pane there. -->
@@ -105,21 +105,6 @@
             </template>
           </template>
 
-          <q-btn v-else-if="tab === 'approved'" flat no-caps dense class="lr-heat" :class="contact.contactIntent ? `heat-${contact.contactIntent}` : ''" :disable="busy" :aria-label="`Heat: ${intentLabel || 'not set'}`">
-            <q-icon name="local_fire_department" size="18px" class="q-mr-xs" />{{ intentLabel || 'Set heat' }}
-            <q-menu auto-close anchor="bottom right" self="top right">
-              <q-list dense style="min-width: 140px">
-                <q-item v-for="opt in heatOptions" :key="opt.value" clickable :active="contact.contactIntent === opt.value" @click="$emit('intent', opt.value)">
-                  <q-item-section>{{ opt.label }}</q-item-section>
-                </q-item>
-                <q-separator v-if="contact.contactIntent" />
-                <q-item v-if="contact.contactIntent" clickable @click="$emit('intent', null)">
-                  <q-item-section class="text-grey-8">Clear</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </q-btn>
-
           <q-btn v-else-if="tab === 'rejected' && !compact" outline no-caps color="primary" icon="undo" label="Restore" class="lr-btn lr-btn-main" :disable="busy" @click="$emit('restore')" />
         </div>
       </div>
@@ -133,14 +118,14 @@ import { useQuasar } from 'quasar';
 import LeadChip from '@/components/smart/LeadChip.vue';
 import ProcessingBar from '@/components/smart/ProcessingBar.vue';
 import type { ContactListItem } from '@/types/review';
-import { accountBadge, fullName, intentTone, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, type ReviewStatus } from '@/utils/reviewSmart';
+import { accountBadge, fullName, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, sourceLabel, sourceTone, type ReviewStatus } from '@/utils/reviewSmart';
 
 const props = defineProps<{
   contact: ContactListItem;
   tab: ReviewStatus;
   active?: boolean;
   // Desktop split pane: the pane owns Approve / Reject, so the list row stays
-  // a compact summary (Followed up and heat still save straight from here).
+  // a compact summary (Followed up still saves straight from here).
   compact?: boolean;
   showEvent?: boolean;
   showRep?: boolean;
@@ -156,7 +141,6 @@ const emit = defineEmits<{
   restore: [];
   followedUp: [value: boolean];
   addNote: [];
-  intent: [value: 'hot' | 'warm' | 'cold' | null];
   'update:selected': [value: boolean];
 }>();
 
@@ -186,13 +170,7 @@ const cue = computed(() => leadCue(props.contact) ?? 'Open');
 // "Pick a Zoho match" is already the account badge — don't say it twice.
 const shownFlags = computed(() => flags.value.filter((f) => !(f.key === 'unclear' && badge.value)));
 const badge = computed(() => accountBadge(props.contact));
-const intentLabel = computed(() => (props.contact.contactIntent ? props.contact.contactIntent.charAt(0).toUpperCase() + props.contact.contactIntent.slice(1) : ''));
 
-const heatOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
-  { value: 'hot', label: 'Hot' },
-  { value: 'warm', label: 'Warm' },
-  { value: 'cold', label: 'Cold' },
-];
 </script>
 
 <style scoped>
@@ -287,10 +265,6 @@ const heatOptions: { value: 'hot' | 'warm' | 'cold'; label: string }[] = [
 .lr-cue { border: 0; background: transparent; color: #0067AC; font: inherit; font-size: 14px; font-weight: 500; min-height: 44px; padding: 0 4px; cursor: pointer; }
 .lr-cue:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 4px; }
 .lr-chev { margin-left: auto; flex: none; color: #8A949E; }
-.lr-heat { min-height: 44px; padding: 0 10px; color: #4A555F; }
-.lr-heat.heat-hot { color: #B23B3B; background: #FBEAEA; }
-.lr-heat.heat-warm { color: #9A4D00; background: #FDEEE3; }
-.lr-heat.heat-cold { color: #0067AC; background: #E3F1FA; }
 </style>
 
 <style scoped>

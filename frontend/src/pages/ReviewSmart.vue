@@ -98,7 +98,10 @@
         </button>
       </div>
 
-      <div v-if="tab === 'approved' || !isSales" class="rs-filters">
+      <!-- Source is for everyone on To review and Approved; the rep, conference
+           and sync filters are only for the people who see every rep's leads.
+           A rep's Rejected tab has nothing to slice, so it keeps no filter row. -->
+      <div v-if="tab !== 'rejected' || !isSales" class="rs-filters">
         <q-btn-toggle
           v-if="tab === 'approved'"
           v-model="followFilter"
@@ -122,6 +125,7 @@
           <q-select v-model="repFilter" :options="repFilterOptions" option-label="label" dense outlined emit-value map-options label="Rep" class="rs-select" />
           <q-select v-model="syncedFilter" :options="syncedFilterOptions" option-label="label" dense outlined emit-value map-options label="Sync status" class="rs-select" />
         </template>
+        <q-select v-model="sourceFilter" :options="sourceOptions" option-label="label" dense outlined emit-value map-options label="Source" class="rs-select rs-source" aria-label="Filter by source" />
       </div>
     </header>
 
@@ -298,8 +302,8 @@ import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
-  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, isProcessing, leadBucket, orderByRank, readyIds, searchLeads, summaryCounts,
-  type LeadBucket, type LeadRank, type ReviewStatus, type SortKey,
+  DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, filterBySource, isProcessing, leadBucket, orderByRank, readyIds, searchLeads, sourceFilterOptions, summaryCounts,
+  type LeadBucket, type LeadRank, type ReviewStatus, type SortKey, type SourceKey,
 } from '@/utils/reviewSmart';
 
 const $q = useQuasar();
@@ -324,6 +328,9 @@ const followFilter = ref<'all' | 'todo' | 'done'>('all');
 const eventFilter = ref<string | null>(null);
 const repFilter = ref<string | null>(null);
 const syncedFilter = ref<string | null>(null);
+// Client-side: source is already on every lead, so no round trip (unlike rep
+// and sync status, which the server filters).
+const sourceFilter = ref<SourceKey | null>(null);
 const profiles = ref<Profile[]>([]);
 // The To review pills double as a filter: one at a time, tap again to clear.
 const readinessFilter = ref<LeadBucket | null>(null);
@@ -371,6 +378,7 @@ const syncedFilterOptions = [
   { label: 'Not yet synced', value: 'false' },
   { label: 'Already synced', value: 'true' },
 ];
+const sourceOptions = computed(() => sourceFilterOptions(REVIEW_STATUSES.flatMap((s) => buckets[s])));
 const repFilterOptions = computed(() => [
   { label: 'All reps', value: null as string | null },
   ...profiles.value.filter((p) => p.role === 'sales').map((p) => ({ label: p.name, value: p.id as string | null })),
@@ -403,7 +411,7 @@ const counts = computed(() => ({
 const totalLeads = computed(() => counts.value.needs_review + counts.value.approved + counts.value.rejected);
 
 // Everything the rep has asked for except the status pill: conference,
-// follow-up toggle and search. The pill counts come from here, so they describe
+// follow-up toggle, source and search. The pill counts come from here, so they describe
 // the tab rather than the filtered view.
 const matching = computed(() => {
   let list = byConference(buckets[tab.value]);
@@ -411,7 +419,7 @@ const matching = computed(() => {
     const wantDone = followFilter.value === 'done';
     list = list.filter((c) => c.followedUp === wantDone);
   }
-  return searchLeads(list, searchText.value);
+  return searchLeads(filterBySource(list, sourceFilter.value), searchText.value);
 });
 
 const tabLeads = computed(() => {
@@ -489,11 +497,11 @@ async function setMyEvent(eventId: string | null) {
 // ── Empty states ─────────────────────────────────────────────────────────
 
 const emptyState = computed<{ icon: string; color: string; title: string; body: string; action?: { label: string; run: () => void } }>(() => {
-  if (searchText.value || followFilter.value !== 'all' || readinessFilter.value) {
+  if (searchText.value || followFilter.value !== 'all' || readinessFilter.value || sourceFilter.value) {
     return {
       icon: 'search_off', color: 'grey-6', title: 'No leads match',
       body: 'Nothing in this tab fits your search or filter.',
-      action: { label: 'Clear search and filter', run: () => { search.value = ''; followFilter.value = 'all'; readinessFilter.value = null; } },
+      action: { label: 'Clear search and filter', run: () => { search.value = ''; followFilter.value = 'all'; readinessFilter.value = null; sourceFilter.value = null; } },
     };
   }
   if (isSales.value && scopeView.value === 'past' && totalLeads.value === 0) {
@@ -605,7 +613,6 @@ const rowHandlers = {
   onRestore: (id: string) => void thenAdvance(id, () => restore(id)),
   onFollowedUp: (id: string, value: boolean) => void update(id, { followedUp: value }),
   onAddNote: (id: string) => { noteTargetId.value = id; noteDialogOpen.value = true; },
-  onIntent: (id: string, value: 'hot' | 'warm' | 'cold' | null) => void update(id, { contactIntent: value }),
   onSelect: (id: string, value: boolean) => { if (value) deleteSel.add(id); else deleteSel.delete(id); },
 };
 
@@ -717,7 +724,7 @@ watch(scopeView, () => {
   pinnedId.value = null;
   deleteSel.clear();
 });
-watch([readinessFilter, searchText, followFilter], () => { pinnedId.value = null; });
+watch([readinessFilter, searchText, followFilter, sourceFilter], () => { pinnedId.value = null; });
 watch([repFilter, syncedFilter], () => {
   serverFilters.repId = repFilter.value;
   serverFilters.synced = syncedFilter.value;
@@ -955,7 +962,8 @@ onBeforeUnmount(() => {
   .rs-filters .rs-select { min-width: 0; }
   .rs-follow-toggle { grid-column: 1 / -1; width: 100%; }
   .rs-follow-toggle :deep(.q-btn) { flex: 1; }
-  .rs-filters .rs-select:first-of-type:nth-last-of-type(3) { grid-column: 1 / -1; }
+  .rs-filters .rs-select:first-of-type:nth-last-of-type(4) { grid-column: 1 / -1; }
+  .rs-filters .rs-source { grid-column: 1 / -1; }
 
   /* Section title, "Approve all N" and the menu share a line; the title wraps
      before the button does. */
