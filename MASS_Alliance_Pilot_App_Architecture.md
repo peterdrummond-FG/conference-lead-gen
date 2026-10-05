@@ -781,7 +781,9 @@ past that threshold.
   (section 9).
 - **Stage 17 — pasted-note intake**: section 9b.
 - **Proactive SMS**: a 60-minute inactivity reminder and a "N contacts
-  received" confirmation, on a pg_cron schedule.
+  received" confirmation, on a pg_cron schedule. (The reminder was retired
+  2026-10-05: it said the session would "pause" and asked for the folder code,
+  but nothing pauses and SETUP needs no code. Only the confirmation remains.)
 - **Real auth replaced the shared staff PIN** (section 8); `backend/` (the old
   .NET app) removed entirely — it was unauthenticated, ran a second competing
   matching pipeline, and was the only reason the repo root held Zoho
