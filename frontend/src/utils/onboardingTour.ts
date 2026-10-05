@@ -420,7 +420,6 @@ export const SAMPLE_LEAD: ContactListItem = {
   notes: null,
   glanceSummary: null,
   interactionNotes: 'Loved the leadership workshop. Wants to hear about a school visit.',
-  contactIntent: 'warm',
   followedUp: false,
   hasPhoto: false,
   hasCroppedPhoto: false,

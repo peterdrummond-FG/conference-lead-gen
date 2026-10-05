@@ -10,7 +10,6 @@ import assert from 'node:assert/strict';
 import {
   AttributionOutput,
   CardExtractionOutput,
-  IntentOutput,
   MatchOutput,
   NoteExtractionOutput,
 } from './schemas.mjs';
@@ -62,12 +61,6 @@ test('MatchOutput rejects existing_contact with no contact id', () => {
 
 test('MatchOutput rejects matchStatus=pending (the contract forbids it)', () => {
   assert.equal(MatchOutput.safeParse(goodMatch({ matchStatus: 'pending' })).success, false);
-});
-
-test('IntentOutput accepts null but not an invented level', () => {
-  assert.equal(IntentOutput.safeParse({ contactIntent: null }).success, true);
-  assert.equal(IntentOutput.safeParse({ contactIntent: 'hot' }).success, true);
-  assert.equal(IntentOutput.safeParse({ contactIntent: 'lukewarm' }).success, false);
 });
 
 test('AttributionOutput requires exactly one of excerpt / notFound', () => {
@@ -176,8 +169,8 @@ test('extractJson takes the LAST object, not a prose-preamble fragment', () => {
   // The failure mode this guards: a run that reasons in prose first and emits
   // a JSON-looking fragment before the real answer. Taking the first match
   // silently parses the fragment and nulls every real field.
-  const out = 'Let me check {"foo": 1} first.\n\n{"contactIntent": "hot"}';
-  assert.deepEqual(extractJson(out), { contactIntent: 'hot' });
+  const out = 'Let me check {"foo": 1} first.\n\n{"matchStatus": "new_account"}';
+  assert.deepEqual(extractJson(out), { matchStatus: 'new_account' });
 });
 
 test('extractJson handles fences, nesting and braces inside strings', () => {
@@ -204,7 +197,7 @@ test('every skill profile denies Bash unless it explicitly needs it', () => {
 });
 
 test('text-only skills get exactly one tool', () => {
-  for (const skill of ['classify-contact-intent', 'attribute-voice-memo', 'extract-note-contacts']) {
+  for (const skill of ['attribute-voice-memo', 'extract-note-contacts']) {
     assert.deepEqual(profileFor(skill).allowedTools, ['Read'], `${skill} should be Read-only`);
     assert.equal(profileFor(skill).mcpConfig, null, `${skill} should load no MCP server`);
   }

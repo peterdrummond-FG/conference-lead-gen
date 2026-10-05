@@ -2,7 +2,7 @@
 // (audit A6).
 //
 // Model output reaches CRM-bound columns: contacts.match_* feeds the Zoho
-// export CSV, contacts.interaction_notes feeds classify-contact-intent and the
+// export CSV, contacts.interaction_notes feeds the
 // review card, and match_confidence='high' AUTO-APPROVES a contact for export
 // with no human ever seeing it. Before this file, two fields were checked
 // (matchStatus !== 'pending', and a Zoho-id regex) and the other ~14 went
@@ -114,10 +114,6 @@ export const ResearchOutput = z
   // just this skill's output in full — passthrough keeps them.
   .passthrough();
 
-export const IntentOutput = z.object({
-  contactIntent: z.enum(['hot', 'warm', 'cold']).nullable(),
-});
-
 // Same field shape as NoteExtractionOutput.contacts[] below — reused rather
 // than invented, since this is the same "extract a contact from raw text"
 // judgment, just sourced from a transcript instead of a pasted note.
@@ -216,8 +212,8 @@ export const NoteExtractionOutput = z.object({
         title: z.string().max(200).default(''),
         districtName: z.string().max(200).default(''),
         schoolName: z.string().max(200).default(''),
-        // Written to contacts.interaction_notes, which feeds
-        // classify-contact-intent and renders on the review card. Uncapped,
+        // Written to contacts.interaction_notes, which renders on the review
+        // card. Uncapped,
         // this is both a cost multiplier and the most convenient carrier for
         // injected text.
         interactionNotes: z.string().max(4000).default(''),

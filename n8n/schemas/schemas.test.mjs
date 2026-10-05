@@ -18,7 +18,6 @@ import {
   AttributionOutput,
   CardExtractionOutput,
   CardVisionOutput,
-  IntentOutput,
   MatchOutput,
   NoteExtractionOutput,
 } from './schemas.mjs';
@@ -69,12 +68,6 @@ test('MatchOutput rejects existing_contact with no contact id', () => {
 
 test('MatchOutput rejects matchStatus=pending (the contract forbids it)', () => {
   assert.equal(MatchOutput.safeParse(goodMatch({ matchStatus: 'pending' })).success, false);
-});
-
-test('IntentOutput accepts null but not an invented level', () => {
-  assert.equal(IntentOutput.safeParse({ contactIntent: null }).success, true);
-  assert.equal(IntentOutput.safeParse({ contactIntent: 'hot' }).success, true);
-  assert.equal(IntentOutput.safeParse({ contactIntent: 'lukewarm' }).success, false);
 });
 
 test('AttributionOutput requires exactly one of excerpt / notFound', () => {
@@ -206,8 +199,8 @@ test('CardVisionOutput requires a card when status is ok', () => {
 // --- extractJson (fallback path only — see extractJson.mjs header) -------
 
 test('extractJson takes the LAST object, not a prose-preamble fragment', () => {
-  const out = 'Let me check {"foo": 1} first.\n\n{"contactIntent": "hot"}';
-  assert.deepEqual(extractJson(out), { contactIntent: 'hot' });
+  const out = 'Let me check {"foo": 1} first.\n\n{"matchStatus": "new_account"}';
+  assert.deepEqual(extractJson(out), { matchStatus: 'new_account' });
 });
 
 test('extractJson handles fences, nesting and braces inside strings', () => {

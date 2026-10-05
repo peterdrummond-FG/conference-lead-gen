@@ -49,7 +49,6 @@ export interface ContactListItem {
   notes: string | null;
   glanceSummary: string | null;
   interactionNotes: string | null;
-  contactIntent: 'hot' | 'warm' | 'cold' | null;
   followedUp: boolean;
   hasPhoto: boolean;
   hasCroppedPhoto: boolean;
@@ -82,7 +81,6 @@ export interface UpdateContactPayload {
   matchConfidence?: string | null;
   reviewStatus?: string;
   interactionNotes?: string | null;
-  contactIntent?: 'hot' | 'warm' | 'cold' | null;
   followedUp?: boolean;
 }
 

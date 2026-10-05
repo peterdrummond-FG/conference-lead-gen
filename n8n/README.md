@@ -13,13 +13,11 @@ built and the rules it depends on.
 
 | Workflow | n8n id | Source |
 |---|---|---|
-| skill-classify-contact-intent | `Z3mAeLedo9RDxvqg` | generated |
 | skill-extract-note-contacts | `QSxeSjcQaEtnw5LI` | generated |
 | skill-attribute-voice-memo | `k1LFHrmVYBqDV4bT` | generated |
 | skill-research-contact | `llARky9YWlgXdU5z` | generated |
 | skill-match-contact | `qTr3bwVAAYBdHHyq` | generated |
 | skill-process-cards | `fiHwr67Yn3jH5JRj` | generated |
-| pipeline-contact-intent | `ENODB5dahHY4A1Cy` | `pipelines/` |
 | pipeline-note-extraction | `vZU7o9pk5JLmJdzT` | `pipelines/` |
 | pipeline-voice-transcription | `byHCYGrFpc4LCLQq` | `pipelines/` |
 | pipeline-process-cards-sms | `YfY73SMTSAkUjLL6` | `pipelines/` |

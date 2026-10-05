@@ -41,8 +41,7 @@ review → export.
    reuses the same file from memory until they do.
 
 Voice memos are transcribed locally (Whisper CLI) and attributed to the right
-contact(s) — a memo can cover more than one person — then classified
-hot/warm/cold. Attribution and OCR both retry automatically against a
+contact(s) — a memo can cover more than one person. Attribution and OCR both retry automatically against a
 persisted attempt/cooldown state (not a fixed time window) until the person
 they're about actually exists as a contact; a memo or photo that never
 resolves surfaces in `/review` instead of silently disappearing or
@@ -68,7 +67,7 @@ retry" convention.
 | `frontend/` | The SPA |
 | `supabase/functions/` | Edge Functions — the API |
 | `supabase/migrations/` | Schema and stored functions (append-only) |
-| `local-agent/` | Five poll loops; the only caller of `claude -p` |
+| `local-agent/` | Four poll loops; the only caller of `claude -p` |
 | `watcher/` | Folder-drop card pipeline |
 | `.claude/skills/` | The seven skills |
 | `scripts/` | Deploy script and CI guards |
@@ -79,7 +78,7 @@ retry" convention.
 Two long-running processes on a Mac, both installable as macOS Login Items:
 
 ```bash
-local-agent/start-agent.command    # matching, SMS photos, transcription, intent, notes
+local-agent/start-agent.command    # matching, SMS photos, transcription, notes
 watcher/watch-cards.command        # folder-drop card photos
 ```
 

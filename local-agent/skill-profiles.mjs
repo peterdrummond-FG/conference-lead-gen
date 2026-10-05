@@ -99,10 +99,6 @@ export const SKILL_PROFILES = {
   // No network, no MCP, no shell. These handle the least-structured and
   // least-trustworthy input in the system (raw Whisper transcripts, rep-typed
   // notes), so they get the smallest possible surface.
-  'classify-contact-intent': {
-    allowedTools: ['Read'],
-    mcpConfig: null,
-  },
   'attribute-voice-memo': {
     allowedTools: ['Read'],
     mcpConfig: null,

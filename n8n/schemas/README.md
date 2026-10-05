@@ -8,7 +8,6 @@ human (CLAUDE.md rule 3).
 
 | File | Skill |
 |---|---|
-| `intent.schema.json` | classify-contact-intent |
 | `note-extraction.schema.json` | extract-note-contacts |
 | `attribution.schema.json` | attribute-voice-memo |
 | `research.schema.json` | research-contact |

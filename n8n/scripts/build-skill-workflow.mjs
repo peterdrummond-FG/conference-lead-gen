@@ -9,7 +9,7 @@
 // never delete-and-recreate: pipelines call skills by workflow ID, and a new
 // workflow is a new ID. Re-publish afterwards if the skill is published.
 //
-//   node n8n/scripts/build-skill-workflow.mjs classify-contact-intent > out.ts
+//   node n8n/scripts/build-skill-workflow.mjs extract-note-contacts > out.ts
 //
 // Every skill workflow is this one template, so the model call, validation,
 // retry and error classification exist once -- here. (A separate shared
@@ -69,7 +69,6 @@ const ZOHO_READONLY_TOOLS = [
 //   so fields the contract says pass through unchanged cannot be altered by
 //   the model (and survive the parser, which drops unknown keys).
 const SKILLS = {
-  'classify-contact-intent': { schema: 'intent.schema.json', inputs: [['contactId', 'string'], ['interactionNotes', 'string']] },
   'extract-note-contacts': { schema: 'note-extraction.schema.json', inputs: [['noteText', 'string']] },
   'attribute-voice-memo': { schema: 'attribution.schema.json', inputs: [['transcript', 'string'], ['candidates', 'array']] },
   'research-contact': { schema: 'research.schema.json', objectInput: 'contact', mergeInput: true, tool: 'webSearch', maxIterations: 10 },

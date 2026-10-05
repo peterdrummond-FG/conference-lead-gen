@@ -2,8 +2,10 @@
 // Node strips the TypeScript types itself, so no build step is needed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, summaryCounts,
+  filterBySource, sourceFilterOptions, sourceKey, sourceLabel, sourceTone, SOURCE_OPTIONS,
 } from './reviewSmart.ts';
 
 function lead(over = {}) {
@@ -13,7 +15,7 @@ function lead(over = {}) {
     state: 'TN', schoolDistrictId: 'd1', districtName: 'Knox County', schoolDistrictNameRaw: null,
     schoolId: null, schoolName: null, schoolNameRaw: null, matchStatus: 'new_account', matchAttempts: 0,
     matchedZohoAccountLevel: null, localDuplicateOfContactName: null, reviewStatus: 'needs_review',
-    interactionNotes: null, contactIntent: null, followedUp: false, createdAt: '2026-09-01T10:00:00Z',
+    interactionNotes: null, followedUp: false, createdAt: '2026-09-01T10:00:00Z',
     ...over,
   };
 }
@@ -81,15 +83,14 @@ test('a new account with no school or district gets no misleading "New district"
   assert.equal(accountBadge(lead({ matchStatus: 'new_account', schoolDistrictId: null, districtName: null })), null);
 });
 
-test('follow-up sort: not-yet-called first, hottest first, followed-up last; input not mutated', () => {
+test('follow-up sort: not-yet-called first, newest first, followed-up last; input not mutated', () => {
   const list = [
-    lead({ id: 'done-hot', followedUp: true, contactIntent: 'hot' }),
-    lead({ id: 'todo-cold', contactIntent: 'cold' }),
-    lead({ id: 'todo-hot', contactIntent: 'hot' }),
-    lead({ id: 'todo-none' }),
+    lead({ id: 'done-new', followedUp: true, createdAt: '2026-09-05T10:00:00Z' }),
+    lead({ id: 'todo-old', createdAt: '2026-09-01T10:00:00Z' }),
+    lead({ id: 'todo-new', createdAt: '2026-09-03T10:00:00Z' }),
   ];
   const before = list.map((c) => c.id);
-  assert.deepEqual(sortLeads(list, 'followup').map((c) => c.id), ['todo-hot', 'todo-cold', 'todo-none', 'done-hot']);
+  assert.deepEqual(sortLeads(list, 'followup').map((c) => c.id), ['todo-new', 'todo-old', 'done-new']);
   assert.deepEqual(list.map((c) => c.id), before);
 });
 
@@ -219,16 +220,16 @@ const SORTS = { needs_review: 'newest', approved: 'followup', rejected: 'newest'
 
 function crowd() {
   const older = Array.from({ length: 12 }, (_, i) => lead({
-    id: `old${i}`, schoolDistrictId: null, districtName: null, contactIntent: 'warm', // all need info
+    id: `old${i}`, schoolDistrictId: null, districtName: null, // all need info
     createdAt: `2026-09-${String(10 + i).padStart(2, '0')}T10:00:00Z`,
   }));
-  const jim = lead({ id: 'jim', schoolDistrictId: null, districtName: null, contactIntent: 'hot', createdAt: '2026-10-01T15:11:00Z' });
+  const jim = lead({ id: 'jim', schoolDistrictId: null, districtName: null, followedUp: false, createdAt: '2026-10-01T15:11:00Z' });
   return { older, jim };
 }
 
 test('To review is newest first, and readiness is not a sort option', () => {
   assert.equal(DEFAULT_SORT.needs_review, 'newest');
-  assert.deepEqual(SORT_OPTIONS.needs_review.map((o) => o.value), ['newest', 'hot', 'name']);
+  assert.deepEqual(SORT_OPTIONS.needs_review.map((o) => o.value), ['newest', 'source', 'name']);
 });
 
 test('making a lead Ready does not move it', () => {
@@ -239,20 +240,20 @@ test('making a lead Ready does not move it', () => {
   assert.equal(sortLeads(list, 'newest')[0].id, 'jim');
 });
 
-test('the live Hot sort moves a lead the moment its heat is set (why it is frozen)', () => {
+test('the live follow-up sort moves a lead the moment it is ticked (why it is frozen)', () => {
   const { older, jim } = crowd();
   const list = [...older, jim];
-  assert.equal(sortLeads(list, 'hot')[0].id, 'jim');
-  Object.assign(jim, { contactIntent: 'cold' });
-  assert.notEqual(sortLeads(list, 'hot')[0].id, 'jim');
+  assert.equal(sortLeads(list, 'followup')[0].id, 'jim');
+  Object.assign(jim, { followedUp: true });
+  assert.notEqual(sortLeads(list, 'followup')[0].id, 'jim');
 });
 
 test('a frozen order keeps an edited lead where it was', () => {
   const { older, jim } = crowd();
   const buckets = { needs_review: [...older, jim], approved: [], rejected: [] };
-  const sorts = { ...SORTS, needs_review: 'hot' };
+  const sorts = { ...SORTS, needs_review: 'followup' };
   const rank = buildRank(buckets, sorts);
-  Object.assign(jim, { contactIntent: 'cold' });
+  Object.assign(jim, { followedUp: true });
   assert.equal(orderByRank(buckets.needs_review, 'needs_review', rank)[0].id, 'jim');
   // A fresh rank (a deliberate re-sort) does apply the edit.
   assert.notEqual(orderByRank(buckets.needs_review, 'needs_review', buildRank(buckets, sorts))[0].id, 'jim');
@@ -285,4 +286,72 @@ test('leadBucket puts every to-review lead in exactly one pill, matching summary
   ];
   assert.deepEqual(list.map(leadBucket), ['ready', 'needsInfo', 'processing', 'needsInfo', null]);
   assert.deepEqual(summaryCounts(list), { ready: 1, needsInfo: 2, processing: 1 });
+});
+
+// ── Signup source ────────────────────────────────────────────────────────
+
+test('a form lead is split by the QR it came through; other sources ignore the channel', () => {
+  assert.equal(sourceKey({ source: 'form', qrChannel: 'booth' }), 'form_booth');
+  assert.equal(sourceKey({ source: 'form', qrChannel: 'session' }), 'form_session');
+  assert.equal(sourceKey({ source: 'form', qrChannel: null }), 'form_none');
+  assert.equal(sourceKey({ source: 'card_photo', qrChannel: 'booth' }), 'card_photo');
+  assert.equal(sourceKey({ source: 'voice_memo', qrChannel: null }), 'voice_memo');
+  assert.equal(sourceKey({ source: 'something_new', qrChannel: null }), 'other');
+});
+
+test('chip wording: a form with no QR is just "Form"; the filter says "Form · no QR"', () => {
+  assert.equal(sourceLabel({ source: 'form', qrChannel: 'booth' }), 'Form · Booth');
+  assert.equal(sourceLabel({ source: 'form', qrChannel: null }), 'Form');
+  assert.equal(SOURCE_OPTIONS.find((o) => o.value === 'form_none').label, 'Form · no QR');
+  assert.equal(sourceLabel({ source: 'directory_photo', qrChannel: null }), 'Directory photo');
+  assert.equal(sourceTone({ source: 'form', qrChannel: null }), 'blue');
+  assert.equal(sourceTone({ source: 'note', qrChannel: null }), 'grey');
+});
+
+// The lesson of contacts_source_check growing twice: a source added to the DB
+// but not here would show as "Other" forever. Read the real constraint.
+test('every source the database allows has its own filter option', () => {
+  const dir = new URL('../../../supabase/migrations/', import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  let allowed = null;
+  for (const f of files) {
+    const m = readFileSync(new URL(f, dir), 'utf8').match(/add constraint contacts_source_check\s+check \(source = any \(array\[([^\]]+)\]/);
+    if (m) allowed = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  }
+  assert.ok(allowed && allowed.length >= 5, 'could not find contacts_source_check');
+  for (const source of allowed) {
+    assert.notEqual(sourceKey({ source, qrChannel: null }), 'other', `${source} needs a source option`);
+  }
+});
+
+test('filter options list every source and add Other only when a lead needs it', () => {
+  assert.deepEqual(sourceFilterOptions([lead()]).map((o) => o.value), [null, ...SOURCE_OPTIONS.map((o) => o.value)]);
+  assert.equal(sourceFilterOptions([lead({ source: 'sms_v2' })]).at(-1).value, 'other');
+});
+
+test('filtering by source keeps only that source; null keeps all', () => {
+  const list = [
+    lead({ id: 'a', source: 'form', qrChannel: 'booth' }),
+    lead({ id: 'b', source: 'form', qrChannel: 'session' }),
+    lead({ id: 'c', source: 'card_photo' }),
+  ];
+  assert.deepEqual(filterBySource(list, 'form_booth').map((c) => c.id), ['a']);
+  assert.deepEqual(filterBySource(list, 'card_photo').map((c) => c.id), ['c']);
+  assert.equal(filterBySource(list, null).length, 3);
+});
+
+test('source sort groups in the filter order, newest first inside a group', () => {
+  const list = [
+    lead({ id: 'note-new', source: 'note', createdAt: '2026-09-05T10:00:00Z' }),
+    lead({ id: 'session', source: 'form', qrChannel: 'session', createdAt: '2026-09-02T10:00:00Z' }),
+    lead({ id: 'card-old', source: 'card_photo', createdAt: '2026-09-01T10:00:00Z' }),
+    lead({ id: 'booth', source: 'form', qrChannel: 'booth', createdAt: '2026-09-03T10:00:00Z' }),
+    lead({ id: 'card-new', source: 'card_photo', createdAt: '2026-09-04T10:00:00Z' }),
+  ];
+  assert.deepEqual(sortLeads(list, 'source').map((c) => c.id), ['booth', 'session', 'card-new', 'card-old', 'note-new']);
+});
+
+test('search finds a lead by its source', () => {
+  const list = [lead({ id: 'a', source: 'voice_memo' }), lead({ id: 'b' })];
+  assert.deepEqual(searchLeads(list, 'voice memo').map((c) => c.id), ['a']);
 });

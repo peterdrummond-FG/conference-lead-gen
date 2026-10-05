@@ -8,9 +8,9 @@
 | `supabase/functions/` | The only server-side API. Service-role clients behind `requireUser()` role checks; RLS is deny-all with zero policies by design. |
 | `supabase/migrations/` | Schema + stored functions. Append-only; never edited after the fact. |
 | `supabase/seed/` | Zoho reference data (districts/schools/campaigns) for seeding a fresh environment. |
-| `local-agent/` | Five poll loops (matching, SMS photo, transcription, intent, note extraction). The only caller of `claude -p`. |
+| `local-agent/` | Four poll loops (matching, SMS photo, transcription, note extraction). The only caller of `claude -p`. |
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
-| `.claude/skills/` | The six skills. |
+| `.claude/skills/` | The five skills. |
 | `mcp/` | MCP configs for headless skill runs. Only `zoho-readonly.json` today. |
 | `scripts/` | Repo guards run in CI, plus `deploy-functions.mjs`. |
 
@@ -488,7 +488,7 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
 any skill or auto-classification — a rep toggles it directly via
 `contacts-patch`, and it saves as they tap. It's on every To review and Approved
-row and beside Heat in the editor header (see "Review" below). The
+row and at the top of the editor (see "Review" below). The
 Approved tab's follow-up filter is the only place it drives behavior beyond
 display — the All / To follow up /
 Followed up toggle plus a default "Follow up first" sort — and it's a
@@ -525,7 +525,7 @@ saved just ignores it.) It is a list of compact rows
 with a plain-language flag for why a lead needs a look (or a green "Ready to approve"),
 live tab counts, search and sort, one-tap Approve / Reject with a 6-second
 Undo, "Approve all N", tap-to-call / tap-to-email, and Followed up, Add
-note and (on Approved) Heat straight from the row. On a desktop (≥1024px)
+note straight from the row. On a desktop (≥1024px)
 the list sits beside a sticky editor pane (J / K move, A approves, R
 rejects); below that the same editor is a bottom sheet. Leaving a lead with
 unsaved edits asks first.
@@ -548,7 +548,7 @@ Rules worth knowing before changing Smart:
   there is no "needs attention first" sort. That sort ranked on the readiness flags,
   so on 2026-10-01 adding a district to the newest lead flipped it to Ready and sent
   it from row 1 to row 41 the instant Save landed. The sorts that still read editable
-  fields (Hot first, Follow up first) are computed once (`buildRank`, on load / sort
+  fields (Follow up first) are computed once (`buildRank`, on load / sort
   change / tab switch) and kept (`orderByRank`), not re-run live. The background poll
   (`load({ keepOrder: true })`) keeps that order and yields to any write in flight
   rather than putting stale values back. "Save changes" says "Saved <name>".
@@ -607,9 +607,20 @@ Rules worth knowing before changing Smart:
   the AI match reasoning (`contacts.notes`). Before 2026-09-29 it was not
   exported at all. The Review tooltips promise this, so change both together,
   and redeploy `export-csv` when the export changes.
-- Followed up sits beside Heat in the editor header (not the footer); both save
-  as you tap, while the text fields still need Save (or Approve, which carries
-  pending edits on the same PATCH).
+- Followed up sits at the top of the editor (not the footer) and saves as you
+  tap, while the text fields still need Save (or Approve, which carries pending
+  edits on the same PATCH).
+- **Heat is retired (2026-10-05); Source replaced it.** The hot/warm/cold control,
+  chip and "Hot first" sort, the classifier skill, its n8n pipeline and local-agent
+  loop, and the DB trigger that fired it are gone. `contacts.contact_intent*` stays
+  as inert history (~17 rows). Review's **Source** select (everyone, To review and
+  Approved; admin/Solutions Success also on Rejected) filters by how a lead was
+  captured, and "Source" is a sort. The key is `contacts.source` plus `qr_channel` for
+  forms (Form · Booth, Form · Session, Form · no QR, Card photo, Directory photo,
+  Note, Voice memo), all in `reviewSmart.ts` (`sourceKey`, `SOURCE_OPTIONS`). A test
+  reads the latest `contacts_source_check` migration and fails if the DB allows a
+  source the UI has no option for. Source never changes after capture, so unlike a
+  field an edit can change it needs no frozen order.
 - Bulk selection (Rejected tab) is counted only over what is on screen. The
   same was fixed in Classic, whose bulk approve also now reads and reports the
   `{ approved, skipped }` response instead of discarding it.

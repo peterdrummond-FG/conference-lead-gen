@@ -109,9 +109,7 @@ Deno.serve(async (req) => {
         school_id: school.id,
         school_name_raw: school.raw,
         extraction_confidence: body.extractionConfidence,
-        // Seeds interaction_notes at insert time, which is also what makes
-        // intentLoop pick the contact up and classify it hot/warm/cold with
-        // no extra step — see classify-contact-intent.
+        // Seeds interaction_notes at insert time.
         interaction_notes: body.interactionNotes?.trim() || null,
         source_note_id: submission.id,
       },
