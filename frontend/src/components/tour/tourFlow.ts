@@ -30,8 +30,8 @@ export const TOUR_SCENES: TourScene[] = [
   {
     id: 'setup',
     title: 'Text SETUP to start',
-    body: 'From your phone, text **SETUP** to **{number}**. We reply with the conference you are linked to.',
-    note: 'Wrong conference? Reply **CHANGE**, or change it in the app on **Setup**.',
+    body: "From your phone, text **SETUP** to **{number}**, then reply with your conference's name and pick it from the list.",
+    note: "Already picked one in the app? We'll just confirm it. You can change it any time on **Setup**.",
     component: TourSceneSetup,
   },
   {

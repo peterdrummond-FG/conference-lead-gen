@@ -65,9 +65,9 @@ const WAVE = [8, 14, 20, 12, 18, 9, 16, 22, 11, 7, 15, 19, 10, 6];
 .tm-num { font-size: 12px; color: #111; }
 
 .tm-thread { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 10px 12px; gap: 6px; }
-.tm-row { display: flex; }
+.tm-row { display: flex; flex: none; }
 .tm-row.is-me { justify-content: flex-end; }
-.tm-bubble { max-width: 78%; padding: 8px 13px; border-radius: 19px; font-size: 16px; line-height: 1.3; }
+.tm-bubble { max-width: 78%; white-space: pre-line; overflow-wrap: anywhere; padding: 8px 13px; border-radius: 19px; font-size: 16px; line-height: 1.3; }
 .is-me .tm-bubble { background: #0A84FF; color: #fff; border-bottom-right-radius: 6px; }
 .is-them .tm-bubble { background: #E9E9EB; color: #111; border-bottom-left-radius: 6px; }
 
