@@ -8,7 +8,6 @@ export interface ActiveEvent {
   state: string;
   slug: string;
   activatedAt: string;
-  folderCode: string | null;
   // Both only present for an authenticated caller (events-active) — absent
   // (undefined) for the public Intake fetch.
   isLinkedRep?: boolean;

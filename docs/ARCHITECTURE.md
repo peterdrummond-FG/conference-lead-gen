@@ -92,12 +92,63 @@ the check; it just hadn't been true everywhere. Grep for `.eq("slug",` /
 `repSlug` (a rep's reusable QR: their linked event, rep credited), `eventSlug`
 (+ optional `repId`, revalidated against `event_reps`; event must be active),
 then — for a bare call — the **signed-in caller** (the in-app Kiosk tab: their
-`current_event_id`, credited if `sales`). A bare call with no valid session is a
-409, never "the latest-activated event". Old `/booth` and `/session` slides land
-here, so they now show "Scan the conference QR code again" until reprinted.
-`IntakePage` mirrors this: signed in with no linked event shows "Join a
-conference first" rather than the fallback event `events-active` returns for
-display.
+`current_event_id`, credited if `sales`). A bare call is never resolved to "the
+latest-activated event". The decision is `_shared/intakeDestination.ts`, one
+tested function; when it can't place a submission it is **held, not rejected**
+(next section). Old `/booth` and `/session` slides land in that queue as "No QR
+details" until reprinted. `IntakePage` mirrors the resolution: signed in with no
+linked event shows "Join a conference first" rather than the fallback event
+`events-active` returns for display.
+
+**The conference code (`events.folder_code`) never reaches the browser.** It is the
+SMS bind token, so neither `events-active` nor `events-activate` returns it (Admin's
+"Show conference code" link and the `folderCode` field in the event store are gone).
+It stays in the database: `contacts-from-ocr` and the SMS photo pipeline file photos
+by it, and `twilio-webhook` still binds a phone to an *active* event whose code is
+texted. Don't add it back to a response for a UI.
+
+### Scans that need a conference
+
+`contacts-create` used to answer 404/409 and keep nothing when a valid attendee
+couldn't be placed, so their details were lost. `contacts.event_id` is NOT NULL
+and that rule runs through Review, duplicate checks, matching and export, so it
+is not loosened. Instead the submission waits in `unassigned_submissions` and the
+attendee sees the normal "Thanks".
+
+- **Held (reason):** a rep with no conference (`rep_no_conference`; also a stale
+  pointer to an ended one), a `repSlug` that matches no sales rep
+  (`rep_not_found`), a per-event QR for an ended conference (`event_ended`, with
+  `event_hint_id`) or for a slug matching nothing (`event_unknown`), no QR and no
+  session (`no_qr`), a signed-in Kiosk tab with no/ended conference
+  (`caller_no_conference`). Validation (400) and the rate/queue caps (429) still
+  refuse.
+- **The rep is credited only when we really know them:** the `repSlug` rep, the
+  signed-in sales caller, or an ended-event QR's `repId` after it is re-validated
+  against `event_reps` and `role = sales`. Never a client id taken at its word.
+- **Nothing expensive at submit time.** No contact row means no matching, no AI,
+  no n8n trigger until a person files it, so a public request can't start costly
+  work by landing here.
+- **Bounded.** The per-network rate limit still runs first; the queue adds a cap
+  per network per 24h (`INTAKE_QUEUE_IP_CAP`, 300 because conference wifi is one
+  NAT) and on pending rows overall (`INTAKE_QUEUE_TOTAL_CAP`, 3000). Both fail
+  closed with the existing 429 wording.
+- **Filing is one transaction.** `unassigned-assign` calls
+  `assign_unassigned_submission`: it locks the row, re-checks the conference is
+  live *now* and the rep is a sales rep, creates the contact through
+  `insert_contact_with_duplicate_check` (same path as a normal scan, so duplicate
+  checks and the match trigger behave identically) and marks the row assigned, all
+  or nothing. A second person assigning the same scan waits on the lock and is
+  refused. This replaces the claim/work/confirm shape used elsewhere because
+  everything it touches is in one database.
+- **Who sees it:** `unassigned-list/-assign/-discard` are admin and Solutions
+  Success only, checked server-side. Review shows an amber "N scans need a
+  conference" banner (`UnassignedScansBanner.vue`) to those roles only, never to a
+  rep or while previewing one. No email or text goes out; the banner is the signal.
+- **Retention:** rows (any status) are deleted after 90 days by a daily pg_cron job
+  (`purge_unassigned_submissions`), the media-retention default (audit S12) but
+  scheduled in the database rather than run by hand.
+- Copy that depended on the old 409 (QR dialog footer, Setup's QR line, Admin's
+  Team lines, the tour's QR notes) now says scans wait for Solutions Success.
 
 ### Setup and Admin
 
@@ -153,12 +204,43 @@ checks and the rep taps the one to change. Keep it that way:
   `startsOn`/`endsOn`; null for an undated name. Don't add a second parser in
   TypeScript.
 - **The QR line must stay true.** It names the joined conference; with none chosen
-  it says scans won't go through, because `contacts-create` answers 409 for a rep
-  with no `current_event_id`. It does not file the lead under the previous one.
+  it says scans wait for Solutions Success to file them, because `contacts-create`
+  holds a scan from a rep with no `current_event_id` in `unassigned_submissions`.
+  It neither files the lead under the previous conference nor loses it.
 - **The rep's number on file** (`/me` -> `phoneNumber`) is shown so a wrong one is
   caught; reps can't edit it, so the "?" points at their Solutions Success rep.
 - The "how it works" explanation is the welcome tour, not text on Setup. Keep the
   page's prose to a line or two.
+
+### One conference everywhere
+
+A rep has two pointers to "the conference I'm at": `profiles.current_event_id`
+(the app, QR scans, Review) and `phone_event_bindings.event_id` (where texted
+photos, voice memos and notes are filed). They used to be written by different
+code and drifted: a rep who only texted SETUP had a linked phone and an app that
+said "choose a conference" (their QR answered 409), and a manager moving a rep in
+the app left their texted cards landing in the old conference.
+
+- **App to phone:** `profiles-set-current-event`, `profiles-assign-current-event`
+  and `events-activate` all call the SQL function `profile_set_current_event`.
+  It moves an **existing** binding to the new (active) conference, **never
+  creates one** (a binding is what lets `session-notifications` text a number; a
+  phone that never texted SETUP hasn't opted in, and our A2P campaign was
+  rejected four times over consent), and does not refresh `last_activity_at`
+  (an app change is not activity on the phone). Clearing the conference (null)
+  **deletes** the binding, which only stops texts; the next SETUP links again.
+- **Phone to app:** every bind path in `twilio-webhook` (name search, activating
+  a campaign, supplying the state, a folder code) calls
+  `profile_link_event_by_phone` afterwards. `profiles.phone_number` is unique, so
+  at most one profile matches; no match leaves the phone bound on its own.
+- **A binding outlives its conference.** `events_complete()` clears profiles but
+  not bindings, so `twilio-webhook` re-checks `events.is_active` wherever a bound
+  phone files something (photos, voice memos, single-contact notes). An ended
+  conference files nothing and replies "That conference has ended. Text SETUP to
+  pick your current one." A failed lookup files nothing too and asks for a
+  resend. A folder code only binds an active event.
+- `scripts/check-conference-writers.mjs` (CI) fails if an Edge Function writes
+  `current_event_id` directly or the webhook loses those checks.
 
 ### Admin "View as"
 

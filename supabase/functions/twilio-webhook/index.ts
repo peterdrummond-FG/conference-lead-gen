@@ -265,6 +265,63 @@ async function linkedEventFromProfile(
   return event?.is_active ? { id: event.id, name: event.name } : null;
 }
 
+// Whether the conference a bound phone files under is still running. A
+// binding outlives its conference (events_complete() clears profiles but not
+// phone_event_bindings), so before this check a rep who never texted SETUP
+// again kept filing photos, voice memos and notes under a conference that had
+// ended, with no sign anything was wrong. Every place a bound phone files
+// something calls this, per the project rule that anything resolving an event
+// checks is_active. Fails closed: if the lookup itself errors we file nothing
+// and ask for a resend, because a lead filed under the wrong event is worse than
+// one the rep re-sends.
+type BoundEventState = "active" | "ended" | "error";
+async function boundEventState(
+  supabase: ReturnType<typeof serviceClient>,
+  eventId: string,
+): Promise<BoundEventState> {
+  try {
+    const { data, error } = await step("bound event select", () =>
+      supabase.from("events").select("is_active").eq("id", eventId).maybeSingle());
+    if (error) {
+      console.error("boundEventState: event lookup failed", error);
+      return "error";
+    }
+    return data?.is_active ? "active" : "ended";
+  } catch (err) {
+    console.error("boundEventState threw", err);
+    return "error";
+  }
+}
+
+// One SMS segment each (plain ASCII, well under 160).
+const CONFERENCE_ENDED_REPLY = "That conference has ended. Text SETUP to pick your current one.";
+const CONFERENCE_CHECK_FAILED_REPLY = "We hit a snag on our end. Please send that again in a minute.";
+
+// The other half of linkedEventFromProfile: once a bind path has written
+// phone_event_bindings, point the profile that owns this number at the same
+// conference. Without it a rep who only texted SETUP had a linked phone and no
+// app conference, so their QR answered 409 and Setup said "choose a
+// conference". The rule lives in profile_link_event_by_phone (it re-asserts
+// is_active and matches on the unique profiles.phone_number); a number nobody
+// has on file just leaves the phone bound on its own, as before.
+//
+// Awaited, but a failure is logged and swallowed: the phone IS bound and the
+// reply is true, so a hiccup here must not turn a working bind into an error.
+async function linkProfileToEvent(
+  supabase: ReturnType<typeof serviceClient>,
+  phone: string,
+  eventId: string,
+): Promise<void> {
+  try {
+    // Idempotent (sets a column to a value), so step()'s retry is safe.
+    const { error } = await step("profile link", () =>
+      supabase.rpc("profile_link_event_by_phone", { p_phone: phone, p_event_id: eventId }));
+    if (error) console.error("linkProfileToEvent failed", error);
+  } catch (err) {
+    console.error("linkProfileToEvent threw", err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -295,16 +352,19 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
 
   // Any inbound request from an already-bound phone counts as activity —
-  // refreshes the 60-minute idle clock session-notifications watches and
-  // cancels a pending reminder so the next idle stretch can trigger a
-  // fresh one. No-ops (0 rows) for a phone that isn't bound to anything.
+  // keeps session-notifications' contact-received confirmations sweeping
+  // this phone (it ignores bindings idle past 2 hours). No-ops (0 rows) for
+  // a phone that isn't bound to anything. It used to also clear
+  // expiry_notified_at for the 60-minute "session is about to pause"
+  // reminder, retired 2026-10-05 because nothing pauses; that column is now
+  // unused, so no write here or in the bind upserts below touches it.
   // Backgrounded: nothing in the reply depends on it, and it used to sit in
   // front of every request. Racing a later bind upsert is harmless -- it only
-  // touches last_activity_at/expiry_notified_at, which that upsert also sets.
+  // touches last_activity_at, which that upsert also sets.
   background("activity refresh", () =>
     supabase
       .from("phone_event_bindings")
-      .update({ last_activity_at: new Date().toISOString(), expiry_notified_at: null })
+      .update({ last_activity_at: new Date().toISOString() })
       .eq("phone_number", from));
 
   // No media: either a step in an in-progress "setup a new conference"
@@ -342,7 +402,6 @@ Deno.serve(async (req) => {
             event_id: linked.id,
             updated_at: new Date().toISOString(),
             last_activity_at: new Date().toISOString(),
-            expiry_notified_at: null,
             // Same reset as every other bind: a stale watermark from a prior
             // event must not skip confirming this event's first contacts.
             contacts_confirmed_through: new Date().toISOString(),
@@ -479,12 +538,12 @@ Deno.serve(async (req) => {
           event_id: eventId,
           updated_at: new Date().toISOString(),
           last_activity_at: new Date().toISOString(),
-          expiry_notified_at: null,
           // Switching events resets the confirmation watermark so a stale
           // value from a prior event can't skip confirming this event's
           // first batch of contacts.
           contacts_confirmed_through: new Date().toISOString(),
         }));
+      await linkProfileToEvent(supabase, from, eventId!);
       await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
       background("audit row", () =>
         supabase.from("inbound_messages").insert({
@@ -547,9 +606,9 @@ Deno.serve(async (req) => {
           event_id: activated.id,
           updated_at: new Date().toISOString(),
           last_activity_at: new Date().toISOString(),
-          expiry_notified_at: null,
           contacts_confirmed_through: new Date().toISOString(),
         }));
+      await linkProfileToEvent(supabase, from, activated.id);
       await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
       background("audit row", () =>
         supabase.from("inbound_messages").insert({
@@ -650,6 +709,8 @@ Deno.serve(async (req) => {
       .from("events")
       .select("id, name")
       .eq("folder_code", body.toLowerCase())
+      // A completed conference's code must not bind a phone to it.
+      .eq("is_active", true)
       .maybeSingle();
 
     if (!event) {
@@ -667,6 +728,21 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (binding && body.length > 0) {
+        const bound = await boundEventState(supabase, binding.event_id);
+        if (bound !== "active") {
+          background("audit row", () =>
+            supabase.from("inbound_messages").insert({
+              twilio_message_sid: sid,
+              from_phone: from,
+              to_phone: to,
+              event_id: binding.event_id,
+              kind: "text_note",
+              status: "failed",
+              body,
+              error: bound === "ended" ? "bound conference has ended" : "could not check the bound conference",
+            }));
+          return twiml(bound === "ended" ? CONFERENCE_ENDED_REPLY : CONFERENCE_CHECK_FAILED_REPLY);
+        }
         if (!fitsOneSmsSegment(body)) {
           background("audit row", () =>
             supabase.from("inbound_messages").insert({
@@ -720,7 +796,12 @@ Deno.serve(async (req) => {
           body,
           error: "text did not match a known event folder code",
         }));
-      return twiml("I didn't recognize that. If you have your event's folder code, text it to link your phone. If not, text SETUP and I'll help you find your conference by name.");
+      // Used to lead with "If you have your event's folder code, text it to
+      // link your phone." Texting a code still links a phone (the lookup
+      // above), but SETUP is what the onboarding and Setup page teach, needs
+      // nothing the rep has to be given, and binds a rep already linked in
+      // the app instantly -- so it's the only thing the reply offers.
+      return twiml("I didn't recognize that. Text SETUP to link your phone to your conference.");
     }
 
     await step("phone_event_bindings upsert", () =>
@@ -729,12 +810,12 @@ Deno.serve(async (req) => {
         event_id: event.id,
         updated_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
-        expiry_notified_at: null,
         // Switching events resets the confirmation watermark so a stale
         // value from a prior event can't skip confirming this event's
         // first batch of contacts.
         contacts_confirmed_through: new Date().toISOString(),
       }));
+    await linkProfileToEvent(supabase, from, event.id);
     background("audit row", () =>
       supabase.from("inbound_messages").insert({
         twilio_message_sid: sid,
@@ -766,7 +847,24 @@ Deno.serve(async (req) => {
         body,
         error: "no event binding for this phone number",
       }));
-    return twiml("Your phone isn't linked to an event yet. Text your folder code, or text SETUP to find your conference by name — then send card photos.");
+    // Same as the unrecognized-text reply above: SETUP only, no folder code.
+    return twiml("Your phone isn't linked to a conference yet. Text SETUP to link it, then send card photos.");
+  }
+
+  const boundState = await boundEventState(supabase, binding.event_id);
+  if (boundState !== "active") {
+    background("audit row", () =>
+      supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        event_id: binding.event_id,
+        kind: "unrecognized",
+        status: "failed",
+        body,
+        error: boundState === "ended" ? "bound conference has ended" : "could not check the bound conference",
+      }));
+    return twiml(boundState === "ended" ? CONFERENCE_ENDED_REPLY : CONFERENCE_CHECK_FAILED_REPLY);
   }
 
   let received = 0;

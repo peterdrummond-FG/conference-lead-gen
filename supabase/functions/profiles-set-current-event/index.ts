@@ -37,13 +37,15 @@ Deno.serve(async (req) => {
     if (!event) return errorResponse(req, 404, `No event with id '${body.eventId}'.`);
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .update({ current_event_id: body.eventId })
-    .eq("id", user.id)
-    .select()
-    .single();
-  if (error) return errorResponse(req, 500, error.message);
+  // One rule for "this person's conference changed", shared with
+  // profiles-assign-current-event and events-activate: the profile moves and, if
+  // their phone is already bound, the phone follows (never creating a binding --
+  // see profile_set_current_event, 20261005130000_one_conference_everywhere.sql).
+  const { error } = await supabase.rpc("profile_set_current_event", {
+    p_profile_id: user.id,
+    p_event_id: body.eventId,
+  });
+  if (error) return errorResponse(req, error.code === "CKH01" ? 404 : 500, error.message);
 
-  return jsonResponse(req, { id: data.id, currentEventId: data.current_event_id });
+  return jsonResponse(req, { id: user.id, currentEventId: body.eventId });
 });

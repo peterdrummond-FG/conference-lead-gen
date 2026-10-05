@@ -21,6 +21,7 @@ lint-edge-functions:
   image: denoland/deno:latest
   script:
     - deno lint supabase/functions
+    - deno test --no-lock supabase/functions/_shared/
 
 unit-tests:
   stage: test
@@ -33,4 +34,5 @@ repo-guards:
   image: node:22
   script:
     - node scripts/check-skill-profiles.mjs
+    - node scripts/check-conference-writers.mjs
     - bash scripts/check-deployed-functions.sh

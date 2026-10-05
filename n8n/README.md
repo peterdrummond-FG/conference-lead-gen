@@ -80,7 +80,7 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
 
 6. **Anything a second system produced is re-validated at the boundary.**
    Storage paths are checked against twilio-webhook's own key pattern, the
-   Whisper name prompt only accepts name-shaped strings, and excerpt and field
+   transcription name prompt only accepts name-shaped strings, and excerpt and field
    lengths are bounded in both the schema and the database.
 
 ## Changing things
@@ -117,9 +117,20 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
   allows it). The build found n8n refuses an unpublished sub-workflow more
   than one manual hop deep. Production calls haven't been tested, so publish
   first, then confirm the first live run.
-- Decide where n8n and Whisper run. That decision blocks the Whisper URL
-  (currently a `placeholder()` with an unverified request shape) and the
-  50-execution concurrency cap, which is a host setting.
+- Voice memos: transcription is OpenAI `gpt-4o-transcribe`, after an ffmpeg
+  conversion on the n8n host (phones send AMR, which OpenAI rejects). Before
+  `pipeline-voice-transcription` can run, the n8n admin needs to do what
+  `ffmpeg-admin-package/README.md` says: install ffmpeg, unblock Execute Command
+  (`NODES_EXCLUDE`), and, if the first test memo fails with a file-access
+  error, add `/tmp/ckh-voice` to `N8N_RESTRICT_FILE_ACCESS_TO` (n8n limits the
+  Read/Write Files node to its own folder by default; this is unconfirmed on
+  your instance). Then create an **"OpenAI account 2"** credential. The
+  pipeline in git is rewired for this but not yet pushed to n8n: the instance
+  rejects the Execute Command node until it is unblocked, so republish the
+  workflow after that. Then run the probe once (`2TVbxDKQGFqzIQDT`), apply
+  `cutover-migrations/30_trigger_voice_transcription.sql`, activate the
+  workflow and stop the local agent's voice loop (empty `AGENT_LOOPS`).
+  Attendees' voice memos go to OpenAI; confirm that is acceptable first.
 - Shadow-test the two writes that were deliberately never exercised live:
   process-cards' crop upload to Storage, and its `contacts-from-ocr` POST.
 
