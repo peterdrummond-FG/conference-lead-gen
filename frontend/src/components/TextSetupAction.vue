@@ -2,9 +2,9 @@
   <!-- The one way into texting SETUP, with its consent disclosure attached.
        The disclosure has to be on the same screen as the action that gives
        consent, directly under it (our texting campaign was rejected four times
-       over this), so the two live in one component and nothing can show the
-       button without it. Used by the quick-start screen; PROTOTYPE: for the
-       build, Setup's phone card uses it too instead of its own copy. -->
+       over this), so the two live in one component (the wording itself is
+       SmsConsent) and nothing can show the button without it. Used by Setup's
+       phone card and the onboarding's quick start. -->
   <div class="tsa">
     <template v-if="!hasPhone">
       <div class="tsa-warn">
@@ -18,7 +18,7 @@
       <q-btn
         v-if="isMobile"
         unelevated no-caps color="primary" icon="sms" label="Text the code SETUP"
-        class="full-width tsa-btn" :href="`sms:${TWILIO_NUMBER_E164}?&body=SETUP`"
+        class="full-width tsa-btn" :href="disabled ? undefined : `sms:${TWILIO_NUMBER_E164}?&body=SETUP`" :disable="disabled"
         @click="$emit('texted')"
       />
       <!-- On a laptop sms: does nothing, so a QR code does the same job: a
@@ -34,11 +34,11 @@
         </div>
       </div>
 
-      <div class="text-caption text-grey-8 q-mt-md">
-        By texting this code, you agree to receive recurring automated text messages from
-        Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg
-        frequency varies. Reply HELP for help, STOP to cancel.
-      </div>
+      <!-- Anything the host puts between the action and the disclosure (Setup's
+           "Check connection" row) goes here, so the disclosure stays last. -->
+      <slot />
+
+      <SmsConsent />
     </template>
   </div>
 </template>
@@ -47,9 +47,12 @@
 import { ref, onMounted } from 'vue';
 import { Platform } from 'quasar';
 import QRCode from 'qrcode';
+import SmsConsent from '@/components/SmsConsent.vue';
 import { TWILIO_NUMBER_DISPLAY, TWILIO_NUMBER_E164 } from '@/utils/smsNumber';
 
-defineProps<{ hasPhone: boolean }>();
+// disabled: Setup while an admin is previewing someone (the button would text from
+// the admin's own phone, not theirs).
+defineProps<{ hasPhone: boolean; disabled?: boolean }>();
 defineEmits<{ texted: [] }>();
 
 // Same test Setup uses for its own button.

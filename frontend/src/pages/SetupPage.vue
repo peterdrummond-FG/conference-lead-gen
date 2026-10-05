@@ -165,19 +165,11 @@
                 <q-btn flat round icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
               </div>
             </div>
-            <div v-else>
-              <!-- sms: only opens a composer on a phone; on a laptop the number and
-                   keyword are spelled out instead. -->
-              <q-btn
-                v-if="isMobile"
-                unelevated class="full-width" color="primary" no-caps icon="sms" label="Text the code SETUP"
-                :href="previewing ? undefined : `sms:${twilioNumberE164}?&body=SETUP`"
-                :disable="previewing"
-              />
-              <div v-else class="text-body2">
-                From your phone, text the code <span class="text-weight-bold">SETUP</span> to
-                <span class="text-weight-bold text-no-wrap">{{ twilioNumber }}</span>.
-              </div>
+            <!-- Not connected: the same action the onboarding's quick start offers. On a
+                 phone a button opens a text with SETUP filled in; on a laptop (where sms:
+                 does nothing) a QR code does the same job from the rep's phone camera, with
+                 the number spelled out underneath. The disclosure sits directly under it. -->
+            <TextSetupAction v-else :has-phone="true" :disabled="previewing">
               <div class="row items-center no-wrap q-mt-xs">
                 <q-btn
                   flat no-caps color="primary" icon="refresh" label="Check connection"
@@ -186,18 +178,11 @@
                 <q-space />
                 <q-btn flat round icon="content_copy" color="primary" aria-label="Copy SETUP" @click="copy('SETUP', 'Copied SETUP.')" />
               </div>
-            </div>
+            </TextSetupAction>
 
-            <!-- Consent disclosure: always visible, directly under the action that gives
-                 consent (it has to be on the same screen as the sign-up -- a campaign
-                 was rejected four times over this), never collapsed. It covers texting
-                 SETUP and any text that links a phone alike -- hence "the code SETUP" in
-                 the action above. -->
-            <div class="text-caption text-grey-8 q-mt-md">
-              By texting this code, you agree to receive recurring automated text messages from
-              Flippen Group related to conference lead capture. Msg&amp;data rates may apply. Msg
-              frequency varies. Reply HELP for help, STOP to cancel.
-            </div>
+            <!-- Connected: no action to offer, but the disclosure stays on the card (it
+                 covers any text that links a phone, so it is not only for SETUP). -->
+            <SmsConsent v-if="smsStatus === 'connected'" />
           </q-card-section>
         </q-card>
 
@@ -320,13 +305,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { Dialog, Notify, Platform, copyToClipboard } from 'quasar';
+import { Dialog, Notify, copyToClipboard } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
-import { TWILIO_NUMBER_DISPLAY, TWILIO_NUMBER_E164 } from '@/utils/smsNumber';
+import { TWILIO_NUMBER_DISPLAY } from '@/utils/smsNumber';
 import { useSessionStore, type PreviewUser, type SessionUser } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
 import QrSaveButtons from '@/components/QrSaveButtons.vue';
+import TextSetupAction from '@/components/TextSetupAction.vue';
+import SmsConsent from '@/components/SmsConsent.vue';
 import { cleanConferenceName, conferenceDateLabel, conferenceEndedLabel, formatPhone } from '@/utils/conferenceName';
 import type { Profile } from '@/types/review';
 
@@ -344,10 +331,7 @@ interface ActiveEventOption {
 
 // The number lives in utils/smsNumber.ts so the welcome tour quotes the same one.
 const twilioNumber = TWILIO_NUMBER_DISPLAY;
-const twilioNumberE164 = TWILIO_NUMBER_E164;
-// sms: opens a composer on a phone and does nothing useful on a laptop, so
-// the "Text SETUP" button is phone-only and desktop gets the number spelled out.
-const isMobile = Platform.is.mobile === true;
+// (The "Text SETUP" action itself, phone button or laptop QR code, is TextSetupAction.)
 
 const eventStore = useEventStore();
 const sessionStore = useSessionStore();
