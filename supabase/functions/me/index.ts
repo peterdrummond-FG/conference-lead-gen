@@ -1,5 +1,6 @@
 // GET -> { id, name, role, email, phoneNumber, currentEventId, currentEventName,
-// repSlug, hasKioskPin, onboarded }.
+// repSlug, hasKioskPin, onboarded, hasPhone, phoneConnected,
+// onboarding: { seen, path, endedAt, resumeFrom, reminderShown } }.
 // Any logged-in user. The first call the frontend makes after login (or on
 // app boot with an existing session) -- a Supabase Auth session alone only
 // carries id/email, not this app's role/current-event state.
@@ -31,32 +32,69 @@ Deno.serve(async (req) => {
   const viewAsId = new URL(req.url).searchParams.get("viewAsId");
   if (viewAsId !== null) return viewAs(req, supabase, user.role, viewAsId);
 
-  // onboarded_at and phone_number are read here rather than added to
+  // The onboarding columns and phone_number are read here rather than added to
   // requireUser's select: `me` is their only consumer, and widening
   // _shared/auth.ts would mean redeploying every function that imports it.
   // phone_number is the number texted cards are credited to; Setup shows it so a
   // rep can see which number we have on file before texting SETUP.
-  const [{ data: authUser }, { data: event }, { data: onboarding, error: onboardingError }] = await Promise.all([
+  const [{ data: authUser }, { data: event }, { data: row, error: rowError }] = await Promise.all([
     supabase.auth.admin.getUserById(user.id),
     user.currentEventId
       ? supabase.from("events").select("name").eq("id", user.currentEventId).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("profiles").select("onboarded_at, phone_number").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("profiles")
+      .select(
+        "onboarded_at, phone_number, onboarding_v2_seen_at, onboarding_path, onboarding_ended_at, tour_resume_from, onboarding_reminder_shown_at",
+      )
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
+
+  // phoneConnected: has this phone texted SETUP for their CURRENT conference?
+  // The same rule as events-active's smsBound and the View-as branch below,
+  // keyed by phone number because phone_event_bindings is what SETUP writes.
+  // False (not unknown) with no number or no conference: for the onboarding
+  // that means "tell them to text SETUP", which is right.
+  let phoneConnected = false;
+  if (row?.phone_number && user.currentEventId) {
+    const { data: binding, error: bindingError } = await supabase
+      .from("phone_event_bindings")
+      .select("phone_number")
+      .eq("phone_number", row.phone_number)
+      .eq("event_id", user.currentEventId)
+      .maybeSingle();
+    if (bindingError) console.error("me: phone binding lookup failed", bindingError);
+    phoneConnected = !!binding;
+  }
 
   return jsonResponse(req, {
     id: user.id,
     name: user.name,
     role: user.role,
     email: authUser?.user?.email ?? null,
-    phoneNumber: onboarding?.phone_number ?? null,
+    phoneNumber: row?.phone_number ?? null,
+    hasPhone: !!row?.phone_number,
+    phoneConnected,
     currentEventId: user.currentEventId,
     currentEventName: event?.name ?? null,
     repSlug: user.repSlug,
     hasKioskPin: !!user.kioskPin,
-    // Fails closed: if the lookup errored, say "done" so a hiccup never
-    // shows the welcome tour to someone who already finished it.
-    onboarded: onboardingError ? true : !!onboarding?.onboarded_at,
+    // Retired with the first welcome tour; kept so a cached older frontend works.
+    // Fails closed: if the lookup errored, say "done".
+    onboarded: rowError ? true : !!row?.onboarded_at,
+    // Fails closed the same way: if the lookup errored, the onboarding is "seen"
+    // with nothing to resume and the reminder spent, so a hiccup never re-shows
+    // the splash or a reminder to someone who has been through it.
+    onboarding: rowError
+      ? { seen: true, path: null, endedAt: null, resumeFrom: null, reminderShown: true }
+      : {
+        seen: !!row?.onboarding_v2_seen_at,
+        path: row?.onboarding_path ?? null,
+        endedAt: row?.onboarding_ended_at ?? null,
+        resumeFrom: row?.tour_resume_from ?? null,
+        reminderShown: !!row?.onboarding_reminder_shown_at,
+      },
   });
 });
 
