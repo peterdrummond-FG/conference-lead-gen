@@ -161,14 +161,17 @@ Supabase CLI on this machine.
   insert went to a different one (a Region 4 rep's lead landed in MoASSP with
   `rep_id` null, invisible in their Review, 2026-09-29). Now a bare call is
   resolved from the caller's token (their `current_event_id`, credited if
-  `sales`) and an anonymous one is rejected with 409; `events-active` returns
-  null for an anonymous bare call. Anything that shows an event and anything
-  that writes to one must resolve it the same way.
+  `sales`); an anonymous one has nothing to resolve from, so it is held in
+  `unassigned_submissions` (reason `no_qr`) for Solutions Success rather than
+  guessed at or lost. `events-active` returns null for an anonymous bare call.
+  Anything that shows an event and anything that writes to one must resolve it
+  the same way.
 
 - **Seeing a conference is not being linked to it.** `events-active`'s
   no-linked-user fallback returns the most recently activated event for
   display, but a rep's QR resolves its conference from their own
-  `current_event_id` and `contacts-create` rejects a scan when that's empty.
+  `current_event_id` and `contacts-create` holds a scan for Solutions Success
+  (rather than filing it anywhere) when that's empty.
   UI that says "you're at X" must key off the session's `currentEventId`
   (Setup's `joinedEvent`), never `eventStore.activeEvent`.
 
@@ -233,13 +236,56 @@ Supabase CLI on this machine.
   Conference, phone and kiosk are numbered cards that turn into green checks; the
   QR is an unnumbered resource. "Choose"/"Change" both open the one conference
   dialog (no inline list, no separate Start button), and the QR line names the
-  conference scans go to or says they won't go through when none is chosen,
-  because `contacts-create` answers 409 for a rep with no `current_event_id` (it
-  does not use the previous conference; the meeting that specified this page
-  wasn't sure, and reading the function settled it). Dates come from the
+  conference scans go to or says they wait for Solutions Success when none is
+  chosen, because `contacts-create` holds a scan from a rep with no
+  `current_event_id` in the needs-a-conference queue (it neither uses the
+  previous conference nor drops the lead; it used to answer 409 and the lead was
+  lost. The meeting that specified this page wasn't sure what it did, and reading
+  the function settled it). Dates come from the
   `event_dates()` SQL function through `events-list-active`, never a second
   parser in TypeScript. Keep the page's prose to a line or two; the explanation is
   the tour. Details: `docs/ARCHITECTURE.md`, "Setup and Admin".
+
+- **One conference everywhere: a rep has two pointers and one writer.**
+  `profiles.current_event_id` (the app, QR scans, Review) and
+  `phone_event_bindings.event_id` (where texted photos, voice memos and notes are
+  filed) were written by different code and drifted: reps linked only by text had
+  a bound phone and no app conference, so their QR scans were rejected, and a
+  manager moving a rep in the app left their texted cards landing in the old
+  conference (live 2026-10-05). `profile_set_current_event` and
+  `profile_link_event_by_phone` are now the only writers of `current_event_id`;
+  `scripts/check-conference-writers.mjs` fails CI if an Edge Function writes it
+  directly. A binding is **moved, never created** by an app-side change: a binding
+  is what lets `session-notifications` text a number, so creating one for a phone
+  that never texted SETUP would message someone who didn't consent (the A2P
+  campaign was rejected four times over consent). Clearing a conference **deletes**
+  the binding (that only stops texts). A binding outlives its conference
+  (`events_complete()` doesn't touch it), so `twilio-webhook` re-checks
+  `events.is_active` before filing a photo, memo or note, and a folder code only
+  binds an active event.
+
+- **Scans that can't be placed are held, not rejected.** `contacts-create` used
+  to answer 404/409 and keep nothing when a valid attendee couldn't be placed (a
+  rep with no conference, a deleted rep, a QR for an ended conference, no QR, a
+  Kiosk tab with no conference), so the person's details were lost.
+  `contacts.event_id` stays NOT NULL (it runs through Review, duplicates,
+  matching and export), so those submissions wait in `unassigned_submissions`
+  (`_shared/intakeDestination.ts` decides; reasons `rep_no_conference`,
+  `rep_not_found`, `event_ended`, `event_unknown`, `no_qr`,
+  `caller_no_conference`) and the attendee sees the normal thanks. Nothing
+  expensive runs until a person files the scan (no contact row, so no matching,
+  no AI, no n8n trigger), which is what keeps a public request from starting
+  costly work. Bounded: the per-network rate limit still runs first, then
+  300/network/24h and 3000 pending overall (both fail closed with the 429
+  wording), and a daily pg_cron job deletes rows after 90 days. Filing is one
+  locked transaction (`assign_unassigned_submission`), staff-only. The rep is
+  credited only when we really know them, never from a client-supplied id.
+
+- **The conference code never reaches the browser, and SMS offers SETUP only.**
+  `events.folder_code` is the SMS bind token, so `events-active` and
+  `events-activate` don't return it (Admin's "Show conference code" is gone). It
+  stays in the database for the photo pipeline and the webhook's active-only
+  bind, and the replies to an unlinked phone say to text SETUP, not a code.
 
 ## Before shipping a feature
 
