@@ -52,6 +52,15 @@ been replaced, the replacement is noted here instead of rewriting history.
   short-word budget, simplified to a single word since that's all a slug
   needs to be recognizable).
 
+- **`20260914190000_session_reminders_and_confirmations.sql`** — its header
+  and the comments on `phone_event_bindings.last_activity_at` /
+  `expiry_notified_at` describe a 60-minute inactivity reminder telling the rep
+  their session would pause unless they re-sent the folder code. That sweep was
+  removed from `session-notifications` on 2026-10-05: nothing ever paused, and
+  SETUP links a phone without a code. `expiry_notified_at` is now unused
+  (nothing reads or writes it); `last_activity_at` still bounds the
+  contact-received confirmation sweep to bindings active in the last 2 hours.
+
 ## n8n migration additions
 
 - **`20260922100000_backfill_undocumented_functions.sql`** — during the n8n
