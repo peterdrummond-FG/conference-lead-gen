@@ -120,6 +120,35 @@ export interface FailedIntakeMessage {
   processingAttempts: number;
 }
 
+// A public submission contacts-create couldn't place under a conference, held for
+// Solutions Success (unassigned-list). `reason` says why; see utils/unassignedScans.ts
+// for the words shown for each.
+export type UnassignedReason =
+  | 'rep_no_conference'
+  | 'rep_not_found'
+  | 'event_ended'
+  | 'event_unknown'
+  | 'no_qr'
+  | 'caller_no_conference';
+
+export interface UnassignedSubmission {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  state: string | null;
+  districtName: string | null;
+  schoolName: string | null;
+  reason: UnassignedReason;
+  repId: string | null;
+  repName: string | null;
+  eventHintId: string | null;
+  eventHintName: string | null;
+  createdAt: string;
+}
+
 export type Role = 'admin' | 'solutionsSuccess' | 'sales';
 
 export interface Profile {

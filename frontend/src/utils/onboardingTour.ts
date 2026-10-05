@@ -86,7 +86,7 @@ export const TOUR_STEPS: TourStep[] = [
     chapter: 'Set up your event and phone',
     title: 'Start here',
     body: "Choose the conference you're at. All leads are linked to that event.",
-    note: "Your QR code will only work when you're linked to an event.",
+    note: "If you're not linked to one, scans wait for Solutions Success to file them.",
     roles: ['sales'],
   },
   {
@@ -144,7 +144,7 @@ export const TOUR_STEPS: TourStep[] = [
     chapter: 'Set up your event and phone',
     title: "Your reps' QR codes",
     body: 'Every Sales rep has a reusable QR code. Download theirs here to send it to them, as a slide or a code for their phone screen.',
-    note: 'It only works once they have chosen a conference.',
+    note: 'Until they choose a conference, their scans wait in Review for you to file.',
     roles: MANAGERS,
   },
   {

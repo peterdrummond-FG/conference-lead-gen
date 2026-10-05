@@ -29,29 +29,40 @@
 // call (no slug, no repSlug) is resolved from the CALLER, never from "the
 // most recently activated event": a signed-in caller (the Connect tab inside
 // the app) lands in their own current_event_id and, if they're a sales rep, is
-// credited; an anonymous bare call is rejected. See the final branch below.
+// credited. See _shared/intakeDestination.ts for the whole decision.
 //
 // repSlug (Stage 20 — 20260916212541_add_profiles_rep_slug.sql) is a rep's
 // own permanent identifier (/connect/<repSlug>, one QR reused across every
-// conference they work) and, unlike eventSlug/repId, is NOT optional
-// attribution — it's the only signal this submission carries, so it has to
-// resolve to both an event and a rep or the submission is rejected outright.
-// The event is whatever that rep is currently linked to
+// conference they work). The event is whatever that rep is currently linked to
 // (profiles.current_event_id) at the moment of submission, not anything
 // baked into the QR. Takes priority over eventSlug/repId when present (the
 // two shapes are never both populated by a real QR — see routes.ts — but a
 // tampered/combined request shouldn't get to pick the more permissive path).
+//
+// A submission that can't be placed (a rep with no conference, a deleted rep, a
+// QR for a conference that has ended, no QR and nobody signed in, a Kiosk tab
+// with no conference) is no longer rejected with a 404/409 -- that lost a valid
+// attendee's details. It is held in unassigned_submissions and answered with the
+// same 201 as any other, for Solutions Success to file (unassigned-assign). Only
+// a request that fails validation (400) or the rate/queue caps (429) is refused.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { isUuid, LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
+import { type IntakeDestination, type IntakeLookups, resolveIntakeDestination } from "../_shared/intakeDestination.ts";
 
 // Generous on purpose: conference wifi is usually one NAT, so this has to
 // bound automation without policing a booth queue. See audit S2 and
 // check_submission_rate.
 const RATE_MAX = Number(Deno.env.get("INTAKE_RATE_MAX") ?? 20);
 const RATE_WINDOW_MINUTES = Number(Deno.env.get("INTAKE_RATE_WINDOW_MINUTES") ?? 10);
+
+// Ceilings on the "needs a conference" queue (unassigned_submissions): rows from
+// one network per 24h, and pending rows overall. Generous because conference
+// wifi is one NAT; the per-10-minute rate limit above is what stops a burst.
+const QUEUE_IP_CAP = Number(Deno.env.get("INTAKE_QUEUE_IP_CAP") ?? 300);
+const QUEUE_TOTAL_CAP = Number(Deno.env.get("INTAKE_QUEUE_TOTAL_CAP") ?? 3000);
 
 async function hashIp(ip: string): Promise<string> {
   const salt = Deno.env.get("IP_HASH_SALT") ?? "";
@@ -122,8 +133,9 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ipHash = await hashIp(ip);
   const { data: allowed, error: rateError } = await supabase.rpc("check_submission_rate", {
-    p_ip_hash: await hashIp(ip),
+    p_ip_hash: ipHash,
     p_max: RATE_MAX,
     p_window_minutes: RATE_WINDOW_MINUTES,
   });
@@ -134,99 +146,61 @@ Deno.serve(async (req) => {
     return errorResponse(req, 429, "Too many submissions from this network — please try again in a few minutes.");
   }
 
-  let activeEvent;
-  let repId: string | null = null;
-  if (repSlug) {
-    // A rep's reusable QR (see header comment) is the only signal this
-    // submission carries, so — unlike the eventSlug/repId path below — a
-    // rep that doesn't resolve, or one not currently linked to any event, is
-    // a rejected submission, not a forgiving fallback: there is nothing else
-    // to attribute this lead to.
-    const { data: rep, error: repError } = await supabase
-      .from("profiles")
-      .select("id, current_event_id")
-      .eq("rep_slug", repSlug)
-      .eq("role", "sales")
-      .maybeSingle();
-    if (repError) return errorResponse(req, 500, repError.message);
-    if (!rep) return errorResponse(req, 404, `No rep found for '${repSlug}'.`);
-    if (!rep.current_event_id) {
-      return errorResponse(req, 409, "This rep isn't linked to a conference right now — link them in Setup before sharing their QR.");
-    }
-    activeEvent = { id: rep.current_event_id };
-    repId = rep.id;
-  } else if (eventSlug) {
-    // The event is resolved server-side by the slug the QR's URL carried,
-    // never trusted as an id from the client. A slug that doesn't match any
-    // event is a 404, not a silent fall-through — better than mis-attributing
-    // a lead to the wrong conference. is_active is checked here too — a
-    // printed/bookmarked per-event QR (unlike the repSlug path above, which
-    // is already gated on the rep's own current_event_id) carries nothing
-    // that naturally stops working once the conference is marked complete
-    // (events-complete) without this.
-    const { data: bySlug, error: eventError } = await supabase
-      .from("events")
-      .select("id")
-      .eq("slug", eventSlug)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (eventError) return errorResponse(req, 500, eventError.message);
-    if (!bySlug) return errorResponse(req, 404, `No event found for '${eventSlug}'.`);
-    activeEvent = bySlug;
-
-    // The rep whose QR was actually scanned, revalidated against event_reps —
-    // a stale/unlinked/tampered repId just means no rep gets credited, not a
-    // rejected submission (see header comment).
-    if (repIdParam) {
-      const { data: linkedRep, error: linkedRepError } = await supabase
+  // Where does this belong? Every way of not finding a conference used to be a
+  // 404/409 that threw the attendee's details away; now it is a queue
+  // destination (see _shared/intakeDestination.ts for each case and why).
+  const lookups: IntakeLookups = {
+    async salesRepBySlug(slug) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, current_event_id")
+        .eq("rep_slug", slug)
+        .eq("role", "sales")
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? { id: data.id, currentEventId: data.current_event_id } : null;
+    },
+    async eventIsActive(eventId) {
+      const { data, error } = await supabase.from("events").select("id").eq("id", eventId).eq("is_active", true).maybeSingle();
+      if (error) throw new Error(error.message);
+      return !!data;
+    },
+    async eventBySlug(slug) {
+      const { data, error } = await supabase.from("events").select("id, is_active").eq("slug", slug).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? { id: data.id, isActive: data.is_active } : null;
+    },
+    async linkedSalesRep(eventId, repIdToCheck) {
+      // Revalidated against event_reps, never trusted: a stale/unlinked/tampered
+      // repId just means no rep is credited, not a rejected submission.
+      const { data: link, error: linkError } = await supabase
         .from("event_reps")
         .select("rep_id")
-        .eq("event_id", activeEvent.id)
-        .eq("rep_id", repIdParam)
+        .eq("event_id", eventId)
+        .eq("rep_id", repIdToCheck)
         .maybeSingle();
-      if (linkedRepError) return errorResponse(req, 500, linkedRepError.message);
-      repId = linkedRep?.rep_id ?? null;
-    }
-  } else {
-    // Bare call: no QR identified an event or a rep. The only trustworthy
-    // signal left is a signed-in caller -- the Connect tab in the app posts
-    // here with the staff member's own token.
-    //
-    // This branch used to pick "the most recently activated active event" and
-    // credit nobody. On 2026-09-29 a rep linked to Region 4 (TX) used the
-    // Connect tab: events-active showed them Region 4 (it honours their linked
-    // event), but this function ignored who was calling and saved the lead to
-    // MoASSP (MO), the latest-activated of four concurrent events, with no
-    // rep -- so it never appeared in their Review. The form showed one
-    // conference and wrote to another. With several events active there is no
-    // right answer to guess, so an unidentified caller fails closed.
-    const caller = await requireUser(req);
-    if (!caller) {
-      return errorResponse(
-        req,
-        409,
-        "This link doesn't say which conference it's for. Scan the QR code at the booth again, or ask the rep for their code.",
-      );
-    }
-    if (!caller.currentEventId) {
-      return errorResponse(req, 409, "You aren't linked to a conference right now -- join one in Setup first.");
-    }
-    // events_complete() clears current_event_id on every linked profile, so
-    // this should already hold; checked anyway because it is the same
-    // client-influenced-event rule the eventSlug branch enforces.
-    const { data: linked, error: eventError } = await supabase
-      .from("events")
-      .select("id")
-      .eq("id", caller.currentEventId)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (eventError) return errorResponse(req, 500, eventError.message);
-    if (!linked) return errorResponse(req, 409, "Your conference has ended -- join a current one in Setup.");
-    activeEvent = linked;
-    // Only sales reps are credited, matching the repSlug path (which requires
-    // role = sales). An admin or Solutions Success user keying in a lead sees
-    // everything in Review anyway.
-    if (caller.role === "sales") repId = caller.id;
+      if (linkError) throw new Error(linkError.message);
+      if (!link) return null;
+      const { data: rep, error: repError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", repIdToCheck)
+        .eq("role", "sales")
+        .maybeSingle();
+      if (repError) throw new Error(repError.message);
+      return rep ? rep.id : null;
+    },
+    caller: () => requireUser(req),
+  };
+
+  let destination: IntakeDestination;
+  try {
+    destination = await resolveIntakeDestination(lookups, { repSlug, eventSlug, repIdParam });
+  } catch (err) {
+    // A lookup that failed is a server problem, never "no conference": don't
+    // queue something that may well have one.
+    console.error("contacts-create: destination lookup failed", err);
+    return errorResponse(req, 500, err instanceof Error ? err.message : "Lookup failed");
   }
 
   if (body.schoolDistrictId) {
@@ -252,6 +226,51 @@ Deno.serve(async (req) => {
     }
   }
 
+  const fields = {
+    qr_channel: qrChannel,
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    phone,
+    title,
+    state,
+    school_district_id: body.schoolDistrictId || null,
+    school_district_name_raw: body.schoolDistrictId ? null : districtRaw,
+    school_id: body.schoolId || null,
+    school_name_raw: body.schoolId ? null : schoolRaw,
+  };
+
+  if (destination.kind === "queue") {
+    // Held for Solutions Success, not rejected: the attendee gets the same
+    // success as any other submission, because the form did its job and what is
+    // missing (which conference) is ours to sort out, not theirs. Nothing
+    // expensive runs here: no contact row, so no matching and no AI until a
+    // person files it (assign_unassigned_submission).
+    //
+    // Bounded: check_submission_rate above limits requests per network, and this
+    // adds a ceiling on what can pile up, per network per day and overall. Both
+    // fail closed with the same 429 wording.
+    const { data: queuedId, error: queueError } = await supabase.rpc("queue_unassigned_submission", {
+      p: {
+        ...fields,
+        reason: destination.reason,
+        rep_id: destination.repId,
+        event_hint_id: destination.eventHintId,
+        rep_slug: repSlug,
+        event_slug: eventSlug,
+      },
+      p_ip_hash: ipHash,
+      p_ip_cap: QUEUE_IP_CAP,
+      p_total_cap: QUEUE_TOTAL_CAP,
+    });
+    if (queueError) return errorResponse(req, 500, queueError.message);
+    if (queuedId === null) {
+      console.error("contacts-create: unassigned queue cap reached", { reason: destination.reason });
+      return errorResponse(req, 429, "Too many submissions from this network — please try again in a few minutes.");
+    }
+    return jsonResponse(req, { id: queuedId, createdAt: new Date().toISOString() }, 201);
+  }
+
   // The duplicate-name check and the insert happen atomically inside this
   // function (an advisory lock keyed on the normalized name serializes
   // concurrent inserts for the same person) -- doing the check and the
@@ -260,24 +279,17 @@ Deno.serve(async (req) => {
   const { data, error } = await supabase
     .rpc("insert_contact_with_duplicate_check", {
       payload: {
-        event_id: activeEvent.id,
+        event_id: destination.eventId,
         source: "form",
-        qr_channel: qrChannel,
-        rep_id: repId,
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone,
-        title,
-        state,
-        school_district_id: body.schoolDistrictId || null,
-        school_district_name_raw: body.schoolDistrictId ? null : districtRaw,
-        school_id: body.schoolId || null,
-        school_name_raw: body.schoolId ? null : schoolRaw,
+        rep_id: destination.repId,
+        ...fields,
       },
     })
     .single();
   if (error) return errorResponse(req, 500, error.message);
 
-  return jsonResponse(req, { id: data.id, createdAt: data.created_at }, 201);
+  // rpc() is untyped here (no generated types in this project), so say what
+  // insert_contact_with_duplicate_check returns.
+  const contact = data as { id: string; created_at: string };
+  return jsonResponse(req, { id: contact.id, createdAt: contact.created_at }, 201);
 });

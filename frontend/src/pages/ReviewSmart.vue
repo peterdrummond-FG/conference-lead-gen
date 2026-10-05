@@ -129,6 +129,11 @@
       </div>
     </header>
 
+    <!-- Scans nobody could place under a conference. Real role, not effectiveRole,
+         and never while previewing someone: it holds other people's submissions,
+         including ones with no rep, so a rep (or an admin looking as one) must not
+         see it. -->
+    <UnassignedScansBanner v-if="canSeeUnassigned" />
     <UnresolvedIntakePanel :view-as-rep-id="sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null" />
 
     <div v-if="!loaded" class="text-center q-pa-lg"><q-spinner size="40px" color="primary" /></div>
@@ -294,6 +299,7 @@ import { ref, reactive, shallowRef, computed, watch, onMounted, onBeforeUnmount 
 import { useQuasar, Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
+import UnassignedScansBanner from '@/components/UnassignedScansBanner.vue';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
 import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
@@ -312,6 +318,7 @@ const eventStore = useEventStore();
 const { buckets, currentIds, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');
+const canSeeUnassigned = computed(() => !sessionStore.viewingAs && ['admin', 'solutionsSuccess'].includes(sessionStore.user?.role ?? ''));
 // Quasar's md breakpoint (1024px) and up: room for the list and the editor
 // side by side. Below it the editor is a bottom sheet.
 const isDesktop = computed(() => $q.screen.gt.sm);
