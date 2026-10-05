@@ -217,20 +217,26 @@ Supabase CLI on this machine.
   signed-in staff on the bare `/connect` tab. The unlock dialog stays in
   `MainLayout.vue` because the header is hidden while locked.
 
-- **The welcome tour's copy is a set of promises.** Its Review step says a green
-  "Ready to approve" lead approves in one tap and that notes reach Zoho; its "Set up your
-  phone" steps show the text reply `twilio-webhook` sends and the number from
-  `utils/smsNumber.ts`; its Setup steps point at the conference card
-  (`data-tour="setup-conference"`), the phone card (`setup-text-in`) and the QR
-  card (`setup-qr`, on both the rep's and the managers' version) by name
-  and button label ("Text the code SETUP"). If you change Smart's Ready rule, Setup's flow, the SETUP reply, the
-  attendee form's labels or what `export-csv` emits, update
-  `frontend/src/utils/onboardingTour.ts` too. Its tests catch the Ready rule, the
-  form labels, the reply wording and the shared number, but not the prose.
-  Spotlights may only point at things a brand-new account sees (short allow-list
-  in the test); anything state-dependent is an illustrated card. The tour never
-  gets its own "text now" button: the opt-in disclosure lives once, on Setup,
-  under the real one. Details: `docs/ARCHITECTURE.md`, "Welcome tour".
+- **The onboarding draws the app's own components, and its copy is a set of promises.**
+  The splash, quick start, animated tour and one-hour reminder (`components/tour/`)
+  render the same `AppHeader`, `ReviewHeader`, `NotesBody`, `ExportCard`, Admin cards,
+  `IntakeFormFields`, `RepQrContent` and `UnassignedScansList` the pages render, with
+  sample data. A page change shows up in the tour for free; do **not** paste markup
+  into a tour screen (a test fails), and don't put `data-tour`/`data-tt` hooks in an app
+  component (scripts find things by their own labels). The words are promises about the
+  pipeline: a first-time rep isn't linked yet, so the tour shows the real from-scratch
+  SETUP conversation (checked against `twilio-webhook`'s source), a lead that just
+  arrived is *processing*, not Ready, and "Ready to approve" / notes-reach-Zoho /
+  scans-wait-for-Solutions-Success must stay true. If you change Smart's Ready rule,
+  Setup's flow, the SETUP replies, the intake form or what `export-csv` emits, update
+  `components/tour/tourCopy.ts` / `tourText.ts` too; the tests catch the replies, form
+  labels, number and banned words, not the prose. What an account has seen is
+  `me.onboarding` (`profiles.onboarding_*`, written only by
+  `profiles-complete-onboarding`): the ? button replays the whole tour and **never**
+  touches `seen`; the reminder is once, an hour later, and plays only what is left. The
+  tour never gets its own "text now" button: Setup's phone card and the quick start share
+  `TextSetupAction`, so the opt-in disclosure lives in one place. Details:
+  `docs/ARCHITECTURE.md`, "Onboarding".
 
 - **Setup is a card per step, and its QR line is a claim about the server.**
   Conference, phone and kiosk are numbered cards that turn into green checks; the
