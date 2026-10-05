@@ -33,4 +33,5 @@ repo-guards:
   image: node:22
   script:
     - node scripts/check-skill-profiles.mjs
+    - node scripts/check-conference-writers.mjs
     - bash scripts/check-deployed-functions.sh
