@@ -207,3 +207,21 @@ test('the app\'s components carry no tour hooks', () => {
     assert.ok(!/data-tt|data-tour/.test(read(SRC, `components/${f}.vue`)), `${f} has a tour hook`);
   }
 });
+
+// ── consent ──
+// Texting SETUP is the opt-in, and the disclosure has to sit under the action that
+// gives it (the texting campaign was rejected four times over this). So the wording
+// exists once, and the only things that offer the action are Setup's phone card and
+// the quick start, through the one component.
+test('the opt-in disclosure is written once and only the one action component offers SETUP', () => {
+  const withDisclosure = files(SRC).filter((f) => read(f).includes('By texting this code'));
+  assert.deepEqual(withDisclosure.map((f) => f.split('/').pop()), ['SmsConsent.vue']);
+  const withSmsLink = files(SRC).filter((f) => /sms:\$\{|`sms:/.test(read(f)));
+  assert.deepEqual(withSmsLink.map((f) => f.split('/').pop()), ['TextSetupAction.vue']);
+  assert.ok(read(SRC, 'components/TextSetupAction.vue').includes('<SmsConsent'), 'the action must carry its disclosure');
+  assert.ok(read(SRC, 'pages/SetupPage.vue').includes('<TextSetupAction'), 'Setup must use the shared action');
+  assert.ok(read(HERE, 'OnboardingFlow.vue').includes('<TextSetupAction'), 'the quick start must use the shared action');
+  for (const f of files(join(HERE, 'scenes')).concat(files(join(HERE, 'screens')))) {
+    assert.ok(!read(f).includes('TextSetupAction'), `${f}: the tour's scenes never offer their own text-now button`);
+  }
+});
