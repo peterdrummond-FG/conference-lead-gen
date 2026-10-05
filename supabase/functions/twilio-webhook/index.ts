@@ -265,6 +265,31 @@ async function linkedEventFromProfile(
   return event?.is_active ? { id: event.id, name: event.name } : null;
 }
 
+// The other half of linkedEventFromProfile: once a bind path has written
+// phone_event_bindings, point the profile that owns this number at the same
+// conference. Without it a rep who only texted SETUP had a linked phone and no
+// app conference, so their QR answered 409 and Setup said "choose a
+// conference". The rule lives in profile_link_event_by_phone (it re-asserts
+// is_active and matches on the unique profiles.phone_number); a number nobody
+// has on file just leaves the phone bound on its own, as before.
+//
+// Awaited, but a failure is logged and swallowed: the phone IS bound and the
+// reply is true, so a hiccup here must not turn a working bind into an error.
+async function linkProfileToEvent(
+  supabase: ReturnType<typeof serviceClient>,
+  phone: string,
+  eventId: string,
+): Promise<void> {
+  try {
+    // Idempotent (sets a column to a value), so step()'s retry is safe.
+    const { error } = await step("profile link", () =>
+      supabase.rpc("profile_link_event_by_phone", { p_phone: phone, p_event_id: eventId }));
+    if (error) console.error("linkProfileToEvent failed", error);
+  } catch (err) {
+    console.error("linkProfileToEvent threw", err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -485,6 +510,7 @@ Deno.serve(async (req) => {
           // first batch of contacts.
           contacts_confirmed_through: new Date().toISOString(),
         }));
+      await linkProfileToEvent(supabase, from, eventId!);
       await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
       background("audit row", () =>
         supabase.from("inbound_messages").insert({
@@ -550,6 +576,7 @@ Deno.serve(async (req) => {
           expiry_notified_at: null,
           contacts_confirmed_through: new Date().toISOString(),
         }));
+      await linkProfileToEvent(supabase, from, activated.id);
       await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
       background("audit row", () =>
         supabase.from("inbound_messages").insert({

@@ -31,13 +31,14 @@ Deno.serve(async (req) => {
     if (!event) return errorResponse(req, 404, `No event with id '${body.eventId}'.`);
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .update({ current_event_id: body.eventId })
-    .eq("id", body.repId)
-    .select()
-    .single();
-  if (error) return errorResponse(req, 500, error.message);
+  // Moves the rep's phone with them when it is already bound. A manager
+  // reassigning a rep used to leave their texted cards landing in the old
+  // conference until the rep texted SETUP again. See profile_set_current_event.
+  const { error } = await supabase.rpc("profile_set_current_event", {
+    p_profile_id: rep.id,
+    p_event_id: body.eventId,
+  });
+  if (error) return errorResponse(req, error.code === "CKH01" ? 404 : 500, error.message);
 
-  return jsonResponse(req, { id: data.id, currentEventId: data.current_event_id });
+  return jsonResponse(req, { id: rep.id, currentEventId: body.eventId });
 });

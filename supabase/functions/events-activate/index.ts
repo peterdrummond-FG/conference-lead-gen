@@ -74,10 +74,12 @@ Deno.serve(async (req) => {
   // them the same way toggleMyCurrentEvent does, instead of leaving them to
   // click "Link myself to this event" separately for something they just
   // created themselves.
-  const { error: linkError } = await supabase
-    .from("profiles")
-    .update({ current_event_id: data.id })
-    .eq("id", user.id);
+  // Through the shared helper so the starter's already-bound phone follows them
+  // to the new conference (profile_set_current_event never creates a binding).
+  const { error: linkError } = await supabase.rpc("profile_set_current_event", {
+    p_profile_id: user.id,
+    p_event_id: data.id,
+  });
   if (linkError) console.error("failed to link activating user to new event", linkError);
 
   return jsonResponse(req, {
