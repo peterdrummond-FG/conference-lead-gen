@@ -61,6 +61,13 @@ been replaced, the replacement is noted here instead of rewriting history.
   (nothing reads or writes it); `last_activity_at` still bounds the
   contact-received confirmation sweep to bindings active in the last 2 hours.
 
+- **`20260929190000_profiles_onboarded_at.sql`** — `profiles.onboarded_at` and its
+  "everyone who exists today has finished" backfill belonged to the first welcome
+  tour, which was replaced in October 2026 (`20261006120000_onboarding_v2.sql`).
+  Nothing reads `onboarded_at` any more; `me` still returns it as `onboarded` so a
+  cached older frontend keeps working. The new onboarding has its own columns, and
+  every existing account starts with them null, so each sees the new splash once.
+
 ## n8n migration additions
 
 - **`20260922100000_backfill_undocumented_functions.sql`** — during the n8n
