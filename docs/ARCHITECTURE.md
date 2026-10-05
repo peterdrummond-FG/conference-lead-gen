@@ -100,6 +100,13 @@ details" until reprinted. `IntakePage` mirrors the resolution: signed in with no
 linked event shows "Join a conference first" rather than the fallback event
 `events-active` returns for display.
 
+**The conference code (`events.folder_code`) never reaches the browser.** It is the
+SMS bind token, so neither `events-active` nor `events-activate` returns it (Admin's
+"Show conference code" link and the `folderCode` field in the event store are gone).
+It stays in the database: `contacts-from-ocr` and the SMS photo pipeline file photos
+by it, and `twilio-webhook` still binds a phone to an *active* event whose code is
+texted. Don't add it back to a response for a UI.
+
 ### Scans that need a conference
 
 `contacts-create` used to answer 404/409 and keep nothing when a valid attendee

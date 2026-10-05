@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
     name: data.name,
     state: data.state,
     slug: data.slug,
-    folderCode: data.folder_code,
+    // folder_code is not returned: it is the SMS bind token, and any role (a rep
+    // included) can call this. See events-active.
   }, 201);
 });

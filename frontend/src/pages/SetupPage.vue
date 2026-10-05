@@ -191,7 +191,7 @@
             <!-- Consent disclosure: always visible, directly under the action that gives
                  consent (it has to be on the same screen as the sign-up -- a campaign
                  was rejected four times over this), never collapsed. It covers texting
-                 SETUP and texting the folder code alike -- hence "the code SETUP" in
+                 SETUP and any text that links a phone alike -- hence "the code SETUP" in
                  the action above. -->
             <div class="text-caption text-grey-8 q-mt-md">
               By texting this code, you agree to receive recurring automated text messages from
