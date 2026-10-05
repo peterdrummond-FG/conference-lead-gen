@@ -11,7 +11,7 @@
           <q-route-tab to="/connect" label="Kiosk" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
-          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" data-tour="nav-admin" />
+          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" />
         </q-tabs>
         <q-separator v-if="!isPhone" vertical spaced />
 
@@ -36,13 +36,13 @@
         <!-- The rep's own QR on screen in one tap, so showing it to someone is not
              a trip to Setup. Only for an account that has one (Sales); an admin
              previewing a rep gets that rep's. -->
-        <q-btn v-if="qrRep" flat dense round icon="qr_code_2" color="grey-7" aria-label="Show my QR code" data-tour="qr-button" @click="showQr = true">
+        <q-btn v-if="qrRep" flat dense round icon="qr_code_2" color="grey-7" aria-label="Show my QR code" @click="showQr = true">
           <q-tooltip>Show my QR code</q-tooltip>
         </q-btn>
 
         <!-- Replays the welcome tour. Never touches the saved "seen it" mark:
              that was set the first time and a replay shouldn't undo it. -->
-        <q-btn flat dense round icon="help_outline" color="grey-7" aria-label="Take the tour" data-tour="tour-replay" @click="onReplayTour">
+        <q-btn flat dense round icon="help_outline" color="grey-7" aria-label="Take the tour" @click="onReplayTour">
           <q-tooltip>Take the tour</q-tooltip>
         </q-btn>
 
@@ -65,7 +65,6 @@
           icon="menu"
           color="grey-9"
           aria-label="Open menu"
-          :data-tour="canSeeAdmin ? 'nav-admin' : undefined"
           @click="showMenu = true"
         />
       </q-toolbar>
@@ -176,13 +175,11 @@
       </q-card>
     </q-dialog>
 
-    <!-- The first-time welcome. Only for a signed-in person on an unlocked
-         device: attendees on the public Kiosk form, and a booth iPad locked
-         to it, must never see staff onboarding. -->
-    <template v-if="sessionStore.user && !kioskModeStore.locked">
-      <OnboardingSplash />
-      <TourOverlay />
-    </template>
+    <!-- The first-time onboarding, its one-hour reminder, and the tour behind the ?.
+         Only for a signed-in person on an unlocked device: attendees on the
+         public Kiosk form, and a booth iPad locked to it, must never see staff
+         onboarding. -->
+    <OnboardingHost v-if="sessionStore.user && !kioskModeStore.locked" />
   </q-layout>
 </template>
 
@@ -193,10 +190,9 @@ import { useQuasar } from 'quasar';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { useTourStore } from '@/stores/tour-store';
-import { tourStartAction } from '@/utils/onboardingTour';
+import { flowStartAction } from '@/utils/onboardingFlow';
 import RepQrDialog from '@/components/RepQrDialog.vue';
-import OnboardingSplash from '@/components/onboarding/OnboardingSplash.vue';
-import TourOverlay from '@/components/onboarding/TourOverlay.vue';
+import OnboardingHost from '@/components/tour/OnboardingHost.vue';
 import { api } from '@/boot/axios';
 import type { Profile, Role } from '@/types/review';
 
@@ -318,36 +314,48 @@ watch(() => sessionStore.user?.role, (role) => {
   if (role === 'admin') void loadProfiles();
 }, { immediate: true });
 
-// Starts the welcome for someone who hasn't seen it, or picks a refreshed tab
-// back up mid-tour. Uses the person's real role, not effectiveRole: an admin
-// previewing a rep's view (viewingAs) shouldn't trigger a tour, and shouldn't be
-// shown the rep's version of it. Only an explicit `onboarded === false` starts
-// it, so an older `me` response with no such field never shows it to everyone.
-function maybeStartTour() {
+// Starts the onboarding for someone who hasn't seen it, shows the one-hour
+// reminder once it is due, or picks a refreshed tab back up mid-flow. The rules
+// are utils/onboardingFlow.ts (tested). Uses the person's real role, not
+// effectiveRole: an admin previewing a rep's view (viewingAs) shouldn't trigger
+// onboarding, and shouldn't be shown the rep's version of it. Checked when the
+// account loads and whenever the app is opened or returned to, which is when a
+// reminder that became due while the tab sat open should appear.
+function maybeStartOnboarding() {
   const u = sessionStore.user;
-  const action = tourStartAction({
+  const action = flowStartAction({
     hasUser: !!u,
     kioskLocked: kioskModeStore.locked,
     viewingAs: !!sessionStore.viewingAs,
     phase: tourStore.phase,
+    onboarding: u?.onboarding,
+    now: Date.now(),
   });
   if (action === 'reset') {
     tourStore.reset();
     return;
   }
-  if (action !== 'begin' || !u) return;
-  if (tourStore.resume(u.role)) return;
-  if (u.onboarded === false) tourStore.start(u.role);
+  if (!u || tourStore.phase !== 'idle' || kioskModeStore.locked || sessionStore.viewingAs) return;
+  if (tourStore.resume(u.id)) return;
+  if (action === 'splash') tourStore.showSplash(u.id);
+  else if (action === 'reminder' && u.onboarding?.resumeFrom) tourStore.showReminder(u.id, u.onboarding.resumeFrom);
 }
 
 watch(
-  () => [sessionStore.user?.id, sessionStore.user?.onboarded, kioskModeStore.locked],
-  maybeStartTour,
+  () => [sessionStore.user?.id, sessionStore.user?.onboarding?.seen, kioskModeStore.locked, sessionStore.viewingAs?.id],
+  maybeStartOnboarding,
   { immediate: true },
 );
+function onVisible() {
+  if (document.visibilityState === 'visible') maybeStartOnboarding();
+}
+document.addEventListener('visibilitychange', onVisible);
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible));
 
+// The ? button: always the whole tour from the top. Never changes what the
+// account remembers, so it can't bring the splash or a reminder back.
 function onReplayTour() {
-  if (sessionStore.user) tourStore.start(sessionStore.user.role);
+  if (sessionStore.user) tourStore.playReplay(sessionStore.user.id);
 }
 
 function onMenuLogout() {

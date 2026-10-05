@@ -4,15 +4,71 @@
 // these ids don't exist). Each scene asks for a fresh copy so a loop always
 // starts from the same state.
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
-import { SAMPLE_LEAD } from '@/utils/onboardingTour';
 
-export const TOUR_CONFERENCE = 'TASSP Summer Conference';
+import { TOUR_CONFERENCE } from './tourText.ts';
+export { TOUR_CONFERENCE };
+
+// The blank every sample lead starts from (tourSampleData.ts overrides what makes
+// each person different). The tour's leads are only ever handed to components
+// drawn inside a TourDevice and must never be added to a real list: Review's
+// "Approve all N" acts on ids, and these don't exist.
+const BASE_LEAD: ContactListItem = {
+  id: 'tour-sample-lead',
+  firstName: 'Jordan',
+  lastName: 'Rivera',
+  email: 'jordan.rivera@example.org',
+  phone: null,
+  title: 'Assistant Principal',
+  source: 'card_photo',
+  qrChannel: null,
+  repId: null,
+  repName: null,
+  eventId: 'tour-sample-event',
+  eventName: 'Sample conference',
+  state: 'TN',
+  schoolDistrictId: 'tour-sample-district',
+  districtName: 'Riverside Unified',
+  schoolDistrictNameRaw: null,
+  schoolId: null,
+  schoolName: null,
+  schoolNameRaw: null,
+  extractionConfidence: null,
+  researchConfidence: null,
+  personVerified: null,
+  matchStatus: 'new_account',
+  matchConfidence: null,
+  matchedZohoContactId: null,
+  matchedZohoContactName: null,
+  matchedZohoContactEmail: null,
+  matchedZohoContactPhone: null,
+  matchedZohoContactTitle: null,
+  matchedZohoAccountId: null,
+  matchedZohoAccountName: null,
+  matchedZohoAccountLevel: null,
+  hasActiveOpportunity: null,
+  activeOpportunityName: null,
+  candidateMatches: null,
+  localDuplicateOfContactId: null,
+  localDuplicateOfContactName: null,
+  localDuplicateOfContactContext: null,
+  reviewStatus: 'needs_review',
+  notes: null,
+  glanceSummary: null,
+  interactionNotes: 'Loved the leadership workshop. Wants to hear about a school visit.',
+  followedUp: false,
+  hasPhoto: false,
+  hasCroppedPhoto: false,
+  matchAttempts: 0,
+  lastMatchAttemptAt: null,
+  syncedAt: null,
+  createdAt: '2026-01-01T00:00:00Z',
+};
 
 // state is the full name, as the app stores it: the edit panel compares it to
 // its own state list, and an abbreviation made it think every lead had unsaved
 // changes before the finger touched anything.
 function lead(o: Partial<ContactListItem>): ContactListItem {
-  return { ...SAMPLE_LEAD, eventName: TOUR_CONFERENCE, interactionNotes: null, state: 'Texas', ...o };
+  return { ...BASE_LEAD, eventName: TOUR_CONFERENCE, interactionNotes: null, state: 'Texas', ...o };
 }
 
 // One text in the Messages screen.
@@ -26,34 +82,7 @@ export interface TourText {
 
 // What our number really says back, word for word from twilio-webhook. If the
 // webhook's wording changes, these change with it (the test checks).
-// A candidate in the "Here's what I found" list: an already-active conference
-// (picking it just links the phone) or one Zoho has but nobody has activated yet
-// (picking it activates it first). Same two shapes twilio-webhook builds.
-export interface TourCandidate { kind: 'event' | 'campaign'; name: string; state: string | null }
-
-export const SMS_REPLIES = {
-  askName: "What's the name of the conference? (as much as you remember)",
-  // The list line and the wrapper, built with the webhook's own templates.
-  candidateLine: (c: TourCandidate, i: number) =>
-    c.kind === 'event'
-      ? `${i + 1}. ${c.name} (${c.state}) — already active, I'll just link your phone`
-      : `${i + 1}. ${c.name}${c.state ? ` (${c.state})` : ''} — not active yet, I'll set it up when you pick it`,
-  candidates: (list: TourCandidate[]) =>
-    `Here's what I found — reply with the number:\n${list.map((c, i) => SMS_REPLIES.candidateLine(c, i)).join('\n')}\n(If none of these are right, try texting the name again with more detail.)`,
-  // Picking an already-active conference.
-  linked: (conference: string) =>
-    `You're linked to ${conference}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready.`,
-  alreadySetUp: (conference: string) =>
-    `You're already set up for ${conference}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready. Not the right conference? Reply CHANGE.`,
-  received: (n: number) => `Got it — ${n} item(s) received.`,
-  noteLogged: "Got it — that contact's logged and will show up in Review in a few minutes.",
-};
-
-// What a brand-new rep types and is shown while setting up from scratch.
-export const SETUP_CANDIDATES: TourCandidate[] = [
-  { kind: 'event', name: TOUR_CONFERENCE, state: 'TX' },
-  { kind: 'campaign', name: 'TASSP Fall Leadership Summit', state: 'TX' },
-];
+export { SMS_REPLIES, SETUP_CANDIDATES, type TourCandidate } from './tourText.ts';
 
 export const SAMPLE_CARD = {
   name: 'Dana Whitfield',

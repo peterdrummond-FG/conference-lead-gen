@@ -2,6 +2,15 @@ import { defineStore } from 'pinia';
 import { supabase } from '@/lib/supabase';
 import { api } from '@/boot/axios';
 import type { Profile, Role } from '@/types/review';
+import { ONBOARDING_FAIL_SAFE, type Ended, type OnboardingState } from '@/utils/onboardingFlow';
+
+// What the browser tells profiles-complete-onboarding. Same shapes the Edge
+// Function validates.
+export type OnboardingEvent =
+  | { event: 'seen' }
+  | Ended
+  | { event: 'reminder-shown' }
+  | { event: 'complete' };
 
 export interface SessionUser {
   id: string;
@@ -20,6 +29,15 @@ export interface SessionUser {
   // starts on an explicit `false`, so a missing value never shows it to
   // everyone (see MainLayout's auto-start).
   onboarded?: boolean;
+  // The first-time onboarding (splash, quick start, tour, reminder). Optional for
+  // the same reason as `onboarded`: an older `me` has no such field, and the
+  // onboarding only starts when it is present (see onboardingFlow.flowStartAction).
+  onboarding?: OnboardingState;
+  // The account has a mobile number (without one, SETUP can't credit texted
+  // leads to this person), and their phone has already texted SETUP for their
+  // current conference. The onboarding words change on both.
+  hasPhone?: boolean;
+  phoneConnected?: boolean;
 }
 
 // The previewed person's own Setup facts, from `me?viewAsId=` (admin only).
@@ -71,6 +89,9 @@ export const useSessionStore = defineStore('session', {
         repSlug: string | null;
         hasKioskPin: boolean;
         onboarded?: boolean;
+        onboarding?: OnboardingState;
+        hasPhone?: boolean;
+        phoneConnected?: boolean;
       }>('/me');
       this.user = data;
     },
@@ -116,15 +137,31 @@ export const useSessionStore = defineStore('session', {
       // A second pick made while this was in flight wins.
       if (this.viewingAs?.id === target.id) this.preview = data;
     },
-    // Marks the welcome tour as done, on screen first and on the account
-    // second. If the save fails the tour is still dismissed and simply shows
-    // again next login: seeing it twice is harmless, being stuck in it is not.
-    // A no-op once done, so finishing a replay doesn't write anything.
-    async completeOnboarding() {
-      if (!this.user || this.user.onboarded !== false) return;
-      this.user.onboarded = true;
+    // Records where the person is in the first-time onboarding, on screen first and
+    // on the account second, so the rules that read it (the splash, the one-hour
+    // reminder) see the change straight away. If the save fails nothing is stuck:
+    // the worst case is the splash or the reminder showing once more, which is
+    // harmless; being unable to leave it is not.
+    async recordOnboarding(e: OnboardingEvent) {
+      const u = this.user;
+      if (!u) return;
+      const cur = u.onboarding ?? { ...ONBOARDING_FAIL_SAFE, seen: false, reminderShown: false };
+      switch (e.event) {
+        case 'seen':
+          u.onboarding = { ...cur, seen: true };
+          break;
+        case 'ended':
+          u.onboarding = { seen: true, path: e.path, endedAt: new Date().toISOString(), resumeFrom: e.resumeFrom, reminderShown: false };
+          break;
+        case 'reminder-shown':
+          u.onboarding = { ...cur, reminderShown: true };
+          break;
+        case 'complete':
+          u.onboarding = { ...cur, seen: true, resumeFrom: null };
+          break;
+      }
       try {
-        await api.post('/profiles-complete-onboarding');
+        await api.post('/profiles-complete-onboarding', e);
       } catch {
         // Deliberately silent; see above.
       }

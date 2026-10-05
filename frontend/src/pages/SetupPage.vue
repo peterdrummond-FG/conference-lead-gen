@@ -27,7 +27,7 @@
         <!-- Step 1: conference. A step is its own card with a number that turns into
              a green check when it's done, so a rep can see what's left and, coming
              back later, which one to tap to change. -->
-        <q-card data-tour="setup-conference">
+        <q-card>
           <q-card-section>
             <div class="row items-center no-wrap">
               <q-avatar size="26px" :color="joinedEvent ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
@@ -75,7 +75,7 @@
              starts the conference by name and binds the phone itself), so none of the
              instructions or the disclosure depend on having joined a conference
              here. Only the status does (smsBound is per conference). -->
-        <q-card data-tour="setup-text-in">
+        <q-card>
           <q-card-section>
             <div class="row items-center no-wrap">
               <q-avatar size="26px" :color="smsStatus === 'connected' ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
@@ -236,7 +236,7 @@
              a scan only reaches their Review once they're linked to a conference (otherwise it
              waits for Solutions Success to file it). Sales accounts only:
              repSlug is only ever generated for them (profiles-create/-update). -->
-        <q-card v-if="subject?.repSlug" data-tour="setup-qr">
+        <q-card v-if="subject?.repSlug">
           <q-card-section>
             <div class="row items-start no-wrap">
               <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
@@ -265,7 +265,7 @@
         <!-- Admin and Solutions Success: they hold no QR of their own but are who
              sends each rep theirs, so the reps' slides are listed here (and per rep
              in Admin -> Team). Nothing here depends on a conference. -->
-        <q-card v-if="canManageEvents" data-tour="setup-qr">
+        <q-card v-if="canManageEvents">
           <q-card-section>
             <div class="row items-start no-wrap">
               <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />

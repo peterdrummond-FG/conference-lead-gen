@@ -1,102 +1,87 @@
 import { defineStore } from 'pinia';
-import type { Role } from '@/types/review';
-import { stepsForRole, type TourStep } from '@/utils/onboardingTour';
-import { useSessionStore } from '@/stores/session-store';
+import type { FlowPhase } from '@/utils/onboardingFlow';
 
-export type TourPhase = 'idle' | 'splash' | 'tour';
+export type TourMode = 'first' | 'remainder' | 'replay';
 
-const STORAGE_KEY = 'clg-tour-progress';
+const STORAGE_KEY = 'clg-onboarding-progress';
 
-// Where the welcome tour is right now. Deliberately knows nothing about the
-// router or the DOM: TourOverlay watches `currentStep` and moves the page, so
-// this stays a small, predictable piece of state.
+// Where the onboarding is on screen right now. Deliberately knows nothing about
+// the router, the DOM or the account: MainLayout decides when to start it
+// (utils/onboardingFlow.ts has the rules) and OnboardingHost draws it and records
+// what happened. This stays a small, predictable piece of state.
 //
 // Progress is kept in sessionStorage so a refresh part-way through picks up at
-// the same step instead of starting over (or vanishing). It is per tab and
-// dies with it; whether the tour has been *finished* is the account's
-// `onboarded` flag, not this.
+// the same place instead of starting over (or vanishing). It is per tab, dies
+// with it, and is tied to the person who started it: whether someone has seen it
+// is the account's (`me.onboarding`), not this.
 export const useTourStore = defineStore('tour', {
   state: () => ({
-    phase: 'idle' as TourPhase,
+    phase: 'idle' as FlowPhase,
+    mode: null as TourMode | null,
+    // A scene id: where a remainder starts (and a refreshed tab resumes it).
+    resumeFrom: null as string | null,
     stepIndex: 0,
-    role: null as Role | null,
+    userId: null as string | null,
+    // Bumped to remount the flow when it is opened again.
+    runKey: 0,
   }),
-  getters: {
-    steps: (state): TourStep[] => (state.role ? stepsForRole(state.role) : []),
-    currentStep(): TourStep | null {
-      return this.phase === 'tour' ? (this.steps[this.stepIndex] ?? null) : null;
-    },
-    total(): number {
-      return this.steps.length;
-    },
-    isLast(): boolean {
-      return this.stepIndex >= this.steps.length - 1;
-    },
-  },
   actions: {
-    // Begins at the three welcome screens. Used for a first login and for a
-    // replay from the header alike.
-    start(role: Role) {
-      this.role = role;
+    showSplash(userId: string) {
+      this.open(userId, 'splash', 'first', null);
+    },
+    showReminder(userId: string, resumeFrom: string) {
+      this.open(userId, 'reminder', 'remainder', resumeFrom);
+    },
+    // The reminder's "Watch now": just what is left.
+    playRemainder(userId: string, resumeFrom: string | null) {
+      this.open(userId, 'tour', 'remainder', resumeFrom);
+    },
+    // The ? button: the whole tour from the top. Never changes what the account
+    // remembers.
+    playReplay(userId: string) {
+      this.open(userId, 'tour', 'replay', null);
+    },
+    open(userId: string, phase: FlowPhase, mode: TourMode, resumeFrom: string | null) {
+      this.userId = userId;
+      this.phase = phase;
+      this.mode = mode;
+      this.resumeFrom = resumeFrom;
       this.stepIndex = 0;
-      this.phase = 'splash';
+      this.runKey += 1;
       this.save();
     },
-    beginTour() {
-      this.stepIndex = 0;
-      this.phase = 'tour';
+    progress(p: { phase: FlowPhase; index: number }) {
+      this.phase = p.phase;
+      this.stepIndex = p.index;
       this.save();
     },
-    next() {
-      if (this.isLast) {
-        this.close();
-        return;
-      }
-      this.stepIndex += 1;
-      this.save();
-    },
-    // Jumps to a named step: the way past a section someone has already done.
-    goTo(id: string) {
-      const i = this.steps.findIndex((s) => s.id === id);
-      if (i < 0) return;
-      this.stepIndex = i;
-      this.save();
-    },
-    back() {
-      if (this.stepIndex > 0) {
-        this.stepIndex -= 1;
-        this.save();
-      }
-    },
-    // Finishing and skipping are the same thing to the account: the person has
-    // seen it and shouldn't be shown it again on their own.
-    close() {
-      this.phase = 'idle';
-      this.stepIndex = 0;
-      this.save();
-      void useSessionStore().completeOnboarding();
-    },
-    // Drops any in-progress tour without counting it as seen. Used on log out,
-    // so the next person to sign in on this tab neither resumes someone else's
-    // tour nor has it marked done for them.
+    // Closes it and forgets where it was. Records nothing: whoever closes it has
+    // already told the account what happened.
     reset() {
       this.phase = 'idle';
+      this.mode = null;
+      this.resumeFrom = null;
       this.stepIndex = 0;
-      this.role = null;
+      this.userId = null;
       this.save();
     },
-    // Picks a refreshed tab back up where it left off. Returns whether there
-    // was anything to resume.
-    resume(role: Role): boolean {
+    // Picks a refreshed tab back up where it left off, but only for the same
+    // person: a different account signing in on this tab must not resume the
+    // previous person's flow in the previous person's role (the 401 bug).
+    // Returns whether there was anything to resume.
+    resume(userId: string): boolean {
       try {
         const raw = sessionStorage.getItem(STORAGE_KEY);
         if (!raw) return false;
-        const saved = JSON.parse(raw) as { phase?: TourPhase; stepIndex?: number };
-        if (saved.phase !== 'splash' && saved.phase !== 'tour') return false;
-        this.role = role;
+        const saved = JSON.parse(raw) as Partial<{ userId: string; phase: FlowPhase; mode: TourMode; resumeFrom: string | null; stepIndex: number }>;
+        if (saved.userId !== userId) return false;
+        if (!saved.phase || saved.phase === 'idle' || !saved.mode) return false;
+        this.userId = userId;
         this.phase = saved.phase;
-        const max = stepsForRole(role).length - 1;
-        this.stepIndex = Math.min(Math.max(Number(saved.stepIndex) || 0, 0), Math.max(max, 0));
+        this.mode = saved.mode;
+        this.resumeFrom = saved.resumeFrom ?? null;
+        this.stepIndex = Math.max(Number(saved.stepIndex) || 0, 0);
+        this.runKey += 1;
         return true;
       } catch {
         return false;
@@ -105,7 +90,11 @@ export const useTourStore = defineStore('tour', {
     save() {
       try {
         if (this.phase === 'idle') sessionStorage.removeItem(STORAGE_KEY);
-        else sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ phase: this.phase, stepIndex: this.stepIndex }));
+        else {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+            userId: this.userId, phase: this.phase, mode: this.mode, resumeFrom: this.resumeFrom, stepIndex: this.stepIndex,
+          }));
+        }
       } catch {
         // Private windows can refuse storage; resuming is a nicety, not a need.
       }

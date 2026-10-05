@@ -1,11 +1,13 @@
 <template>
   <!-- Shown once, the next time someone who chose "Just get me texting" or
-       skipped the tour opens the app at least an hour later. Either button uses
-       it up; after that the ? in the top bar is the way back to the tour. -->
+       skipped the tour opens the app an hour or more later. The words come from
+       what is actually left (reminderCopy), so it never offers a scene they have
+       already seen. Either button uses it up; after that the ? in the top bar is
+       the way back. -->
   <div class="trm" :class="isPhone ? 'is-phone' : 'is-wide'">
     <div class="trm-card" role="dialog" aria-labelledby="trm-title">
-      <h3 id="trm-title" class="trm-title">{{ C.reminder.title }}</h3>
-      <p class="trm-body">{{ C.reminder.body }}</p>
+      <h3 id="trm-title" class="trm-title">{{ copy.title }}</h3>
+      <p class="trm-body">{{ copy.body }}</p>
       <div class="trm-actions">
         <q-btn flat no-caps color="primary" :label="C.reminder.later" @click="$emit('later')" />
         <q-btn unelevated no-caps color="primary" icon="play_arrow" :label="C.reminder.watch" @click="$emit('watch')" />
@@ -18,10 +20,13 @@
 import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import { ONBOARDING_COPY as C } from './tourFlow';
+import { reminderCopy, type Step } from '@/utils/onboardingFlow';
 
+const props = defineProps<{ steps: Step[] }>();
 defineEmits<{ watch: []; later: [] }>();
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
+const copy = computed(() => reminderCopy(props.steps));
 </script>
 
 <style scoped>
