@@ -1,0 +1,10 @@
+# Example only: merge the marked lines into your existing n8n service.
+# Keep every setting you already have (database, encryption key, URLs, etc.).
+services:
+  n8n:
+    image: <your-registry>/n8n-ffmpeg:<tag>        # CHANGE: the image built from the Dockerfile
+    environment:
+      # CHANGE: unblocks Execute Command, keeps Local File Trigger blocked.
+      # If you already set NODES_EXCLUDE, just remove "n8n-nodes-base.executeCommand" from it.
+      - NODES_EXCLUDE=["n8n-nodes-base.localFileTrigger"]
+    # If you run queue mode, every worker service needs the same image and the same NODES_EXCLUDE.

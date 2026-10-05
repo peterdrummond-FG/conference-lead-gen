@@ -1,4 +1,4 @@
-import { workflow, node, trigger, sticky, newCredential, placeholder, ifElse, expr } from '@n8n/workflow-sdk';
+import { workflow, node, trigger, sticky, newCredential, ifElse, expr } from '@n8n/workflow-sdk';
 
 const SUPABASE_URL = 'https://yrvppufkerbjpvrxniot.supabase.co';
 const UUID_RE = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
@@ -9,6 +9,10 @@ const SAMPLE_ID = '7d2e3b64-3a9f-4c54-8e6f-1c8d6a1fab22';
 const SAMPLE_EVENT = '5b0c1d42-1e7d-4a32-8c4d-9a6b4e8f0c33';
 const SAMPLE_CONTACT = '0b8f0b3e-3a33-4a4f-9d3f-4b9b1d1f7c20';
 const LINK_MAX_ATTEMPTS = 20;
+// Scratch space for the AMR -> M4A conversion (n8n/ffmpeg/README.md). Every
+// path under it is built from the claimed row's UUID, which Safe Storage Path?
+// re-validates first -- no text from a memo, rep or attendee reaches the shell.
+const SCRATCH_DIR = '/tmp/ckh-voice';
 // At this attempt, if no existing candidate has matched yet, ask
 // attribute-voice-memo to additionally judge whether the transcript alone
 // justifies creating a brand-new contact (see Attribution Input,
@@ -279,7 +283,13 @@ const safePath = ifElse({
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
-        conditions: [{ leftValue: expr('{{ $json.storage_path }}'), operator: { type: 'string', operation: 'regex' }, rightValue: STORAGE_KEY_RE }],
+        conditions: [
+          { leftValue: expr('{{ $json.storage_path }}'), operator: { type: 'string', operation: 'regex' }, rightValue: STORAGE_KEY_RE },
+          // The id goes into shell command lines below (scratch file names).
+          // It came from our own row, but it crossed DB -> n8n, so it is
+          // re-checked here rather than trusted because of where it came from.
+          { leftValue: expr('{{ $json.id }}'), operator: { type: 'string', operation: 'regex' }, rightValue: UUID_RE }
+        ],
         combinator: 'and'
       }
     }
@@ -328,16 +338,35 @@ const buildPrompt = node({
   output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, storagePath: 'sms/' + SAMPLE_ID + '.m4a', prompt: 'Contacts at this event: Jane Doe.' }]
 });
 
+// Execute Command replaces the item with {exitCode, stdout, stderr}, so every
+// node from here on reads the message id and storage path from Build Name
+// Prompt instead of $json. Also removes any leftover files for this memo: a
+// retry after a crash must not convert a stale half-written file.
+const prepareScratch = node({
+  type: 'n8n-nodes-base.executeCommand',
+  version: 1,
+  config: {
+    name: 'Prepare Scratch Dir',
+    position: [3060, 200],
+    executeOnce: false,
+    onError: 'continueErrorOutput',
+    parameters: {
+      command: expr("{{ 'mkdir -p " + SCRATCH_DIR + " && rm -f " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
+    }
+  },
+  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+});
+
 const downloadAudio = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.5,
   config: {
     name: 'Download Audio',
-    position: [3060, 200],
+    position: [3280, 200],
     onError: 'continueRegularOutput',
     parameters: {
       method: 'GET',
-      url: expr("{{ '" + SUPABASE_URL + "/storage/v1/object/voice-memos/' + $json.storagePath }}"),
+      url: expr("{{ '" + SUPABASE_URL + "/storage/v1/object/voice-memos/' + $('Build Name Prompt').item.json.storagePath }}"),
       authentication: 'predefinedCredentialType',
       nodeCredentialType: 'supabaseApi',
       options: {
@@ -354,7 +383,7 @@ const downloaded = ifElse({
   version: 2.3,
   config: {
     name: 'Downloaded?',
-    position: [3280, 200],
+    position: [3500, 200],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -365,48 +394,139 @@ const downloaded = ifElse({
   }
 });
 
-// UNVERIFIED request shape: whisper-asr-webservice's documented API
-// (POST /asr, multipart audio_file, initial_prompt as a query param). No
-// Whisper host exists yet -- confirm against the real one before cutover,
-// especially that initial_prompt is honoured over HTTP.
-const callWhisper = node({
+// ffmpeg is a CLI, so the memo goes to disk, is converted, and comes back:
+// phones send AMR and OpenAI's transcription API does not accept it. The
+// command is the one in n8n/ffmpeg/README.md. Each of these three nodes sends
+// its failure down the error output to Transcription Failed Row rather than
+// stopping the run, so the row is marked failed (transient: retried by the
+// backstop, bounded at 10 attempts) instead of being left in 'processing'.
+const writeAmr = node({
+  type: 'n8n-nodes-base.readWriteFile',
+  version: 1.1,
+  config: {
+    name: 'Write AMR',
+    position: [3720, 200],
+    onError: 'continueErrorOutput',
+    parameters: {
+      operation: 'write',
+      fileName: expr("{{ '" + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr' }}"),
+      dataPropertyName: 'audio'
+    }
+  },
+  output: [{ fileName: SCRATCH_DIR + '/' + SAMPLE_ID + '.amr' }]
+});
+
+const convertAudio = node({
+  type: 'n8n-nodes-base.executeCommand',
+  version: 1,
+  config: {
+    name: 'Convert With ffmpeg',
+    position: [3940, 200],
+    executeOnce: false,
+    onError: 'continueErrorOutput',
+    parameters: {
+      // -t 900 caps a memo at 15 minutes; mono 16 kHz AAC at 32 kbit/s keeps
+      // the upload around 4 MB per 15 minutes.
+      command: expr("{{ 'ffmpeg -nostdin -hide_banner -loglevel error -y -t 900 -i " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr -ac 1 -ar 16000 -c:a aac -b:a 32k " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
+    }
+  },
+  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+});
+
+const readM4a = node({
+  type: 'n8n-nodes-base.readWriteFile',
+  version: 1.1,
+  config: {
+    name: 'Read M4A',
+    position: [4160, 200],
+    onError: 'continueErrorOutput',
+    parameters: {
+      operation: 'read',
+      fileSelector: expr("{{ '" + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}"),
+      options: { dataPropertyName: 'audio', fileName: 'memo.m4a', mimeType: 'audio/mp4' }
+    }
+  },
+  output: [{ fileName: 'memo.m4a' }]
+});
+
+// OpenAI gpt-4o-transcribe, shape proven by the probe workflow (n8n id
+// 2TVbxDKQGFqzIQDT). Not fullResponse/neverError: a 401/429/5xx raises and
+// lands in $json.error, which Transcription Failed Row classes as transient
+// (retried, bounded); an empty transcript is terminal. The prompt is only the
+// name-shaped tokens Build Name Prompt allowed (audit A8); when there are none
+// it falls back to a neutral phrase because an empty prompt field is untested.
+const callOpenAi = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.5,
   config: {
-    name: 'Call Whisper',
-    position: [3500, 100],
+    name: 'Call OpenAI Transcription',
+    position: [4380, 100],
     onError: 'continueRegularOutput',
     parameters: {
       method: 'POST',
-      url: placeholder('Whisper ASR endpoint, e.g. https://<host>/asr -- host not decided yet'),
-      sendQuery: true,
-      specifyQuery: 'keypair',
-      queryParameters: { parameters: [
-        { name: 'encode', value: 'true' },
-        { name: 'task', value: 'transcribe' },
-        { name: 'language', value: 'en' },
-        { name: 'initial_prompt', value: expr("{{ $('Build Name Prompt').item.json.prompt }}") },
-        { name: 'output', value: 'txt' }
-      ] },
+      url: 'https://api.openai.com/v1/audio/transcriptions',
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'openAiApi',
       sendBody: true,
       contentType: 'multipart-form-data',
       bodyParameters: { parameters: [
-        { parameterType: 'formBinaryData', name: 'audio_file', inputDataFieldName: 'audio' }
+        { parameterType: 'formBinaryData', name: 'file', inputDataFieldName: 'audio' },
+        { parameterType: 'formData', name: 'model', value: 'gpt-4o-transcribe' },
+        { parameterType: 'formData', name: 'language', value: 'en' },
+        { parameterType: 'formData', name: 'prompt', value: expr("{{ $('Build Name Prompt').item.json.prompt || 'Conference voice memo.' }}") },
+        { parameterType: 'formData', name: 'response_format', value: 'text' }
       ] },
       options: {
         response: { response: { responseFormat: 'text', outputPropertyName: 'transcript' } },
-        timeout: 300000
+        timeout: 120000
       }
-    }
+    },
+    credentials: { openAiApi: newCredential('OpenAI account 2') }
   },
   output: [{ transcript: 'Met Jane Doe, she wants a demo.' }]
+});
+
+// Side branch off Call OpenAI Transcription: delete this memo's files as soon
+// as the call returns, win or lose. It can't sit in the main chain because
+// Execute Command would replace the transcript. Files from a run that died
+// before reaching here are removed by Sweep Scratch Dir.
+const cleanupScratch = node({
+  type: 'n8n-nodes-base.executeCommand',
+  version: 1,
+  config: {
+    name: 'Delete Scratch Files',
+    position: [4600, -100],
+    executeOnce: false,
+    onError: 'continueRegularOutput',
+    parameters: {
+      command: expr("{{ 'rm -f " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
+    }
+  },
+  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+});
+
+// Backstop sweep: voice recordings of attendees should not linger on the
+// server. Anything older than an hour is a leftover from a crashed run. mkdir
+// -p first so a missing directory (nothing converted yet) is not an error that
+// would email an alert every five minutes.
+const sweepScratch = node({
+  type: 'n8n-nodes-base.executeCommand',
+  version: 1,
+  config: {
+    name: 'Sweep Scratch Dir',
+    position: [420, 800],
+    executeOnce: true,
+    onError: 'continueRegularOutput',
+    parameters: { command: 'mkdir -p ' + SCRATCH_DIR + ' && find ' + SCRATCH_DIR + ' -type f -mmin +60 -delete' }
+  },
+  output: [{ exitCode: 0, stdout: '', stderr: '' }]
 });
 
 const transcribed = ifElse({
   version: 2.3,
   config: {
     name: 'Transcribed?',
-    position: [3720, 100],
+    position: [4600, 100],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -426,7 +546,7 @@ const transcriptRow = node({
   version: 3.5,
   config: {
     name: 'Transcript Row',
-    position: [3940, 0],
+    position: [4820, 0],
     parameters: {
       mode: 'raw',
       jsonOutput: expr("{{ ({ messageId: $('Build Name Prompt').item.json.messageId, claimedAttempts: $('Build Name Prompt').item.json.claimedAttempts, transcript: $json.transcript.trim(), status: 'completed', processed_at: $now.toISO(), error: null, error_class: null, link_attempts: ($('Claim Audio Message').item.json.link_attempts ?? 0) + 1, last_link_attempt_at: $now.toISO() }) }}")
@@ -454,7 +574,7 @@ const CLAIMED_MESSAGE_WRITE = {
 const saveTranscript = node({
   type: 'n8n-nodes-base.supabase',
   version: 1,
-  config: { name: 'Save Transcript', position: [4160, 0], parameters: CLAIMED_MESSAGE_WRITE, credentials: { supabaseApi: newCredential('Supabase account') } },
+  config: { name: 'Save Transcript', position: [5040, 0], parameters: CLAIMED_MESSAGE_WRITE, credentials: { supabaseApi: newCredential('Supabase account') } },
   output: [{ id: SAMPLE_ID, status: 'completed', transcript: 'Met Jane Doe, she wants a demo.', link_status: 'unlinked', link_attempts: 1, event_id: SAMPLE_EVENT, from_phone: '+15551234567' }]
 });
 
@@ -463,7 +583,7 @@ const stillUnlinked = node({
   version: 2.3,
   config: {
     name: 'Still Unlinked?',
-    position: [4380, 0],
+    position: [5260, 0],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -480,10 +600,10 @@ const transcriptionFailedRow = node({
   version: 3.5,
   config: {
     name: 'Transcription Failed Row',
-    position: [3940, 300],
+    position: [4820, 300],
     parameters: {
       mode: 'raw',
-      jsonOutput: expr("{{ ({ messageId: $('Build Name Prompt').item.json.messageId, claimedAttempts: $('Build Name Prompt').item.json.claimedAttempts, status: 'failed', error: String($json.error?.message ?? $json.error ?? 'Whisper returned an empty transcript').slice(0, 2000), error_class: $json.error ? 'transient' : 'terminal' }) }}")
+      jsonOutput: expr("{{ ({ messageId: $('Build Name Prompt').item.json.messageId, claimedAttempts: $('Build Name Prompt').item.json.claimedAttempts, status: 'failed', error: String($json.error?.message ?? $json.error ?? 'Transcription returned an empty transcript').slice(0, 2000), error_class: $json.error ? 'transient' : 'terminal' }) }}")
     }
   },
   output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, status: 'failed', error: 'ECONNREFUSED', error_class: 'transient' }]
@@ -492,7 +612,7 @@ const transcriptionFailedRow = node({
 const markTranscriptionFailed = node({
   type: 'n8n-nodes-base.supabase',
   version: 1,
-  config: { name: 'Mark Transcription Failed', position: [4160, 300], parameters: CLAIMED_MESSAGE_WRITE, credentials: { supabaseApi: newCredential('Supabase account') } },
+  config: { name: 'Mark Transcription Failed', position: [5040, 300], parameters: CLAIMED_MESSAGE_WRITE, credentials: { supabaseApi: newCredential('Supabase account') } },
   output: [{ id: SAMPLE_ID, status: 'failed' }]
 });
 
@@ -504,7 +624,7 @@ const unsafePathRow = node({
     position: [2620, 500],
     parameters: {
       mode: 'raw',
-      jsonOutput: expr("{{ ({ messageId: $json.id, claimedAttempts: $json.processing_attempts, status: 'failed', error: ('refusing to download from an unexpected storage key: ' + String($json.storage_path)).slice(0, 500), error_class: 'terminal' }) }}")
+      jsonOutput: expr("{{ ({ messageId: $json.id, claimedAttempts: $json.processing_attempts, status: 'failed', error: ('refusing to process an unexpected storage key or id: ' + String($json.storage_path) + ' / ' + String($json.id)).slice(0, 500), error_class: 'terminal' }) }}")
     }
   },
   output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, status: 'failed', error_class: 'terminal' }]
@@ -514,7 +634,7 @@ const markUnsafeFailed = node({
   type: 'n8n-nodes-base.supabase',
   version: 1,
   config: { name: 'Mark Unsafe Path Failed', position: [2840, 500], parameters: CLAIMED_MESSAGE_WRITE, credentials: { supabaseApi: newCredential('Supabase account') } },
-  output: [{ id: SAMPLE_ID, status: 'failed', error: 'refusing to download from an unexpected storage key: x' }]
+  output: [{ id: SAMPLE_ID, status: 'failed', error: 'refusing to process an unexpected storage key or id: x / y' }]
 });
 
 const failUnsafe = node({
@@ -581,7 +701,7 @@ const linkContext = node({
   version: 3.5,
   config: {
     name: 'Link Context',
-    position: [4600, 400],
+    position: [5480, 400],
     parameters: {
       mode: 'raw',
       jsonOutput: expr("{{ ({ messageId: $json.id, eventId: $json.event_id ?? null, fromPhone: $json.from_phone ?? null, transcript: $json.transcript, linkAttempts: $json.link_attempts }) }}")
@@ -598,7 +718,7 @@ const fetchLinkCandidates = node({
   version: 4.5,
   config: {
     name: 'Fetch Link Candidates',
-    position: [4820, 400],
+    position: [5700, 400],
     parameters: {
       method: 'GET',
       url: SUPABASE_URL + '/rest/v1/contacts',
@@ -629,7 +749,7 @@ const attributionInput = node({
   version: 2,
   config: {
     name: 'Attribution Input',
-    position: [5040, 400],
+    position: [5920, 400],
     parameters: { mode: 'runOnceForEachItem', language: 'javaScript', jsCode: ATTRIBUTION_INPUT_JS }
   },
   output: [{ messageId: SAMPLE_ID, linkAttempts: 1, transcript: 'Met Jane Doe, she wants a demo.', fetchOk: true, candidateRows: [{ id: SAMPLE_CONTACT, interaction_notes: null }], candidates: [{ contactId: SAMPLE_CONTACT, firstName: 'Jane', lastName: 'Doe', email: '', phone: '', title: '' }] }]
@@ -642,7 +762,7 @@ const fetchOk = node({
   version: 2.3,
   config: {
     name: 'Candidates Fetched?',
-    position: [5260, 400],
+    position: [6140, 400],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -662,7 +782,7 @@ const hasCandidates = ifElse({
   version: 2.3,
   config: {
     name: 'Has Candidates?',
-    position: [5480, 400],
+    position: [6360, 400],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -678,7 +798,7 @@ const attributeMemo = node({
   version: 1.3,
   config: {
     name: 'Attribute Memo',
-    position: [5700, 300],
+    position: [6580, 300],
     parameters: {
       mode: 'each',
       source: 'database',
@@ -708,7 +828,7 @@ const attributed = ifElse({
   version: 2.3,
   config: {
     name: 'Attributed?',
-    position: [5920, 300],
+    position: [6800, 300],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -724,7 +844,7 @@ const planExcerpts = node({
   version: 2,
   config: {
     name: 'Plan Excerpts',
-    position: [6140, 200],
+    position: [7020, 200],
     parameters: { mode: 'runOnceForEachItem', language: 'javaScript', jsCode: PLAN_EXCERPTS_JS }
   },
   output: [{ messageId: SAMPLE_ID, linkAttempts: 1, excerpts: [{ messageId: SAMPLE_ID, linkAttempts: 1, contactId: SAMPLE_CONTACT, excerpt: 'she wants a demo.' }] }]
@@ -734,7 +854,7 @@ const anyExcerpts = ifElse({
   version: 2.3,
   config: {
     name: 'Any Excerpts?',
-    position: [6360, 200],
+    position: [7240, 200],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -753,7 +873,7 @@ const hasExtractedContact = ifElse({
   version: 2.3,
   config: {
     name: 'Has Extracted Contact?',
-    position: [6580, 300],
+    position: [7460, 300],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -775,7 +895,7 @@ const createVoiceMemoContact = node({
   version: 4.5,
   config: {
     name: 'Create Voice Memo Contact',
-    position: [6800, 300],
+    position: [7680, 300],
     onError: 'continueRegularOutput',
     parameters: {
       method: 'POST',
@@ -802,7 +922,7 @@ const contactCreatedRow = node({
   version: 2,
   config: {
     name: 'Contact Created Row',
-    position: [7020, 300],
+    position: [7900, 300],
     parameters: { mode: 'runOnceForEachItem', language: 'javaScript', jsCode: CONTACT_CREATED_ROW_JS }
   },
   output: [{ messageId: SAMPLE_ID, linkAttempts: 5, matched_contact_ids: [SAMPLE_CONTACT], link_status: 'contact_created' }]
@@ -813,7 +933,7 @@ const splitExcerpts = node({
   version: 1,
   config: {
     name: 'Split Out Excerpts',
-    position: [6580, 100],
+    position: [7460, 100],
     parameters: { fieldToSplitOut: 'excerpts', include: 'noOtherFields' }
   },
   output: [{ messageId: SAMPLE_ID, linkAttempts: 1, contactId: SAMPLE_CONTACT, excerpt: 'she wants a demo.' }]
@@ -827,7 +947,7 @@ const attachExcerpt = node({
   version: 4.5,
   config: {
     name: 'Attach Excerpt',
-    position: [6800, 100],
+    position: [7680, 100],
     onError: 'continueRegularOutput',
     parameters: {
       method: 'POST',
@@ -857,7 +977,7 @@ const tallyLinks = node({
   version: 2,
   config: {
     name: 'Tally Links',
-    position: [7020, 100],
+    position: [7900, 100],
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: TALLY_LINKS_JS }
   },
   output: [{ messageId: SAMPLE_ID, linkAttempts: 1, matched_contact_ids: [SAMPLE_CONTACT], link_status: 'linked' }]
@@ -872,7 +992,7 @@ const unmatchedRow = node({
   version: 3.5,
   config: {
     name: 'Unmatched Row',
-    position: [6580, 400],
+    position: [7460, 400],
     parameters: {
       mode: 'raw',
       jsonOutput: expr("{{ ({ messageId: $json.messageId, linkAttempts: $json.linkAttempts, matched_contact_ids: [], link_status: $json.linkAttempts >= " + LINK_MAX_ATTEMPTS + " ? 'no_candidate_found' : 'unlinked' }) }}")
@@ -888,7 +1008,7 @@ const recordLinkResult = node({
   version: 1,
   config: {
     name: 'Record Link Result',
-    position: [7240, 300],
+    position: [8120, 300],
     parameters: {
       resource: 'row',
       operation: 'update',
@@ -912,7 +1032,7 @@ const permanentLinkFailure = ifElse({
   version: 2.3,
   config: {
     name: 'Permanent Attribution Failure?',
-    position: [6140, 500],
+    position: [7020, 500],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
@@ -928,14 +1048,14 @@ const failAttribution = node({
   version: 1,
   config: {
     name: 'Fail Loudly (Attribution)',
-    position: [6360, 500],
+    position: [7240, 500],
     parameters: { errorType: 'errorMessage', errorMessage: expr("{{ 'attribute-voice-memo failed permanently for memo ' + $('Attribution Input').item.json.messageId + ': ' + $json.message }}") }
   }
 });
 
 const note = sticky(
-  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> Whisper -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path re-checked against twilio-webhook's key pattern (mismatch = terminal + Fail Loudly); Whisper prompt = this rep's candidate names, name-shaped only, max 30 (audit A8). Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless Whisper returned nothing); the backstop resurrects transient ones.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact of any kind. At link_attempts=5 (LINK_FALLBACK_ATTEMPT), if nothing matched, the skill is additionally asked whether the transcript alone names someone with a title/district/school -- if so, Create Voice Memo Contact mints a brand-new source='voice_memo' contact (link_status='contact_created'), which then flows through the normal pending-contact pipeline like any other intake path. Excerpts append atomically and idempotently via append_contact_interaction_notes. 'linked' only if every excerpt landed.\n\n**Placeholder:** Call Whisper's URL (host undecided). Its request shape is whisper-asr-webservice's documented API and is UNVERIFIED until that host exists. NOTE: the extractFallbackContact/extractedContact contract also depends on skill-attribute-voice-memo (id k1LFHrmVYBqDV4bT) being regenerated from the updated SKILL.md/attribution.schema.json via build-skill-workflow.mjs and republished -- not done as part of this change (pipeline is not yet live).",
-  [dbWebhook, webhookMessageId, backstop, resetStale, retryTransient, findPending, backstopMessageId, claimUnlinked, claimedWithTranscript],
+  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> ffmpeg (AMR to M4A) -> OpenAI gpt-4o-transcribe -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path and id re-checked (key pattern / UUID) before either reaches a shell command (mismatch = terminal + Fail Loudly); transcription prompt = this rep's candidate names, name-shaped only, max 30 (audit A8). Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless the transcript came back empty); the backstop resurrects transient ones.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact of any kind. At link_attempts=5 (LINK_FALLBACK_ATTEMPT), if nothing matched, the skill is additionally asked whether the transcript alone names someone with a title/district/school -- if so, Create Voice Memo Contact mints a brand-new source='voice_memo' contact (link_status='contact_created'), which then flows through the normal pending-contact pipeline like any other intake path. Excerpts append atomically and idempotently via append_contact_interaction_notes. 'linked' only if every excerpt landed.\n\n**Conversion:** audio is downloaded, written to /tmp/ckh-voice/<id>.amr, converted by ONE fixed ffmpeg command (mono, 16 kHz, AAC 32k, 15-minute cap), read back and sent to OpenAI. Needs ffmpeg on the n8n host, Execute Command unblocked (NODES_EXCLUDE) and an 'OpenAI account 2' credential (see n8n/ffmpeg-admin-package). Scratch files are deleted right after the call; Sweep Scratch Dir deletes anything older than an hour. NOTE: the extractFallbackContact/extractedContact contract also depends on skill-attribute-voice-memo (id k1LFHrmVYBqDV4bT) being regenerated from the updated SKILL.md/attribution.schema.json via build-skill-workflow.mjs and republished -- not done as part of this change.",
+  [dbWebhook, webhookMessageId, backstop, resetStale, retryTransient, findPending, backstopMessageId, claimUnlinked, claimedWithTranscript, sweepScratch],
   { color: 4 }
 );
 
@@ -943,12 +1063,14 @@ export default workflow('pipeline-voice-transcription', 'pipeline-voice-transcri
   .add(dbWebhook).to(webhookMessageId).to(validMessageId)
   .add(backstop).to(resetStale).to(retryTransient).to(findPending).to(backstopMessageId).to(validMessageId)
   .add(backstop).to(claimUnlinked).to(claimedWithTranscript).to(linkContext)
+  .add(backstop).to(sweepScratch)
+  .add(callOpenAi).to(cleanupScratch)
   .add(validMessageId).to(fetchMessage).to(readyToTranscribe).to(claimRow).to(claimMessage)
   .to(safePath
-    .onTrue(fetchPromptCandidates.to(buildPrompt).to(downloadAudio).to(downloaded
-      .onTrue(callWhisper.to(transcribed
+    .onTrue(fetchPromptCandidates.to(buildPrompt).to(prepareScratch.onError(transcriptionFailedRow)).to(downloadAudio).to(downloaded
+      .onTrue(writeAmr.onError(transcriptionFailedRow).to(convertAudio.onError(transcriptionFailedRow)).to(readM4a.onError(transcriptionFailedRow)).to(callOpenAi.to(transcribed
         .onTrue(transcriptRow.to(saveTranscript).to(stillUnlinked).to(linkContext))
-        .onFalse(transcriptionFailedRow.to(markTranscriptionFailed))))
+        .onFalse(transcriptionFailedRow.to(markTranscriptionFailed)))))
       .onFalse(transcriptionFailedRow)))
     .onFalse(unsafePathRow.to(markUnsafeFailed).to(failUnsafe)))
   .add(linkContext).to(fetchLinkCandidates).to(attributionInput).to(fetchOk)
