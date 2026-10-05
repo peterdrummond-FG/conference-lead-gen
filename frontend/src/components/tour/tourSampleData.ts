@@ -3,7 +3,7 @@
 // Review list, count or bulk selection ("Approve all N" acts on lead ids, and
 // these ids don't exist). Each scene asks for a fresh copy so a loop always
 // starts from the same state.
-import type { ContactListItem, UpdateContactPayload } from '@/types/review';
+import type { ContactListItem, UnassignedSubmission, UpdateContactPayload } from '@/types/review';
 
 import { TOUR_CONFERENCE } from './tourText.ts';
 export { TOUR_CONFERENCE };
@@ -194,4 +194,22 @@ export function tourLeads(who: TourPerson[], opts: { processing?: TourPerson[] }
 // Everyone, matched: the Review and manager scenes, a while after the leads came in.
 export function reviewLeads(): ContactListItem[] {
   return tourLeads(['dana', 'sam', 'priya', 'tom', 'ana', 'grace']);
+}
+
+// What Review's amber banner lists for a manager in the tour: scans nobody could
+// place under a conference. Made-up people (not the ones in the rep's story).
+const HOUR = 3_600_000;
+export function tourUnassigned(): UnassignedSubmission[] {
+  const base = { title: null, state: null, districtName: null, schoolName: null, eventHintId: null, eventHintName: null };
+  return [
+    {
+      ...base, id: 'tour-unassigned-1', firstName: 'Casey', lastName: 'Morgan', email: 'casey.morgan@example.org', phone: '(555) 010-2233',
+      reason: 'rep_no_conference', repId: 'tour-rep-jamie', repName: 'Jamie Cole', createdAt: new Date(Date.now() - 2 * HOUR).toISOString(),
+    },
+    {
+      ...base, id: 'tour-unassigned-2', firstName: 'Riley', lastName: 'Brooks', email: 'riley.brooks@example.org', phone: null,
+      reason: 'event_ended', repId: 'tour-rep-chris', repName: 'Chris Park', eventHintName: 'TASSP Fall Leadership Summit',
+      createdAt: new Date(Date.now() - 26 * HOUR).toISOString(),
+    },
+  ];
 }

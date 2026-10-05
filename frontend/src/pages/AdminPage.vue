@@ -8,129 +8,17 @@
         </div>
       </div>
 
-      <q-card>
-        <q-card-section>
-          <div class="admin-head">
-            <div class="text-h6">Conferences</div>
-            <q-btn color="primary" no-caps icon="add" label="Activate a conference" class="admin-btn" @click="pickingNew = true" />
-          </div>
-          <div class="text-caption text-grey-8 q-mt-xs">
-            A conference stays live until you end it. Reps join a live one from their Setup page.
-          </div>
-        </q-card-section>
+      <AdminConferencesCard
+        :events-loaded="eventsLoaded" :event-rows="eventRows" :rep-count="repCount" :completing-event="completingEvent"
+        @activate="pickingNew = true" @end="confirmMarkComplete"
+      />
 
-        <q-card-section v-if="!eventsLoaded" class="q-pt-none text-caption text-grey-8">Loading…</q-card-section>
-        <q-card-section v-else-if="!eventRows.length" class="q-pt-none text-body2">
-          No conferences yet. Activate one to get going.
-        </q-card-section>
-        <q-list v-else separator>
-          <q-separator />
-          <q-item v-for="event in eventRows" :key="event.id" class="q-py-md">
-            <q-item-section>
-              <q-item-label>
-                {{ event.name }}
-                <q-badge
-                  class="q-ml-xs"
-                  :color="event.status === 'active' ? 'positive' : 'grey-6'"
-                  :label="event.status === 'active' ? 'Live' : 'Ended'"
-                />
-              </q-item-label>
-              <q-item-label caption>
-                {{ event.state }} · started {{ formatRelativeTime(event.activatedAt) }}
-                <template v-if="event.status === 'active' && repCount(event.id)">
-                  · {{ repCount(event.id) }} {{ repCount(event.id) === 1 ? 'rep' : 'reps' }}
-                </template>
-              </q-item-label>
-              <q-item-label v-if="event.status === 'active' && !repCount(event.id)" caption class="text-orange-9">
-                <q-icon name="warning" size="14px" /> No reps yet
-              </q-item-label>
-            </q-item-section>
-            <q-item-section v-if="event.status === 'active'" side>
-              <q-btn
-                outline no-caps color="negative" label="End" class="admin-btn"
-                :aria-label="`End ${event.name}`"
-                :loading="completingEvent === event.id"
-                @click="confirmMarkComplete(event)"
-              />
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
-
-      <q-card>
-        <q-card-section>
-          <div class="admin-head">
-            <div class="text-h6">Team</div>
-            <q-btn color="primary" no-caps icon="add" label="Add person" class="admin-btn" @click="openAddPerson" />
-          </div>
-          <div class="text-caption text-grey-8 q-mt-xs">
-            {{ isAdmin ? 'Solutions Success and Sales accounts.' : 'Sales accounts.' }}
-            A rep can only be at one conference at a time. A scan for a rep who isn't at one waits in Review for you to file it.
-          </div>
-        </q-card-section>
-
-        <q-card-section v-if="!profilesLoaded" class="q-pt-none text-caption text-grey-8">Loading…</q-card-section>
-        <q-card-section v-else-if="!profiles.length" class="q-pt-none text-body2">No accounts yet.</q-card-section>
-        <q-list v-else separator>
-          <q-separator />
-          <q-item v-for="p in profiles" :key="p.id" class="q-py-md">
-            <q-item-section>
-              <q-item-label>
-                {{ p.name }}
-                <q-badge class="q-ml-xs" color="grey-7" :label="roleLabel(p.role)" />
-              </q-item-label>
-              <q-item-label caption>
-                {{ p.email }}<template v-if="p.phoneNumber"> · {{ p.phoneNumber }}</template>
-                <span v-else class="text-orange-9"> · no phone number</span>
-              </q-item-label>
-
-              <!-- Only sales reps have a QR (repSlug) and only their
-                   current_event_id decides where a scan lands, so this is the
-                   one control that fixes a rep who forgot to join. -->
-              <q-select
-                v-if="p.role === 'sales'"
-                :model-value="p.currentEventId"
-                :options="workingAtOptions"
-                emit-value
-                map-options
-                dense
-                outlined
-                class="q-mt-sm"
-                style="width: 100%; max-width: 320px"
-                label="Working at"
-                :loading="assigningRep === p.id"
-                @update:model-value="(v: string | null) => assignRep(p, v)"
-              />
-              <q-item-label
-                v-if="p.role === 'sales' && !p.currentEventId && activeEvents.length"
-                caption class="text-orange-9 q-mt-xs"
-              >
-                <q-icon name="warning" size="14px" /> Not at a conference, so their scans wait in Review
-              </q-item-label>
-
-              <!-- Labelled rather than an icon in the corner: this is how an
-                   admin gets a rep their slide to send, and an unlabelled QR
-                   glyph beside edit/delete wasn't findable. -->
-              <div v-if="p.role === 'sales' && p.repSlug" class="q-mt-sm">
-                <qr-save-buttons :rep="{ name: p.name, repSlug: p.repSlug }" class="admin-link" />
-              </div>
-            </q-item-section>
-
-            <q-item-section side top>
-              <div class="row no-wrap">
-                <q-btn flat round padding="10px" icon="edit" color="grey-8" aria-label="Edit" @click="openEditPerson(p)">
-                  <q-tooltip>Edit name or phone</q-tooltip>
-                </q-btn>
-                <q-btn
-                  v-if="p.id !== sessionStore.user?.id"
-                  flat round padding="10px" icon="delete" color="grey-8" aria-label="Delete"
-                  @click="confirmDeleteProfile(p)"
-                />
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
+      <AdminTeamCard
+        :is-admin="isAdmin" :profiles-loaded="profilesLoaded" :profiles="profiles"
+        :working-at-options="workingAtOptions" :has-active-events="activeEvents.length > 0"
+        :assigning-rep="assigningRep" :current-user-id="sessionStore.user?.id ?? null"
+        @add="openAddPerson" @assign="assignRep" @edit="openEditPerson" @remove="confirmDeleteProfile"
+      />
 
       <StartConferenceDialog v-model="pickingNew" @started="onStarted" />
 
@@ -224,7 +112,8 @@ import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
 import StartConferenceDialog from '@/components/StartConferenceDialog.vue';
-import QrSaveButtons from '@/components/QrSaveButtons.vue';
+import AdminConferencesCard from '@/components/AdminConferencesCard.vue';
+import AdminTeamCard from '@/components/AdminTeamCard.vue';
 import type { Profile, Role } from '@/types/review';
 
 interface ActiveEventOption {
@@ -271,17 +160,6 @@ const eventRows = computed<RecentEventOption[]>(() => {
   return Array.from(byId.values()).sort((a, b) => b.activatedAt.localeCompare(a.activatedAt));
 });
 
-// Rough enough to disambiguate same-named test/duplicate conferences -- not a
-// general-purpose formatter.
-function formatRelativeTime(iso: string): string {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
 async function loadEvents() {
   try {
     const [active, recent] = await Promise.all([
@@ -295,7 +173,7 @@ async function loadEvents() {
   }
 }
 
-function confirmMarkComplete(event: RecentEventOption) {
+function confirmMarkComplete(event: { id: string; name: string }) {
   Dialog.create({
     title: 'End this conference?',
     message: `This ends "${event.name}" for every rep at it. They'll need to join another conference on Setup next time. This can't be undone.`,

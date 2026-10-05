@@ -1,73 +1,13 @@
 <template>
   <q-layout view="hHh lpr fFf">
     <q-header v-if="sessionStore.user && !kioskModeStore.locked" class="bg-white text-dark app-header" bordered>
-      <q-toolbar class="app-toolbar">
-        <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
-        <!-- Tablet and desktop only. Phones get the same pages in the menu
-             drawer below (the pills plus QR, ? and account icons did not fit
-             one row on a 375px screen). -->
-        <q-tabs v-if="!isPhone" class="nav-pills" indicator-color="transparent" no-caps dense>
-          <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
-          <q-route-tab to="/connect" label="Kiosk" />
-          <q-route-tab to="/review" label="Review" />
-          <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
-          <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" />
-        </q-tabs>
-        <q-separator v-if="!isPhone" vertical spaced />
-
-        <!-- Admin only: a genuine "view as" switcher, backed by real
-             accounts — picking someone previews Review exactly as they'd
-             see it, but every write still lands under the admin's own
-             account (see session-store's effectiveRole/effectiveRepId). -->
-        <q-btn-dropdown v-if="sessionStore.user.role === 'admin'" flat dense no-caps icon="switch_account" color="primary" :label="isPhone ? undefined : viewingAsLabel" :aria-label="viewingAsLabel">
-          <q-tooltip>View as</q-tooltip>
-          <q-list>
-            <q-item clickable v-close-popup @click="void sessionStore.setViewingAs(null)">
-              <q-item-section>Myself (Admin)</q-item-section>
-            </q-item>
-            <q-separator />
-            <q-item v-for="p in profiles" :key="p.id" clickable v-close-popup @click="void sessionStore.setViewingAs(p)">
-              <q-item-section>{{ p.name }} ({{ roleLabel(p.role) }})</q-item-section>
-            </q-item>
-          </q-list>
-        </q-btn-dropdown>
-        <div v-else-if="!isPhone" class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
-
-        <!-- The rep's own QR on screen in one tap, so showing it to someone is not
-             a trip to Setup. Only for an account that has one (Sales); an admin
-             previewing a rep gets that rep's. -->
-        <q-btn v-if="qrRep" flat dense round icon="qr_code_2" color="grey-7" aria-label="Show my QR code" @click="showQr = true">
-          <q-tooltip>Show my QR code</q-tooltip>
-        </q-btn>
-
-        <!-- Replays the welcome tour. Never touches the saved "seen it" mark:
-             that was set the first time and a replay shouldn't undo it. -->
-        <q-btn flat dense round icon="help_outline" color="grey-7" aria-label="Take the tour" @click="onReplayTour">
-          <q-tooltip>Take the tour</q-tooltip>
-        </q-btn>
-
-        <q-separator v-if="!isPhone" vertical spaced />
-        <q-btn v-if="!isPhone" flat dense icon="logout" round color="grey-7" aria-label="Log out" @click="onLogout">
-          <q-tooltip>Log out</q-tooltip>
-        </q-btn>
-
-        <!-- Phones: the hamburger sits where the account icon was. Log out lives
-             at the bottom of the drawer behind a labelled row, so it is still
-             not one slip away from the QR and ? icons. The ? stays on its own
-             because the tour's last step points at it. On a phone this button
-             also carries the tour's "nav-admin" target (the Admin tab it
-             normally points at is inside the closed drawer), for managers. -->
-        <q-btn
-          v-else
-          flat
-          dense
-          round
-          icon="menu"
-          color="grey-9"
-          aria-label="Open menu"
-          @click="showMenu = true"
-        />
-      </q-toolbar>
+      <AppHeader
+        :role="sessionStore.user.role" :name="sessionStore.user.name" :is-phone="isPhone"
+        :can-see-setup="canSeeSetup" :can-see-export="canSeeExport" :can-see-admin="canSeeAdmin"
+        :has-qr="!!qrRep" :viewing-as-label="viewingAsLabel" :profiles="profiles"
+        @view-as="(p) => void sessionStore.setViewingAs(p)" @qr="showQr = true"
+        @tour="onReplayTour" @logout="onLogout" @menu="showMenu = true"
+      />
 
       <!-- Previewing someone: say so on every page, in words, with the way back.
            On a phone the switcher above is an icon with no label, so before this
@@ -93,44 +33,11 @@
       behavior="mobile"
       :width="280"
     >
-      <div class="menu-drawer">
-        <div class="menu-title">CKH Connect</div>
-        <q-list>
-          <q-item clickable to="/review" active-class="menu-active" @click="showMenu = false">
-            <q-item-section avatar><q-icon name="checklist" /></q-item-section>
-            <q-item-section>Review</q-item-section>
-          </q-item>
-          <q-item clickable to="/connect" active-class="menu-active" @click="showMenu = false">
-            <q-item-section avatar><q-icon name="tablet_mac" /></q-item-section>
-            <q-item-section>Kiosk</q-item-section>
-          </q-item>
-          <q-item v-if="canSeeSetup" clickable to="/setup" active-class="menu-active" @click="showMenu = false">
-            <q-item-section avatar><q-icon name="tune" /></q-item-section>
-            <q-item-section>Setup</q-item-section>
-          </q-item>
-          <template v-if="canSeeExport || canSeeAdmin">
-            <q-separator class="q-my-sm" />
-            <q-item v-if="canSeeExport" clickable to="/export" active-class="menu-active" @click="showMenu = false">
-              <q-item-section avatar><q-icon name="download" /></q-item-section>
-              <q-item-section>Export</q-item-section>
-            </q-item>
-            <q-item v-if="canSeeAdmin" clickable to="/admin" active-class="menu-active" @click="showMenu = false">
-              <q-item-section avatar><q-icon name="groups" /></q-item-section>
-              <q-item-section>Admin</q-item-section>
-            </q-item>
-          </template>
-        </q-list>
-        <div class="menu-account">
-          <q-separator />
-          <div class="text-caption text-grey-7 q-px-md q-pt-sm">{{ sessionStore.user?.name }}</div>
-          <q-list>
-            <q-item clickable @click="onMenuLogout">
-              <q-item-section avatar><q-icon name="logout" /></q-item-section>
-              <q-item-section>Log out</q-item-section>
-            </q-item>
-          </q-list>
-        </div>
-      </div>
+      <AppMenu
+        :name="sessionStore.user?.name ?? ''"
+        :can-see-setup="canSeeSetup" :can-see-export="canSeeExport" :can-see-admin="canSeeAdmin"
+        @go="showMenu = false" @logout="onMenuLogout"
+      />
     </q-drawer>
 
     <q-page-container>
@@ -191,6 +98,8 @@ import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import { useTourStore } from '@/stores/tour-store';
 import { flowStartAction } from '@/utils/onboardingFlow';
+import AppHeader from '@/components/AppHeader.vue';
+import AppMenu from '@/components/AppMenu.vue';
 import RepQrDialog from '@/components/RepQrDialog.vue';
 import OnboardingHost from '@/components/tour/OnboardingHost.vue';
 import { api } from '@/boot/axios';
@@ -375,84 +284,6 @@ async function onLogout() {
 <style scoped>
 .app-header {
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.app-logo {
-  font-weight: 700;
-  color: var(--q-primary);
-  flex: 0 0 auto;
-  margin-right: 24px;
-}
-
-.nav-pills {
-  background: #EEF3F8;
-  border-radius: 12px;
-  padding: 4px;
-  min-height: auto;
-}
-
-.nav-pills :deep(.q-tab) {
-  border-radius: 8px;
-  min-height: 36px;
-  color: #5b7185;
-  font-weight: 500;
-  padding: 0 16px;
-}
-
-.nav-pills :deep(.q-tab--active) {
-  background: white;
-  color: var(--q-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-/* Phones: the logo takes the row and the icon actions (view-as, QR, ?, menu)
-   sit at its right; the page links are in the drawer. The old layout wrapped
-   logo + 4 tabs onto two rows because they were wider than a 375px screen. */
-@media (max-width: 599px) {
-  .app-toolbar {
-    padding: 4px 8px 4px 12px;
-  }
-
-  .app-logo {
-    flex: 1 1 0;
-    min-width: 0;
-    margin-right: 0;
-  }
-
-  .app-toolbar > .q-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
-.menu-drawer {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-.menu-title {
-  padding: 14px 16px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--q-primary);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.menu-drawer .q-item {
-  min-height: 52px;
-  font-size: 16px;
-}
-
-.menu-drawer :deep(.menu-active) {
-  background: #E7F0FB;
-  color: var(--q-primary);
-  font-weight: 500;
-}
-
-.menu-account {
-  margin-top: auto;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .preview-bar {

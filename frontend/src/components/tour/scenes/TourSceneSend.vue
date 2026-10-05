@@ -104,16 +104,16 @@ async function run(t: TourRun) {
   emit('size', appSize());
   await nextTick();
   await t.wait(900);
-  const importBtn = t.find('[data-tt="import"]');
+  const importBtn = t.find('.rs-cell-import');
   await t.ring(importBtn, 1200);
   await t.tap(importBtn, { press: true });
   part.value = 'notes';
   await nextTick();
   await t.wait(600);
-  await t.tap(t.find('[data-tt="note-box"]'), { press: true });
+  await t.tap(t.find('.notes-column textarea').closest<HTMLElement>('.q-field') ?? t.find('.notes-column textarea'), { press: true });
   noteText.value = NOTE; // pasted, the way notes really arrive
   await t.wait(1200);
-  await t.tap(t.find('[data-tt="note-send"]'), { press: true });
+  await t.tap(t.find('.notes-send'), { press: true });
   t.hideFinger();
   notePhase.value = 'working';
   for (const [i, c] of NOTE_RESULTS.entries()) {
@@ -121,12 +121,12 @@ async function run(t: TourRun) {
     noteContacts.value = [...noteContacts.value, c];
     if (i === 0) {
       await nextTick();
-      await t.scrollTo(t.find('.tns'), t.find('[data-tt="note-results"]'), 8);
+      await t.scrollTo(t.find('.tns'), t.find('.notes-column .q-card'), 8);
     }
   }
   notePhase.value = 'done';
   await t.wait(400);
-  await t.ring(t.find('[data-tt="note-results"]'), 2200);
+  await t.ring(t.find('.notes-column .q-card'), 2200);
 
   // They land in Review, and are still being matched: that takes a few minutes.
   await t.tap(t.findText('Open Review'), { press: true });
@@ -135,7 +135,7 @@ async function run(t: TourRun) {
   await nextTick();
   await t.wait(700);
   t.hideFinger();
-  await t.ring(t.find('[data-tt="processing"]'), 2600);
+  await t.ring(t.findIncl('processing', '.rs-cell'), 2600);
 }
 
 defineExpose({ run, reset });
