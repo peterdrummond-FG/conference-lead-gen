@@ -3,14 +3,17 @@
     <q-header v-if="sessionStore.user && !kioskModeStore.locked" class="bg-white text-dark app-header" bordered>
       <q-toolbar class="app-toolbar">
         <q-toolbar-title class="app-logo">CKH Connect</q-toolbar-title>
-        <q-tabs class="nav-pills" indicator-color="transparent" no-caps dense>
+        <!-- Tablet and desktop only. Phones get the same pages in the menu
+             drawer below (the pills plus QR, ? and account icons did not fit
+             one row on a 375px screen). -->
+        <q-tabs v-if="!isPhone" class="nav-pills" indicator-color="transparent" no-caps dense>
           <q-route-tab v-if="canSeeSetup" to="/setup" label="Setup" />
           <q-route-tab to="/connect" label="Kiosk" />
           <q-route-tab to="/review" label="Review" />
           <q-route-tab v-if="canSeeExport" to="/export" label="Export" />
           <q-route-tab v-if="canSeeAdmin" to="/admin" label="Admin" data-tour="nav-admin" />
         </q-tabs>
-        <q-separator vertical spaced />
+        <q-separator v-if="!isPhone" vertical spaced />
 
         <!-- Admin only: a genuine "view as" switcher, backed by real
              accounts — picking someone previews Review exactly as they'd
@@ -28,7 +31,7 @@
             </q-item>
           </q-list>
         </q-btn-dropdown>
-        <div v-else class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
+        <div v-else-if="!isPhone" class="text-caption text-grey q-px-sm app-username">{{ sessionStore.user.name }}</div>
 
         <!-- The rep's own QR on screen in one tap, so showing it to someone is not
              a trip to Setup. Only for an account that has one (Sales); an admin
@@ -43,26 +46,28 @@
           <q-tooltip>Take the tour</q-tooltip>
         </q-btn>
 
-        <q-separator vertical spaced />
+        <q-separator v-if="!isPhone" vertical spaced />
         <q-btn v-if="!isPhone" flat dense icon="logout" round color="grey-7" aria-label="Log out" @click="onLogout">
           <q-tooltip>Log out</q-tooltip>
         </q-btn>
 
-        <!-- Phones: a bare log-out icon beside the QR and ? icons is one slip from
-             signing out, so it sits behind a labelled menu. (Lock kiosk used to
-             live up here too; it is on the Kiosk page now, next to the form it
-             locks.) The ? stays on its own because the tour's last step points
-             at it. -->
-        <q-btn v-else flat dense round icon="account_circle" color="grey-8" aria-label="Account menu">
-          <q-menu auto-close anchor="bottom right" self="top right">
-            <q-list style="min-width: 240px">
-              <q-item clickable @click="onLogout">
-                <q-item-section avatar><q-icon name="logout" /></q-item-section>
-                <q-item-section>Log out</q-item-section>
-              </q-item>
-            </q-list>
-          </q-menu>
-        </q-btn>
+        <!-- Phones: the hamburger sits where the account icon was. Log out lives
+             at the bottom of the drawer behind a labelled row, so it is still
+             not one slip away from the QR and ? icons. The ? stays on its own
+             because the tour's last step points at it. On a phone this button
+             also carries the tour's "nav-admin" target (the Admin tab it
+             normally points at is inside the closed drawer), for managers. -->
+        <q-btn
+          v-else
+          flat
+          dense
+          round
+          icon="menu"
+          color="grey-9"
+          aria-label="Open menu"
+          :data-tour="canSeeAdmin ? 'nav-admin' : undefined"
+          @click="showMenu = true"
+        />
       </q-toolbar>
 
       <!-- Previewing someone: say so on every page, in words, with the way back.
@@ -78,6 +83,56 @@
         <q-btn flat dense no-caps color="white" label="Back to me" class="preview-bar-btn" @click="void sessionStore.setViewingAs(null)" />
       </div>
     </q-header>
+
+    <!-- Phones only; Review is first because it is the page everyone lives in.
+         Same role checks as the desktop tabs. -->
+    <q-drawer
+      v-if="isPhone && sessionStore.user && !kioskModeStore.locked"
+      v-model="showMenu"
+      side="right"
+      overlay
+      behavior="mobile"
+      :width="280"
+    >
+      <div class="menu-drawer">
+        <div class="menu-title">CKH Connect</div>
+        <q-list>
+          <q-item clickable to="/review" active-class="menu-active" @click="showMenu = false">
+            <q-item-section avatar><q-icon name="checklist" /></q-item-section>
+            <q-item-section>Review</q-item-section>
+          </q-item>
+          <q-item clickable to="/connect" active-class="menu-active" @click="showMenu = false">
+            <q-item-section avatar><q-icon name="tablet_mac" /></q-item-section>
+            <q-item-section>Kiosk</q-item-section>
+          </q-item>
+          <q-item v-if="canSeeSetup" clickable to="/setup" active-class="menu-active" @click="showMenu = false">
+            <q-item-section avatar><q-icon name="tune" /></q-item-section>
+            <q-item-section>Setup</q-item-section>
+          </q-item>
+          <template v-if="canSeeExport || canSeeAdmin">
+            <q-separator class="q-my-sm" />
+            <q-item v-if="canSeeExport" clickable to="/export" active-class="menu-active" @click="showMenu = false">
+              <q-item-section avatar><q-icon name="download" /></q-item-section>
+              <q-item-section>Export</q-item-section>
+            </q-item>
+            <q-item v-if="canSeeAdmin" clickable to="/admin" active-class="menu-active" @click="showMenu = false">
+              <q-item-section avatar><q-icon name="groups" /></q-item-section>
+              <q-item-section>Admin</q-item-section>
+            </q-item>
+          </template>
+        </q-list>
+        <div class="menu-account">
+          <q-separator />
+          <div class="text-caption text-grey-7 q-px-md q-pt-sm">{{ sessionStore.user?.name }}</div>
+          <q-list>
+            <q-item clickable @click="onMenuLogout">
+              <q-item-section avatar><q-icon name="logout" /></q-item-section>
+              <q-item-section>Log out</q-item-section>
+            </q-item>
+          </q-list>
+        </div>
+      </div>
+    </q-drawer>
 
     <q-page-container>
       <router-view />
@@ -149,8 +204,12 @@ const router = useRouter();
 const $q = useQuasar();
 
 // Phone widths (< 600px) drop the text from the header's action buttons and
-// wrap the tabs onto their own row — see the .app-toolbar rules below.
+// move the page links into a right-hand menu drawer.
 const isPhone = computed(() => $q.screen.lt.sm);
+const showMenu = ref(false);
+// Rotating or resizing past the phone breakpoint removes the drawer, so don't
+// leave it "open" for when the window narrows again.
+watch(isPhone, (phone) => { if (!phone) showMenu.value = false; });
 const sessionStore = useSessionStore();
 const kioskModeStore = useKioskModeStore();
 const tourStore = useTourStore();
@@ -291,6 +350,11 @@ function onReplayTour() {
   if (sessionStore.user) tourStore.start(sessionStore.user.role);
 }
 
+function onMenuLogout() {
+  showMenu.value = false;
+  void onLogout();
+}
+
 async function onLogout() {
   // Drop an in-progress tour without counting it as seen, so the next person
   // on this tab doesn't resume it.
@@ -333,14 +397,12 @@ async function onLogout() {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-/* Phones: the single row (logo + 4 tabs + "Viewing as …" + QR + logout) is wider than a 375px screen, so the tabs were cut off at
-   "Revi…" and the page scrolled sideways. Two rows instead: logo and icon
-   actions on top, the tabs as equal-width pills underneath. */
+/* Phones: the logo takes the row and the icon actions (view-as, QR, ?, menu)
+   sit at its right; the page links are in the drawer. The old layout wrapped
+   logo + 4 tabs onto two rows because they were wider than a 375px screen. */
 @media (max-width: 599px) {
   .app-toolbar {
-    flex-wrap: wrap;
-    padding: 4px 8px 8px 12px;
-    row-gap: 4px;
+    padding: 4px 8px 4px 12px;
   }
 
   .app-logo {
@@ -349,36 +411,40 @@ async function onLogout() {
     margin-right: 0;
   }
 
-  .app-toolbar > .q-separator {
-    display: none;
-  }
-
-  .app-username {
-    max-width: 30vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .app-toolbar > .q-btn {
     min-width: 44px;
     min-height: 44px;
   }
+}
 
-  .nav-pills {
-    order: 10;
-    flex: 1 0 100%;
-  }
+.menu-drawer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
 
-  .nav-pills :deep(.q-tabs__content) {
-    width: 100%;
-  }
+.menu-title {
+  padding: 14px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--q-primary);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
 
-  .nav-pills :deep(.q-tab) {
-    flex: 1 1 0;
-    padding: 0 8px;
-    min-height: 40px;
-  }
+.menu-drawer .q-item {
+  min-height: 52px;
+  font-size: 16px;
+}
+
+.menu-drawer :deep(.menu-active) {
+  background: #E7F0FB;
+  color: var(--q-primary);
+  font-weight: 500;
+}
+
+.menu-account {
+  margin-top: auto;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .preview-bar {
