@@ -1,6 +1,7 @@
 <template>
-  <!-- "Check it, then approve it": open a lead, see it has already been
-       checked against Zoho, fill in what's missing, tick Followed up, approve. -->
+  <!-- "Check it, then approve it", a while after the leads came in (so the Zoho
+       match has finished): open Priya, whose pasted note had no phone, see it has
+       already been checked against Zoho, tick Followed up, add her phone, approve. -->
   <TourAppShell :manager="manager" active="review">
     <TourReviewScreen
       :manager="manager"
@@ -52,14 +53,14 @@ function onApprove(p: { id: string; edits?: UpdateContactPayload | undefined }) 
 function reset() {
   leads.value = reviewLeads();
   sheetOpen.value = false;
-  activeId.value = isPhone.value ? null : 'tour-sam';
+  activeId.value = isPhone.value ? null : 'tour-grace';
 }
 
 async function run(t: TourRun) {
   const where = isPhone.value ? '.tsr-sheet' : '.tsr-pane';
   await t.wait(900);
-  // 1. Open the lead that needs something.
-  await t.tap(t.findText('Maria Lopez', '.lr-name'));
+  // 1. Open the lead that needs something: Priya's note had no phone or email.
+  await t.tap(t.findText('Priya Shah', '.lr-name'));
   await t.wait(700);
   // 2. It has already been checked against Zoho: the edit panel's own banner
   // says her district is there and she'd be added as a new contact.
@@ -68,20 +69,14 @@ async function run(t: TourRun) {
   // 3. Already been in touch? Followed up.
   await t.tap(t.find(`${where} .le-follow`));
   await t.wait(500);
-  // 4. Fix what's missing.
+  // 4. Fix what's missing: her note said she wants a call, so add her phone.
   const scroller = t.find(`${where} .le-scroll`);
-  const email = t.field('Email');
-  await t.scrollTo(scroller, email);
-  await t.tap(email.closest('.q-field') ?? email, { press: true });
-  await t.type(email, 'mlopez@elmgroveisd.org');
-  await t.wait(300);
-  // 5. A note about the conversation. It goes to Zoho with the lead.
-  const notes = t.field('Notes');
-  await t.scrollTo(scroller, notes, 120);
-  await t.tap(notes.closest('.q-field') ?? notes, { press: true });
-  await t.type(notes, 'Wants pricing for next fall.');
+  const phone = t.field('Phone');
+  await t.scrollTo(scroller, phone);
+  await t.tap(phone.closest('.q-field') ?? phone, { press: true });
+  await t.type(phone, '(512) 555-0176');
   await t.wait(400);
-  // 6. Approve.
+  // 5. Approve.
   await t.tap(t.findText('Approve', `${where} .le-foot button`));
   await t.wait(900);
   t.hideFinger();

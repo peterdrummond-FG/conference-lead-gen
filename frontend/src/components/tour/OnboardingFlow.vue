@@ -52,25 +52,25 @@
     </template>
   </OnboardingFrame>
 
-  <TourPlayer v-else-if="phase === 'tour'" :manager="manager" @skip="$emit('close', 'skipped')" @done="phase = 'finish'" />
+  <TourPlayer v-else-if="phase === 'tour'" :manager="manager" :has-phone="hasPhone" @skip="$emit('close', 'skipped')" @done="phase = 'finish'" />
 
   <OnboardingFrame v-else>
     <div class="ob-finish">
       <div class="ob-check"><q-icon name="check" size="40px" /></div>
-      <h1 class="ob-h1">{{ C.finish.title }}</h1>
+      <h1 class="ob-h1">{{ finish.title }}</h1>
       <!-- eslint-disable-next-line vue/no-v-html -- only **bold**, from tourFlow.ts -->
-      <p class="ob-lead" v-html="renderCopy(C.finish.body)" />
+      <p class="ob-lead" v-html="renderCopy(finish.body)" />
     </div>
     <template #actions>
       <q-btn flat no-caps color="primary" :label="C.finish.again" @click="phase = 'tour'" />
       <q-space />
-      <q-btn unelevated no-caps color="primary" :label="C.finish.go" class="ob-next" @click="$emit('close', 'finished')" />
+      <q-btn unelevated no-caps color="primary" :label="finish.go" class="ob-next" @click="$emit('close', 'finished')" />
     </template>
   </OnboardingFrame>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Platform } from 'quasar';
 import OnboardingFrame from './OnboardingFrame.vue';
 import TourStage from './TourStage.vue';
@@ -81,10 +81,14 @@ import { ONBOARDING_COPY as C, renderCopy, type OnboardingEnd } from './tourFlow
 import logo from '@/assets/brand/ckh-logo.png';
 
 
-const props = defineProps<{ manager: boolean; hasPhone: boolean; start?: 'splash' | 'quick1' | 'quick2' | 'tour' | 'finish' }>();
+// hasPhone: the account has a mobile number (me.hasPhone in the real build).
+// phoneConnected: the phone is already linked to a conference by SETUP (me's sms
+// status), so "Your turn" says "You're all set" instead of "text SETUP".
+const props = defineProps<{ manager: boolean; hasPhone: boolean; phoneConnected?: boolean; start?: 'splash' | 'quick1' | 'quick2' | 'tour' | 'finish' }>();
 defineEmits<{ close: [end: OnboardingEnd] }>();
 
 const phase = ref(props.start ?? 'splash');
+const finish = computed(() => (props.phoneConnected ? C.finish.connected : C.finish));
 const isMobile = Platform.is.mobile === true;
 </script>
 

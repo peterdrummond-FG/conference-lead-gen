@@ -3,7 +3,7 @@
        their code, an attendee scans it and fills in the form, and the lead
        lands in the rep's Review. A manager has no code of their own: they save
        a rep's from Admin, under Team. -->
-  <TourIntakeScreen v-if="part === 'attendee'" :form="form" :submitted="submitted" />
+  <TourIntakeScreen v-if="part === 'attendee'" :form="form" :folded="folded" :submitted="submitted" />
   <TourAppShell v-else :manager="manager" :active="page" :menu-open="menuOpen">
     <TourAdminScreen v-if="page === 'admin'" />
     <TourReviewScreen v-else :manager="manager" :leads="leads" />
@@ -21,7 +21,7 @@ import TourReviewScreen from '../TourReviewScreen.vue';
 import TourAdminScreen from '../screens/TourAdminScreen.vue';
 import TourIntakeScreen from '../screens/TourIntakeScreen.vue';
 import TourQrOverlay from '../screens/TourQrOverlay.vue';
-import { reviewLeads, SAMPLE_LEAD_FORM } from '../tourSampleData';
+import { tourLeads, SAMPLE_LEAD_FORM } from '../tourSampleData';
 import { goToPage } from '../tourNav';
 import type { TourRun } from '../useTourScript';
 
@@ -34,8 +34,12 @@ const part = ref<'app' | 'attendee'>('app');
 const page = ref('review');
 const menuOpen = ref(false);
 const qrOpen = ref(false);
-const leads = ref(reviewLeads());
-const form = reactive({ firstName: '', lastName: '', email: '', phone: '', title: '' });
+// The leads from earlier in the story are matched by now; Grace's is the new one.
+const earlierLeads = () => tourLeads(['dana', 'sam', 'priya', 'tom', 'ana']);
+const blankForm = () => ({ firstName: '', lastName: '', email: '', phone: '', title: '', state: '', district: '', school: '' });
+const leads = ref(earlierLeads());
+const form = reactive(blankForm());
+const folded = ref(false);
 const submitted = ref(false);
 
 const phoneSize = { w: 375, h: 600 };
@@ -46,8 +50,9 @@ function reset() {
   page.value = 'review';
   menuOpen.value = false;
   qrOpen.value = false;
-  leads.value = reviewLeads();
-  Object.assign(form, { firstName: '', lastName: '', email: '', phone: '', title: '' });
+  leads.value = earlierLeads();
+  Object.assign(form, blankForm());
+  folded.value = false;
   submitted.value = false;
   emit('size', appSize());
 }
@@ -76,21 +81,32 @@ async function runRep(t: TourRun) {
   await fill(t, 'lastName', SAMPLE_LEAD_FORM.lastName);
   await t.tap(t.find('[data-tt="f-email"]'), { press: true });
   await fill(t, 'email', SAMPLE_LEAD_FORM.email);
+  // Moving on to another field folds name and contact into the green summary
+  // row, as the real form does, which keeps Submit on the screen.
   await t.tap(t.find('[data-tt="f-title"]'), { press: true });
+  folded.value = true;
+  await nextTick();
+  await t.wait(500);
   await fill(t, 'title', SAMPLE_LEAD_FORM.title);
+  await t.tap(t.find('[data-tt="f-state"]'), { press: true });
+  await fill(t, 'state', SAMPLE_LEAD_FORM.state);
+  await t.tap(t.find('[data-tt="f-district"]'), { press: true });
+  await fill(t, 'district', SAMPLE_LEAD_FORM.district);
+  await t.wait(300);
   await t.tap(t.find('[data-tt="f-submit"]'), { press: true });
   submitted.value = true;
   t.hideFinger();
   await t.wait(1600);
 
-  // And it's in the rep's Review, credited to them.
+  // And it's in the rep's Review, credited to them. It has only just arrived, so
+  // it is still being matched against Zoho: the real "Checking match…" state.
   part.value = 'app';
   qrOpen.value = false;
   emit('size', appSize());
-  leads.value = [SAMPLE_LEAD_FORM.lead, ...reviewLeads()];
+  leads.value = tourLeads(['dana', 'sam', 'priya', 'tom', 'ana', 'grace'], { processing: ['grace'] });
   await nextTick();
   await t.wait(700);
-  await t.ring(t.findText(`${SAMPLE_LEAD_FORM.firstName} ${SAMPLE_LEAD_FORM.lastName}`, '.lr-name').closest('.lr') ?? t.find('.lr'), 2400);
+  await t.ring(t.findText(`${SAMPLE_LEAD_FORM.firstName} ${SAMPLE_LEAD_FORM.lastName}`, '.lr-name').closest('.lr') ?? t.find('.lr'), 2600);
 }
 
 async function runManager(t: TourRun) {

@@ -14,9 +14,9 @@
             <button type="button" class="rs-tab">Rejected<span class="rs-count">0</span></button>
           </div>
           <div class="rs-status-row">
-            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-ready" />{{ readyN }}</span><span class="rs-cell-l">ready</span></button>
-            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-info" />{{ toReview.length - readyN }}</span><span class="rs-cell-l">incomplete</span></button>
-            <button type="button" class="rs-cell" disabled><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-proc" />0</span><span class="rs-cell-l">processing</span></button>
+            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-ready" />{{ counts.ready }}</span><span class="rs-cell-l">ready</span></button>
+            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-info" />{{ counts.needsInfo }}</span><span class="rs-cell-l">incomplete</span></button>
+            <button type="button" class="rs-cell" :disabled="counts.processing === 0" data-tt="processing"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-proc" />{{ counts.processing }}</span><span class="rs-cell-l">processing</span></button>
             <a class="rs-cell rs-cell-import" data-tt="import">
               <span class="rs-cell-n"><q-icon name="note_add" size="22px" /></span>
               <span class="rs-cell-l">Import</span>
@@ -107,7 +107,7 @@ import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
 import TourScansBanner from './screens/TourScansBanner.vue';
 import { TOUR_CONFERENCE } from './tourSampleData';
-import { isReady } from '@/utils/reviewSmart';
+import { summaryCounts } from '@/utils/reviewSmart';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 
 const props = defineProps<{
@@ -132,8 +132,11 @@ const isPhone = computed(() => $q.screen.lt.sm);
 const noBusy = new Set<string>();
 
 const toReview = computed(() => props.leads.filter((l) => l.reviewStatus === 'needs_review'));
-const approvedCount = computed(() => (props.approvedBase ?? 12) + props.leads.filter((l) => l.reviewStatus === 'approved').length);
-const readyN = computed(() => toReview.value.filter(isReady).length);
+// A first-time rep has approved nothing yet; a scene that stands for a manager's
+// busier account passes approvedBase.
+const approvedCount = computed(() => (props.approvedBase ?? 0) + props.leads.filter((l) => l.reviewStatus === 'approved').length);
+const counts = computed(() => summaryCounts(toReview.value));
+const readyN = computed(() => counts.value.ready);
 const active = computed(() => props.leads.find((l) => l.id === props.activeId) ?? null);
 const position = computed(() => {
   const i = toReview.value.findIndex((l) => l.id === props.activeId);

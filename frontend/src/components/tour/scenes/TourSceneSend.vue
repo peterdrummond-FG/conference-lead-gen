@@ -1,7 +1,8 @@
 <template>
   <!-- "Send us leads": everything a rep can text in (a card photo, a voice
        memo, one person typed out), then the other way in: Review's Import
-       button, a pasted note, one lead per person. -->
+       button, a pasted note, one lead per person. Whatever just arrived is
+       still being matched against Zoho, so Review shows it processing. -->
   <TourMessages v-if="part === 'text'" :messages="messages" :draft="draft" />
   <TourAppShell v-else :manager="manager" :active="part === 'review' ? 'review' : ''">
     <TourReviewScreen v-if="part === 'review'" :manager="manager" :leads="leads" />
@@ -16,7 +17,7 @@ import TourMessages from '../screens/TourMessages.vue';
 import TourNotesScreen from '../screens/TourNotesScreen.vue';
 import TourAppShell from '../TourAppShell.vue';
 import TourReviewScreen from '../TourReviewScreen.vue';
-import { reviewLeads, SAMPLE_CARD, SMS_REPLIES, type TourText } from '../tourSampleData';
+import { tourLeads, SAMPLE_CARD, SMS_REPLIES, type TourText } from '../tourSampleData';
 import type { TourRun } from '../useTourScript';
 
 defineProps<{ manager: boolean }>();
@@ -35,7 +36,11 @@ const NOTE_RESULTS = [
 const part = ref<'text' | 'review' | 'notes'>('text');
 const messages = ref<TourText[]>([]);
 const draft = ref('');
-const leads = ref(reviewLeads());
+// What is in Review at each point: Dana and Sam have just been texted in, so they
+// are still being matched (it takes minutes), not Ready.
+const textedLeads = () => tourLeads(['dana', 'sam'], { processing: ['dana', 'sam'] });
+const allSentLeads = () => tourLeads(['dana', 'sam', 'priya', 'tom', 'ana'], { processing: ['dana', 'sam', 'priya', 'tom', 'ana'] });
+const leads = ref(textedLeads());
 const noteText = ref('');
 const notePhase = ref<'idle' | 'working' | 'done'>('idle');
 const noteContacts = ref<typeof NOTE_RESULTS>([]);
@@ -47,7 +52,7 @@ function reset() {
   part.value = 'text';
   messages.value = [];
   draft.value = '';
-  leads.value = reviewLeads();
+  leads.value = textedLeads();
   noteText.value = '';
   notePhase.value = 'idle';
   noteContacts.value = [];
@@ -112,7 +117,16 @@ async function run(t: TourRun) {
   }
   notePhase.value = 'done';
   await t.wait(400);
-  await t.ring(t.find('[data-tt="note-results"]'), 2500);
+  await t.ring(t.find('[data-tt="note-results"]'), 2200);
+
+  // They land in Review, and are still being matched: that takes a few minutes.
+  await t.tap(t.findText('Open Review'), { press: true });
+  leads.value = allSentLeads();
+  part.value = 'review';
+  await nextTick();
+  await t.wait(700);
+  t.hideFinger();
+  await t.ring(t.find('[data-tt="processing"]'), 2600);
 }
 
 defineExpose({ run, reset });
