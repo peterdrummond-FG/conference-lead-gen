@@ -20,6 +20,7 @@ import TourAppShell from '../TourAppShell.vue';
 import TourReviewScreen from '../TourReviewScreen.vue';
 import TourAdminScreen from '../screens/TourAdminScreen.vue';
 import TourIntakeScreen from '../screens/TourIntakeScreen.vue';
+import type { IntakeFormModel } from '@/components/IntakeFormFields.vue';
 import TourQrOverlay from '../screens/TourQrOverlay.vue';
 import { tourLeads, SAMPLE_LEAD_FORM } from '../tourSampleData';
 import { goToPage } from '../tourNav';
@@ -36,9 +37,9 @@ const menuOpen = ref(false);
 const qrOpen = ref(false);
 // The leads from earlier in the story are matched by now; Grace's is the new one.
 const earlierLeads = () => tourLeads(['dana', 'sam', 'priya', 'tom', 'ana']);
-const blankForm = () => ({ firstName: '', lastName: '', email: '', phone: '', title: '', state: '', district: '', school: '' });
+const blankForm = (): IntakeFormModel => ({ firstName: '', lastName: '', email: '', phone: '', title: '', state: null, district: null, school: null, channel: null });
 const leads = ref(earlierLeads());
-const form = reactive(blankForm());
+const form: IntakeFormModel = reactive(blankForm());
 const folded = ref(false);
 const submitted = ref(false);
 
@@ -57,43 +58,57 @@ function reset() {
   emit('size', appSize());
 }
 
-async function fill(t: TourRun, key: keyof typeof form, text: string) {
-  for (const c of text) { form[key] += c; await t.wait(40); }
+// Types into a text field, or into a picker (State, School district), one character
+// at a time. A picker holds an option, so the partly typed text is the option's name.
+async function fill(t: TourRun, key: 'firstName' | 'lastName' | 'email' | 'title' | 'state' | 'district', text: string) {
+  for (let i = 1; i <= text.length; i++) {
+    const so_far = text.slice(0, i);
+    if (key === 'state') form.state = { code: 'TX', name: so_far };
+    else if (key === 'district') form.district = { id: null, name: so_far };
+    else form[key] = so_far;
+    await t.wait(40);
+  }
+}
+
+// A field of the attendee form (IntakeFormFields), found by its label, as a person would.
+function box(t: TourRun, label: string): HTMLElement {
+  const input = t.field(label);
+  return input.closest<HTMLElement>('.q-field') ?? input;
 }
 
 async function runRep(t: TourRun) {
   await t.wait(800);
-  const qr = t.find('[data-tt="qr"]');
+  const qr = t.find('[aria-label="Show my QR code"]');
   await t.ring(qr, 1000);
   await t.tap(qr, { press: true });
   qrOpen.value = true;
   t.hideFinger();
   await t.wait(800);
-  await t.ring(t.find('[data-tt="qr-foot"]'), 2000);
+  await t.ring(t.find('.rq-foot'), 2000);
 
   // What the person who scans it sees, on their own phone.
   part.value = 'attendee';
   emit('size', phoneSize);
   await nextTick();
   await t.wait(800);
-  await t.tap(t.find('[data-tt="f-first"]'), { press: true });
+  await t.tap(box(t, 'First name *'), { press: true });
   await fill(t, 'firstName', SAMPLE_LEAD_FORM.firstName);
   await fill(t, 'lastName', SAMPLE_LEAD_FORM.lastName);
-  await t.tap(t.find('[data-tt="f-email"]'), { press: true });
+  await t.tap(box(t, 'Email'), { press: true });
   await fill(t, 'email', SAMPLE_LEAD_FORM.email);
   // Moving on to another field folds name and contact into the green summary
   // row, as the real form does, which keeps Submit on the screen.
-  await t.tap(t.find('[data-tt="f-title"]'), { press: true });
+  await t.tap(box(t, 'Title'), { press: true });
   folded.value = true;
   await nextTick();
   await t.wait(500);
   await fill(t, 'title', SAMPLE_LEAD_FORM.title);
-  await t.tap(t.find('[data-tt="f-state"]'), { press: true });
+  await t.tap(box(t, 'State'), { press: true });
   await fill(t, 'state', SAMPLE_LEAD_FORM.state);
-  await t.tap(t.find('[data-tt="f-district"]'), { press: true });
+  await t.tap(box(t, 'School district'), { press: true });
   await fill(t, 'district', SAMPLE_LEAD_FORM.district);
   await t.wait(300);
-  await t.tap(t.find('[data-tt="f-submit"]'), { press: true });
+  await t.tap(t.find('.intake-submit-btn'), { press: true });
   submitted.value = true;
   t.hideFinger();
   await t.wait(1600);
@@ -113,9 +128,9 @@ async function runManager(t: TourRun) {
   await t.wait(800);
   await goToPage(t, { phone: isPhone.value, page: 'admin', setMenu: (v) => (menuOpen.value = v), setPage: (p) => (page.value = p) });
   const scroller = t.find('.tad');
-  await t.scrollTo(scroller, t.find('[data-tt="team"]'), 10);
+  await t.scrollTo(scroller, t.findText('Team', '.text-h6').closest<HTMLElement>('.q-card') ?? t.find('.q-card'), 10);
   t.hideFinger();
-  await t.ring(t.find('[data-tt="qr-save"]'), 2600);
+  await t.ring(t.find('.admin-link'), 2600);
 }
 
 async function run(t: TourRun) {

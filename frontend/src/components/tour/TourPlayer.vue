@@ -13,7 +13,7 @@
     :note="item.note"
     @skip="$emit('skip', item.step)"
   >
-    <TourStage :key="item.step.id" :scene="item.component" :manager="manager" :import-only="item.step.importOnly" />
+    <TourStage :key="item.step.id" :scene="item.component" :manager="manager" :role="role" :import-only="item.step.importOnly" />
     <template #actions>
       <q-btn v-if="index > 0" flat no-caps color="primary" label="Back" @click="go(index - 1)" />
       <q-space />

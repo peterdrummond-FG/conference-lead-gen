@@ -7,40 +7,23 @@
   <div class="tsr-root">
     <div class="tsr-scroll">
       <div class="rs-page">
-        <header class="rs-head">
-          <div class="rs-tabs">
-            <button type="button" class="rs-tab is-on">To review<span class="rs-count">{{ toReview.length }}</span></button>
-            <button type="button" class="rs-tab">Approved<span class="rs-count">{{ approvedCount }}</span></button>
-            <button type="button" class="rs-tab">Rejected<span class="rs-count">0</span></button>
-          </div>
-          <div class="rs-status-row">
-            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-ready" />{{ counts.ready }}</span><span class="rs-cell-l">ready</span></button>
-            <button type="button" class="rs-cell"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-info" />{{ counts.needsInfo }}</span><span class="rs-cell-l">incomplete</span></button>
-            <button type="button" class="rs-cell" :disabled="counts.processing === 0" data-tt="processing"><span class="rs-cell-n"><span class="rs-sum-dot rs-dot-proc" />{{ counts.processing }}</span><span class="rs-cell-l">processing</span></button>
-            <a class="rs-cell rs-cell-import" data-tt="import">
-              <span class="rs-cell-n"><q-icon name="note_add" size="22px" /></span>
-              <span class="rs-cell-l">Import</span>
-            </a>
-          </div>
-          <div class="rs-tools">
-            <q-input model-value="" dense outlined class="rs-search" :placeholder="isPhone ? 'Search' : 'Search name, school, email, phone'">
-              <template #prepend><q-icon name="search" /></template>
-            </q-input>
-            <q-btn flat no-caps dense color="grey-9" icon="sort" :label="isPhone ? undefined : 'Newest first'" class="rs-sort" />
-            <button v-if="!manager" type="button" class="rs-scope"><q-icon name="event" size="22px" /></button>
-          </div>
-          <div class="rs-filters">
-            <template v-if="manager">
-              <q-select model-value="All reps" :options="['All reps']" dense outlined label="Rep" class="rs-select" />
-              <q-select model-value="All" :options="['All']" dense outlined label="Sync status" class="rs-select" />
-            </template>
-            <q-select model-value="All sources" :options="['All sources']" dense outlined label="Source" class="rs-select rs-source" />
-          </div>
-        </header>
+        <!-- The app's own header (tabs, ready / incomplete / processing, search, filters),
+             with sample numbers and nothing wired to anything. -->
+        <ReviewHeader
+          v-model:tab="tab"
+          :tab-defs="TAB_DEFS" :counts="{ needs_review: toReview.length, approved: approvedCount, rejected: 0 }"
+          :summary="counts" :readiness-filter="null" :is-sales="!manager"
+          :sort-options="SORT_OPTIONS" :sort-by-tab="DEFAULT_SORT"
+          :event-filter-options="NO_OPTIONS" :rep-filter-options="REP_OPTIONS"
+          :synced-filter-options="NO_OPTIONS" :source-options="SOURCE_OPTIONS"
+        />
 
         <!-- Managers only, like the real page: scans nobody could place under a
              conference wait here for Solutions Success. -->
-        <TourScansBanner v-if="manager && scansWaiting" :expanded="!!scansExpanded" @toggle="$emit('toggleScans')" />
+        <UnassignedScansList
+          v-if="manager && scansWaiting"
+          :count="unassigned.length" :items="unassigned" :expanded="!!scansExpanded" @toggle="$emit('toggleScans')"
+        />
 
         <div class="rs-split" :class="{ 'is-split': !isPhone }">
           <div class="rs-left">
@@ -101,13 +84,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
 import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
-import TourScansBanner from './screens/TourScansBanner.vue';
-import { TOUR_CONFERENCE } from './tourSampleData';
-import { summaryCounts } from '@/utils/reviewSmart';
+import UnassignedScansList from '@/components/UnassignedScansList.vue';
+import { TOUR_CONFERENCE, tourUnassigned } from './tourSampleData';
+import ReviewHeader from '@/components/ReviewHeader.vue';
+import { DEFAULT_SORT, SORT_OPTIONS, sourceFilterOptions, summaryCounts, type ReviewStatus } from '@/utils/reviewSmart';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 
 const props = defineProps<{
@@ -130,6 +114,16 @@ defineEmits<{
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 const noBusy = new Set<string>();
+const tab = ref<ReviewStatus>('needs_review');
+const TAB_DEFS: { value: ReviewStatus; label: string }[] = [
+  { value: 'needs_review', label: 'To review' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+const NO_OPTIONS = [{ label: 'All', value: null as string | null }];
+const REP_OPTIONS = [{ label: 'All reps', value: null as string | null }];
+const SOURCE_OPTIONS = sourceFilterOptions([]);
+const unassigned = tourUnassigned();
 
 const toReview = computed(() => props.leads.filter((l) => l.reviewStatus === 'needs_review'));
 // A first-time rep has approved nothing yet; a scene that stands for a manager's
@@ -163,18 +157,6 @@ const position = computed(() => {
 
 /* From ReviewSmart.vue (scoped there, so copied for the prototype). */
 .rs-page { padding: 12px 16px 32px; max-width: 1480px; margin: 0 auto; }
-.rs-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.rs-tabs { display: flex; border-bottom: 1px solid rgba(0, 0, 0, 0.12); margin: 0 -4px; }
-.rs-tab { flex: 1; min-height: 44px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: #4A5B6B; font: inherit; font-size: 15px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
-.rs-tab.is-on { color: var(--q-primary); border-bottom-color: var(--q-primary); }
-.rs-count { min-width: 22px; padding: 0 7px; border-radius: 11px; background: rgba(0, 0, 0, 0.07); font-size: 12px; line-height: 22px; }
-.rs-tab.is-on .rs-count { background: #E3F1FA; color: #0067AC; }
-.rs-tools { display: flex; align-items: center; gap: 4px; }
-.rs-search { flex: 1; min-width: 0; }
-.rs-sort { min-height: 40px; }
-.rs-scope { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #B9C3CE; border-radius: 8px; background: #fff; color: #5B6B7B; }
-.rs-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.rs-select { min-width: 170px; }
 .rs-split { display: block; }
 .rs-split.is-split { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .rs-pane { background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 14px; overflow: hidden; }
@@ -184,25 +166,7 @@ const position = computed(() => {
 .rs-sec-name { font-size: 16px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
 .rs-sec-sub { font-size: 13px; color: #5B6670; }
 .rs-ready-btn { min-height: 40px; padding: 0 12px; flex: none; }
-.rs-status-row { display: flex; gap: 6px; align-items: stretch; }
-.rs-cell { flex: 1 1 0; min-width: 0; min-height: 46px; padding: 3px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.1); font: inherit; color: #2F3A44; white-space: nowrap; text-decoration: none; }
-.rs-cell-n { display: inline-flex; align-items: center; gap: 5px; font-size: 16px; font-weight: 500; line-height: 1.1; }
-.rs-cell-l { font-size: 11px; line-height: 1.2; color: #4A5B6B; }
-.rs-cell:disabled { opacity: 0.5; }
-.rs-cell-import { margin-left: auto; flex: 0 0 auto; min-width: 64px; padding: 3px 8px; border-color: #1D5C93; color: #1D5C93; }
-.rs-cell-import .rs-cell-l { color: #1D5C93; }
-.rs-sum-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.rs-dot-ready { background: #1E8E3E; }
-.rs-dot-info { background: #E07B00; }
-.rs-dot-proc { background: #0067AC; }
-@media (min-width: 600px) {
-  .rs-tabs { max-width: 520px; }
-  .rs-status-row { max-width: 440px; }
-}
 @media (max-width: 599px) {
   .rs-page { padding: 10px 12px 28px; }
-  .rs-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .rs-filters .rs-select { min-width: 0; }
-  .rs-filters .rs-source { grid-column: 1 / -1; }
 }
 </style>

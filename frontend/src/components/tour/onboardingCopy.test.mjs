@@ -70,16 +70,18 @@ test('a new rep is walked through the conversation a first SETUP really starts',
 });
 
 // ── the form ──
-test('the attendee form in the tour asks what IntakePage asks', () => {
+test('the attendee form in the tour IS the app\'s form, not a copy', () => {
   const intake = read(SRC, 'pages/IntakePage.vue');
+  const fields = read(SRC, 'components/IntakeFormFields.vue');
   const screen = read(HERE, 'screens/TourIntakeScreen.vue');
-  const labels = [...screen.matchAll(/label="([^"]+)"/g)].map((m) => m[1]).filter((l) => !['Edit', 'Submit'].includes(l));
-  assert.ok(labels.length >= 8, 'expected the form labels');
-  for (const l of labels) assert.ok(intake.includes(`label="${l}"`), `IntakePage has no field labelled "${l}"`);
-  for (const h of ['Add your email and phone number', 'Pick a state first', 'Pick a district first', 'Tell us a bit about yourself.']) {
-    assert.ok(screen.includes(h) && intake.includes(h), `hint drifted: ${h}`);
+  assert.ok(intake.includes('<IntakeFormFields') && screen.includes('<IntakeFormFields'), 'both must render IntakeFormFields');
+  assert.ok(!/<q-input|<q-select/.test(screen), 'the tour screen must not draw its own fields');
+  // What a first scan from a rep's QR shows: the channel question, then district and school after State.
+  for (const l of ['First name *', 'Last name *', 'Email', 'Phone', 'Title', 'How did you hear about us?', 'State', 'School district', 'School or campus']) {
+    assert.ok(fields.includes(`label="${l}"`), `the form has no field labelled "${l}"`);
   }
-  assert.ok(intake.includes('label="Submit"'));
+  for (const h of ['Add your email and phone number', 'Pick a state first', 'Pick a district first']) assert.ok(fields.includes(h), h);
+  assert.ok(fields.includes('label="Submit"'));
 });
 
 // ── the number ──
@@ -130,8 +132,8 @@ test('the no-phone note names who can fix it, by role', () => {
   assert.match(setup.noPhoneNote.solutionsSuccess, /admin/);
   assert.match(setup.noPhoneNote.admin, /Admin, under Team/);
   // Live Admin: Solutions Success sees Sales accounts only; an admin sees both kinds, an Edit on each.
-  const admin = read(SRC, 'pages/AdminPage.vue');
-  assert.ok(admin.includes("'Solutions Success and Sales accounts.' : 'Sales accounts.'"), 'Admin no longer lists accounts the way the note assumes');
+  const team = read(SRC, 'components/AdminTeamCard.vue');
+  assert.ok(team.includes("'Solutions Success and Sales accounts.' : 'Sales accounts.'"), 'Admin no longer lists accounts the way the note assumes');
 });
 
 // ── the scenes ──
@@ -174,5 +176,34 @@ test('the tour never talks to the server, apart from the host that records the o
   for (const f of files(HERE).filter((f) => !f.endsWith('OnboardingHost.vue'))) {
     const src = read(f);
     assert.ok(!/boot\/axios|stores\/session-store|stores\/event-store/.test(src), `${f} reaches the server or the account`);
+  }
+});
+
+// ── the tour draws the app's own parts ──
+// Each screen in the tour renders the same component the page renders, so the tour
+// cannot drift from the app. If someone pastes markup back into a tour screen, or a
+// page stops using the shared part, this fails.
+const SHARED = [
+  ['TourAppBar.vue', 'AppHeader', 'layouts/MainLayout.vue'],
+  ['TourAppBar.vue', 'AppMenu', 'layouts/MainLayout.vue'],
+  ['TourReviewScreen.vue', 'ReviewHeader', 'pages/ReviewSmart.vue'],
+  ['TourReviewScreen.vue', 'UnassignedScansList', 'components/UnassignedScansBanner.vue'],
+  ['screens/TourNotesScreen.vue', 'NotesBody', 'pages/NotesPage.vue'],
+  ['screens/TourExportScreen.vue', 'ExportCard', 'pages/ExportPage.vue'],
+  ['screens/TourAdminScreen.vue', 'AdminConferencesCard', 'pages/AdminPage.vue'],
+  ['screens/TourAdminScreen.vue', 'AdminTeamCard', 'pages/AdminPage.vue'],
+  ['screens/TourIntakeScreen.vue', 'IntakeFormFields', 'pages/IntakePage.vue'],
+  ['screens/TourQrOverlay.vue', 'RepQrContent', 'components/RepQrDialog.vue'],
+];
+test('every tour screen renders the same component its page renders', () => {
+  for (const [screen, comp, page] of SHARED) {
+    assert.ok(new RegExp(`<${comp}[\\s>/]`).test(read(HERE, screen)), `${screen} does not render <${comp}>`);
+    assert.ok(new RegExp(`<${comp}[\\s>/]`).test(read(SRC, page)), `${page} does not render <${comp}>`);
+  }
+});
+
+test('the app\'s components carry no tour hooks', () => {
+  for (const f of ['AppHeader', 'AppMenu', 'ReviewHeader', 'NotesBody', 'ExportCard', 'AdminConferencesCard', 'AdminTeamCard', 'IntakeFormFields', 'RepQrContent', 'UnassignedScansList']) {
+    assert.ok(!/data-tt|data-tour/.test(read(SRC, `components/${f}.vue`)), `${f} has a tour hook`);
   }
 });

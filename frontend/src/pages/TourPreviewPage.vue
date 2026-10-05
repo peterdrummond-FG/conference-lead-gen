@@ -61,10 +61,13 @@ import { playlist } from '@/components/tour/tourFlow';
 import { fullSteps, isManager, remainderSteps, type FlowPhase } from '@/utils/onboardingFlow';
 import type { Role } from '@/types/review';
 
-const role = ref<Role>('sales');
+// Development only: ?role=admin|solutionsSuccess, ?phone=0, ?linked=1 preset the toggles, so a
+// headless check can open exactly one combination without clicking.
+const query = new URLSearchParams(window.location.search);
+const role = ref<Role>((['admin', 'solutionsSuccess'].includes(query.get('role') ?? '') ? query.get('role') : 'sales') as Role);
 const manager = computed(() => isManager(role.value));
-const hasPhone = ref(true);
-const phoneConnected = ref(false);
+const hasPhone = ref(query.get('phone') !== '0');
+const phoneConnected = ref(query.get('linked') === '1');
 const start = ref<string>('splash');
 const flowKey = ref(0);
 const ended = ref<string | null>(null);

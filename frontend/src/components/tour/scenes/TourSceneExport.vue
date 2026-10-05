@@ -38,10 +38,10 @@ function reset() {
 async function run(t: TourRun) {
   await t.wait(800);
   await goToPage(t, { phone: isPhone.value, page: 'export', setMenu: (v) => (menuOpen.value = v), setPage: (p) => (page.value = p) });
-  await t.tap(t.find('[data-tt="ex-button"]'), { press: true });
+  await t.tap(t.find('.ex-btn'), { press: true });
   phase.value = 'pending';
   await t.wait(1600);
-  await t.tap(t.find('[data-tt="ex-confirm"]'), { press: true });
+  await t.tap(t.findText('Yes, it downloaded'), { press: true });
   phase.value = 'done';
   t.hideFinger();
   await t.wait(2600);

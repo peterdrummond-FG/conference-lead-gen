@@ -29,7 +29,7 @@
     :title="C.quickText.title" :body="C.quickText.body" :note="C.quickText.note"
     @back="setPhase('splash')"
   >
-    <TourStage :scene="TourSceneQuickText" :manager="isManagerRole" />
+    <TourStage :scene="TourSceneQuickText" :manager="isManagerRole" :role="role" />
     <template #actions>
       <q-space />
       <q-btn unelevated no-caps color="primary" label="Next" class="ob-next" @click="setPhase('quick2')" />

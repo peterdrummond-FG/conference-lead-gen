@@ -18,14 +18,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type Component } from 'vue';
+import { ref, computed, provide, watch, nextTick, onMounted, onBeforeUnmount, type Component } from 'vue';
+import { TOUR_ROLE } from './tourRole';
+import type { Role } from '@/types/review';
 import { useQuasar } from 'quasar';
 import TourDevice from './TourDevice.vue';
 import { createRun, TourCancelled, type TourDeviceApi, type TourRun } from './useTourScript';
 
 // importOnly: the version of "Send us leads" that starts at Import (see tourCopy.ts).
 // Bound only when true, so a scene that has no such prop never receives the attribute.
-defineProps<{ scene: Component; manager: boolean; importOnly?: boolean }>();
+const props = defineProps<{ scene: Component; manager: boolean; role?: Role; importOnly?: boolean }>();
+// The scenes' header is the app's own AppHeader, which differs by role (an admin has
+// View as, Solutions Success shows a name), so the role goes down by provide/inject:
+// a prop on every scene would land as an attribute on whatever element each one renders.
+provide(TOUR_ROLE, computed(() => props.role ?? (props.manager ? 'solutionsSuccess' : 'sales')));
 
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
