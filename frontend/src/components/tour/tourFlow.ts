@@ -70,6 +70,7 @@ export const TOUR_SCENES: TourScene[] = [
     id: 'admin',
     title: 'Look after your team',
     body: 'In **Admin**, activate and end conferences, add people, and choose which conference each rep is **Working at**.',
+    note: 'Scans that need a conference wait here for you to file.',
     managersOnly: true,
     component: TourSceneAdmin,
   },
