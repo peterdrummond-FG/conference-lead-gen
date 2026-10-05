@@ -295,16 +295,19 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
 
   // Any inbound request from an already-bound phone counts as activity —
-  // refreshes the 60-minute idle clock session-notifications watches and
-  // cancels a pending reminder so the next idle stretch can trigger a
-  // fresh one. No-ops (0 rows) for a phone that isn't bound to anything.
+  // keeps session-notifications' contact-received confirmations sweeping
+  // this phone (it ignores bindings idle past 2 hours). No-ops (0 rows) for
+  // a phone that isn't bound to anything. It used to also clear
+  // expiry_notified_at for the 60-minute "session is about to pause"
+  // reminder, retired 2026-10-05 because nothing pauses; that column is now
+  // unused, so no write here or in the bind upserts below touches it.
   // Backgrounded: nothing in the reply depends on it, and it used to sit in
   // front of every request. Racing a later bind upsert is harmless -- it only
-  // touches last_activity_at/expiry_notified_at, which that upsert also sets.
+  // touches last_activity_at, which that upsert also sets.
   background("activity refresh", () =>
     supabase
       .from("phone_event_bindings")
-      .update({ last_activity_at: new Date().toISOString(), expiry_notified_at: null })
+      .update({ last_activity_at: new Date().toISOString() })
       .eq("phone_number", from));
 
   // No media: either a step in an in-progress "setup a new conference"
@@ -342,7 +345,6 @@ Deno.serve(async (req) => {
             event_id: linked.id,
             updated_at: new Date().toISOString(),
             last_activity_at: new Date().toISOString(),
-            expiry_notified_at: null,
             // Same reset as every other bind: a stale watermark from a prior
             // event must not skip confirming this event's first contacts.
             contacts_confirmed_through: new Date().toISOString(),
@@ -479,7 +481,6 @@ Deno.serve(async (req) => {
           event_id: eventId,
           updated_at: new Date().toISOString(),
           last_activity_at: new Date().toISOString(),
-          expiry_notified_at: null,
           // Switching events resets the confirmation watermark so a stale
           // value from a prior event can't skip confirming this event's
           // first batch of contacts.
@@ -547,7 +548,6 @@ Deno.serve(async (req) => {
           event_id: activated.id,
           updated_at: new Date().toISOString(),
           last_activity_at: new Date().toISOString(),
-          expiry_notified_at: null,
           contacts_confirmed_through: new Date().toISOString(),
         }));
       await step("session delete", () => supabase.from("conference_setup_sessions").delete().eq("phone_number", from));
@@ -720,7 +720,12 @@ Deno.serve(async (req) => {
           body,
           error: "text did not match a known event folder code",
         }));
-      return twiml("I didn't recognize that. If you have your event's folder code, text it to link your phone. If not, text SETUP and I'll help you find your conference by name.");
+      // Used to lead with "If you have your event's folder code, text it to
+      // link your phone." Texting a code still links a phone (the lookup
+      // above), but SETUP is what the onboarding and Setup page teach, needs
+      // nothing the rep has to be given, and binds a rep already linked in
+      // the app instantly -- so it's the only thing the reply offers.
+      return twiml("I didn't recognize that. Text SETUP to link your phone to your conference.");
     }
 
     await step("phone_event_bindings upsert", () =>
@@ -729,7 +734,6 @@ Deno.serve(async (req) => {
         event_id: event.id,
         updated_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
-        expiry_notified_at: null,
         // Switching events resets the confirmation watermark so a stale
         // value from a prior event can't skip confirming this event's
         // first batch of contacts.
@@ -766,7 +770,8 @@ Deno.serve(async (req) => {
         body,
         error: "no event binding for this phone number",
       }));
-    return twiml("Your phone isn't linked to an event yet. Text your folder code, or text SETUP to find your conference by name — then send card photos.");
+    // Same as the unrecognized-text reply above: SETUP only, no folder code.
+    return twiml("Your phone isn't linked to a conference yet. Text SETUP to link it, then send card photos.");
   }
 
   let received = 0;
