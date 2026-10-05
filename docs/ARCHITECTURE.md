@@ -160,6 +160,36 @@ checks and the rep taps the one to change. Keep it that way:
 - The "how it works" explanation is the welcome tour, not text on Setup. Keep the
   page's prose to a line or two.
 
+### One conference everywhere
+
+A rep has two pointers to "the conference I'm at": `profiles.current_event_id`
+(the app, QR scans, Review) and `phone_event_bindings.event_id` (where texted
+photos, voice memos and notes are filed). They used to be written by different
+code and drifted: a rep who only texted SETUP had a linked phone and an app that
+said "choose a conference" (their QR answered 409), and a manager moving a rep in
+the app left their texted cards landing in the old conference.
+
+- **App to phone:** `profiles-set-current-event`, `profiles-assign-current-event`
+  and `events-activate` all call the SQL function `profile_set_current_event`.
+  It moves an **existing** binding to the new (active) conference, **never
+  creates one** (a binding is what lets `session-notifications` text a number; a
+  phone that never texted SETUP hasn't opted in, and our A2P campaign was
+  rejected four times over consent), and does not refresh `last_activity_at`
+  (an app change is not activity on the phone). Clearing the conference (null)
+  **deletes** the binding, which only stops texts; the next SETUP links again.
+- **Phone to app:** every bind path in `twilio-webhook` (name search, activating
+  a campaign, supplying the state, a folder code) calls
+  `profile_link_event_by_phone` afterwards. `profiles.phone_number` is unique, so
+  at most one profile matches; no match leaves the phone bound on its own.
+- **A binding outlives its conference.** `events_complete()` clears profiles but
+  not bindings, so `twilio-webhook` re-checks `events.is_active` wherever a bound
+  phone files something (photos, voice memos, single-contact notes). An ended
+  conference files nothing and replies "That conference has ended. Text SETUP to
+  pick your current one." A failed lookup files nothing too and asks for a
+  resend. A folder code only binds an active event.
+- `scripts/check-conference-writers.mjs` (CI) fails if an Edge Function writes
+  `current_event_id` directly or the webhook loses those checks.
+
 ### Admin "View as"
 
 The switcher in the header (admin only) shows the app as another person sees

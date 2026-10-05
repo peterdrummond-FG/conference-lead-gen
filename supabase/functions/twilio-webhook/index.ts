@@ -265,6 +265,38 @@ async function linkedEventFromProfile(
   return event?.is_active ? { id: event.id, name: event.name } : null;
 }
 
+// Whether the conference a bound phone files under is still running. A
+// binding outlives its conference (events_complete() clears profiles but not
+// phone_event_bindings), so before this check a rep who never texted SETUP
+// again kept filing photos, voice memos and notes under a conference that had
+// ended, with no sign anything was wrong. Every place a bound phone files
+// something calls this, per the project rule that anything resolving an event
+// checks is_active. Fails closed: if the lookup itself errors we file nothing
+// and ask for a resend, because a lead filed under the wrong event is worse than
+// one the rep re-sends.
+type BoundEventState = "active" | "ended" | "error";
+async function boundEventState(
+  supabase: ReturnType<typeof serviceClient>,
+  eventId: string,
+): Promise<BoundEventState> {
+  try {
+    const { data, error } = await step("bound event select", () =>
+      supabase.from("events").select("is_active").eq("id", eventId).maybeSingle());
+    if (error) {
+      console.error("boundEventState: event lookup failed", error);
+      return "error";
+    }
+    return data?.is_active ? "active" : "ended";
+  } catch (err) {
+    console.error("boundEventState threw", err);
+    return "error";
+  }
+}
+
+// One SMS segment each (plain ASCII, well under 160).
+const CONFERENCE_ENDED_REPLY = "That conference has ended. Text SETUP to pick your current one.";
+const CONFERENCE_CHECK_FAILED_REPLY = "We hit a snag on our end. Please send that again in a minute.";
+
 // The other half of linkedEventFromProfile: once a bind path has written
 // phone_event_bindings, point the profile that owns this number at the same
 // conference. Without it a rep who only texted SETUP had a linked phone and no
@@ -677,6 +709,8 @@ Deno.serve(async (req) => {
       .from("events")
       .select("id, name")
       .eq("folder_code", body.toLowerCase())
+      // A completed conference's code must not bind a phone to it.
+      .eq("is_active", true)
       .maybeSingle();
 
     if (!event) {
@@ -694,6 +728,21 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (binding && body.length > 0) {
+        const bound = await boundEventState(supabase, binding.event_id);
+        if (bound !== "active") {
+          background("audit row", () =>
+            supabase.from("inbound_messages").insert({
+              twilio_message_sid: sid,
+              from_phone: from,
+              to_phone: to,
+              event_id: binding.event_id,
+              kind: "text_note",
+              status: "failed",
+              body,
+              error: bound === "ended" ? "bound conference has ended" : "could not check the bound conference",
+            }));
+          return twiml(bound === "ended" ? CONFERENCE_ENDED_REPLY : CONFERENCE_CHECK_FAILED_REPLY);
+        }
         if (!fitsOneSmsSegment(body)) {
           background("audit row", () =>
             supabase.from("inbound_messages").insert({
@@ -766,6 +815,7 @@ Deno.serve(async (req) => {
         // first batch of contacts.
         contacts_confirmed_through: new Date().toISOString(),
       }));
+    await linkProfileToEvent(supabase, from, event.id);
     background("audit row", () =>
       supabase.from("inbound_messages").insert({
         twilio_message_sid: sid,
@@ -799,6 +849,22 @@ Deno.serve(async (req) => {
       }));
     // Same as the unrecognized-text reply above: SETUP only, no folder code.
     return twiml("Your phone isn't linked to a conference yet. Text SETUP to link it, then send card photos.");
+  }
+
+  const boundState = await boundEventState(supabase, binding.event_id);
+  if (boundState !== "active") {
+    background("audit row", () =>
+      supabase.from("inbound_messages").insert({
+        twilio_message_sid: sid,
+        from_phone: from,
+        to_phone: to,
+        event_id: binding.event_id,
+        kind: "unrecognized",
+        status: "failed",
+        body,
+        error: boundState === "ended" ? "bound conference has ended" : "could not check the bound conference",
+      }));
+    return twiml(boundState === "ended" ? CONFERENCE_ENDED_REPLY : CONFERENCE_CHECK_FAILED_REPLY);
   }
 
   let received = 0;
