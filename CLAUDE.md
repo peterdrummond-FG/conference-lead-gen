@@ -115,7 +115,7 @@ bash scripts/check-deployed-functions.sh
 # Tests
 cd local-agent && npm test
 cd frontend && npm run typecheck
-cd frontend && npm test              # Review Smart-view logic (utils/reviewSmart)
+cd frontend && npm test              # Contacts list logic (utils/contactsList)
 
 # Retention purge (audit S12)
 cd local-agent && node --env-file=.env purge-expired-media.mjs --dry-run
@@ -159,7 +159,7 @@ Supabase CLI on this machine.
   activated active event" with no rep. The in-app Kiosk tab is exactly that
   call, and `events-active` showed the signed-in rep *their own* event while the
   insert went to a different one (a Region 4 rep's lead landed in MoASSP with
-  `rep_id` null, invisible in their Review, 2026-09-29). Now a bare call is
+  `rep_id` null, invisible in their Contacts, 2026-09-29). Now a bare call is
   resolved from the caller's token (their `current_event_id`, credited if
   `sales`); an anonymous one has nothing to resolve from, so it is held in
   `unassigned_submissions` (reason `no_qr`) for Solutions Success rather than
@@ -182,23 +182,26 @@ Supabase CLI on this machine.
   parsed ranges — reading the SQL looked fine. Validate a parser against the
   real data, not a sample, and count the successes.
 
-- **A UI promise has to be true in the pipeline behind it.** Review's Notes
+- **A UI promise has to be true in the pipeline behind it.** Contacts' Notes
   tooltip says notes are "included in the Zoho import". When it was written,
   `export-csv` built the Description column from `contacts.notes` (the AI match
   reasoning) and never read `interaction_notes`, so a rep's notes never reached
   Zoho. Found by reading the export before writing the tooltip. If you change
-  what `export-csv` emits, update Review's tooltips (`ReviewLeadEditor.vue`,
-  `AddNoteDialog.vue`, `ReviewLeadRow.vue`) too — and redeploy `export-csv`.
+  what `export-csv` emits, update Contacts' tooltips (`ContactEditor.vue`,
+  `AddNoteDialog.vue`, `ContactRow.vue`) too — and redeploy `export-csv`.
 
-- **Review is one view, and its rules live in one file.** `/review` is
-  `ReviewSmart.vue` (the old Classic view and its ⋮ switch were retired
+- **Contacts is one view, and its rules live in one file.** `/contacts` (it was
+  Review until 2026-10-06; `/review` redirects, query kept) is
+  `ContactsPage.vue` (the old Classic view and its ⋮ switch were retired
   2026-10-01). Its readiness / flag / sort / search / grouping logic is
-  `frontend/src/utils/reviewSmart.ts` with tests; "Ready to confirm"
+  `frontend/src/utils/contactsList.ts` with tests; "Ready to confirm"
   (`READY_LABEL`; one-tap ✓, "Confirm all N") means match finished, no possible
   duplicate, an email or phone, and a school or district. Change the rule there,
   not in a component. To review is newest-first and **must not sort on
   readiness** (it made a just-saved lead vanish to the bottom). Details:
-  `docs/ARCHITECTURE.md`, "Review".
+  `docs/ARCHITECTURE.md`, "Contacts". The database's words keep "review"
+  (`review_status`, `needs_review`, `ReviewStatus`, `types/review.ts`): only the
+  page's own names changed.
 
 - **Nothing is ever auto-confirmed, and "Confirm" is only a word.** Reps always
   confirm a lead (Peter, 2026-10-06). `finalize_contact_match` used to set
@@ -212,7 +215,7 @@ Supabase CLI on this machine.
   `contacts-bulk-approve` keep "approve" (`confirmWording.test.mjs` holds the
   words, not the identifiers).
 
-- **Lead sources have plain names, and only some are stored.** Review's chips
+- **Lead sources have plain names, and only some are stored.** Contacts' chips
   and Source filter say QR scan, QR Booth, QR Session, Kiosk, Form (legacy only),
   Card photo, List photo, Voice memo, SMS, Imported note. `contacts.intake_path`
   (`rep_qr`/`event_qr`/`kiosk`, set by `contacts-create` from the request, carried
@@ -255,7 +258,7 @@ Supabase CLI on this machine.
 
 - **The onboarding draws the app's own components, and its copy is a set of promises.**
   The splash, quick start, animated tour and one-hour reminder (`components/tour/`)
-  render the same `AppHeader`, `ReviewHeader`, `NotesBody`, `ExportCard`, Admin cards,
+  render the same `AppHeader`, `ContactsHeader`, `NotesBody`, `ExportCard`, Admin cards,
   `IntakeFormFields`, `RepQrContent` and `UnassignedScansList` the pages render, with
   sample data. A page change shows up in the tour for free; do **not** paste markup
   into a tour screen (a test fails), and don't put `data-tour`/`data-tt` hooks in an app
@@ -263,7 +266,7 @@ Supabase CLI on this machine.
   pipeline: a first-time rep isn't linked yet, so the tour shows the real from-scratch
   SETUP conversation (checked against `twilio-webhook`'s source), a lead that just
   arrived is *processing*, not Ready, and "Ready to confirm" / notes-reach-Zoho /
-  scans-wait-for-Solutions-Success must stay true. If you change Smart's Ready rule,
+  scans-wait-for-Solutions-Success must stay true. If you change the Ready rule,
   Setup's flow, the SETUP replies, the intake form or what `export-csv` emits, update
   `components/tour/tourCopy.ts` / `tourText.ts` too; the tests catch the replies, form
   labels, number and banned words, not the prose. What an account has seen is
@@ -294,7 +297,7 @@ Supabase CLI on this machine.
   the tour. Details: `docs/ARCHITECTURE.md`, "Setup and Admin".
 
 - **One conference everywhere: a rep has two pointers and one writer.**
-  `profiles.current_event_id` (the app, QR scans, Review) and
+  `profiles.current_event_id` (the app, QR scans, Contacts) and
   `phone_event_bindings.event_id` (where texted photos, voice memos and notes are
   filed) were written by different code and drifted: reps linked only by text had
   a bound phone and no app conference, so their QR scans were rejected, and a
@@ -315,7 +318,7 @@ Supabase CLI on this machine.
   to answer 404/409 and keep nothing when a valid attendee couldn't be placed (a
   rep with no conference, a deleted rep, a QR for an ended conference, no QR, a
   Kiosk tab with no conference), so the person's details were lost.
-  `contacts.event_id` stays NOT NULL (it runs through Review, duplicates,
+  `contacts.event_id` stays NOT NULL (it runs through Contacts, duplicates,
   matching and export), so those submissions wait in `unassigned_submissions`
   (`_shared/intakeDestination.ts` decides; reasons `rep_no_conference`,
   `rep_not_found`, `event_ended`, `event_unknown`, `no_qr`,
