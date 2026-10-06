@@ -1,8 +1,12 @@
 <template>
   <!-- TransitionGroup is here only for its move animation: a confirmed contact that
        is settled slides down to the confirmed group (~350ms) instead of jumping. It
-       defines no enter / leave, so a row that appears or goes does neither. -->
-  <TransitionGroup name="ll" tag="div" class="ll" role="list">
+       defines no enter / leave, so a row that appears or goes does neither. The slide
+       is ON only while the page says so (`animate`, for the moment a contact settles):
+       a TransitionGroup animates ANY re-render that moves a row, and a window resize
+       or rotation did exactly that, catching cards mid-slide on top of each other
+       (seen at 320px). A background refresh or a filter change must not slide either. -->
+  <TransitionGroup name="ll" :move-class="animate ? 'll-move' : 'll-still'" tag="div" class="ll" role="list">
     <div v-for="c in leads" :key="c.id" role="listitem">
       <ContactRow
         :contact="c"
@@ -38,6 +42,8 @@ defineProps<{
   showRep?: boolean;
   selectable?: boolean;
   selectedIds?: Set<string>;
+  // True only while a confirmed contact is settling (see ContactsPage `sliding`).
+  animate?: boolean;
 }>();
 
 defineEmits<{

@@ -721,7 +721,8 @@ Rules worth knowing before changing Contacts:
   **Confirming a contact one at a time turns it confirmed IN PLACE** (green edge, "Confirmed"
   chip, no ✓ ✕): the page *holds* it (`held`, `orderDeck`). It slides to the top of the
   confirmed group (a ~350ms FLIP, instant under `prefers-reduced-motion`; `TransitionGroup`'s
-  move class in `ContactList.vue`) only when the person goes on to another contact: opens
+  move class in `ContactList.vue`, switched on only while the page is settling: left on, a
+  resize or the 8s poll slid rows too, and a resize stacked cards on each other at 320px) only when the person goes on to another contact: opens
   another card, ticks another card's ✓ / ✕ / Followed up, or presses Next / J / K, and
   on a laptop Confirm's auto-advance counts as selecting the next contact. Changing the
   search, a filter or the status bar settles too; **Confirm all N settles right away**.
