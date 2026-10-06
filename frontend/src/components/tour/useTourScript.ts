@@ -126,8 +126,21 @@ export function createRun(device: TourDeviceApi, opts: { paused: () => boolean; 
   async function scrollTo(container: Element, el: Element, offset = 90) {
     const s = device.scale();
     const top = (el.getBoundingClientRect().top - container.getBoundingClientRect().top) / s + container.scrollTop - offset;
-    container.scrollTo({ top: Math.max(0, top), behavior: opts.fast ? 'auto' : 'smooth' });
-    await wait(650);
+    const target = Math.min(Math.max(0, top), Math.max(0, container.scrollHeight - container.clientHeight));
+    container.scrollTo({ top: target, behavior: opts.fast ? 'auto' : 'smooth' });
+    // Wait until it has actually arrived. A fixed 650 ms was not enough for a long
+    // scroll on a phone (found checking the admin scene at 375px: the ring on "Add
+    // person" and "Working at" appeared while the card was still sliding into view),
+    // and "stopped moving" is not enough either: a smooth scroll can start late (a
+    // throttled or backgrounded tab), so wait for the target itself, with a ceiling.
+    for (let waited = 0; waited < 2400; waited += 100) {
+      await wait(100);
+      if (Math.abs(container.scrollTop - target) < 1) break;
+    }
+    // If it still hasn't arrived (a tab that isn't painting frames doesn't advance a
+    // smooth scroll), jump there: the next thing the script does is point at the target.
+    if (Math.abs(container.scrollTop - target) >= 1) container.scrollTo({ top: target, behavior: 'auto' });
+    await wait(150);
   }
 
   // A pulsing outline that says "look at this" without pressing it.

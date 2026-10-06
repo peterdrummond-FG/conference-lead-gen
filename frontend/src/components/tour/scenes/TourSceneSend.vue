@@ -126,7 +126,7 @@ async function run(t: TourRun) {
   }
   notePhase.value = 'done';
   await t.wait(400);
-  await t.ring(t.find('.notes-column .q-card'), 2200);
+  await t.ring(t.find('.notes-column .q-card').parentElement ?? t.find('.notes-column .q-card'), 2200);
 
   // They land in Review, and are still being matched: that takes a few minutes.
   await t.tap(t.findText('Open Review'), { press: true });
