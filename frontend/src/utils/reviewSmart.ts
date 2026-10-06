@@ -19,7 +19,7 @@ export interface LeadFlag {
   key: 'stuck' | 'matching' | 'duplicate' | 'no-contact' | 'no-org' | 'unclear';
   label: string;
   tone: Tone;
-  // A blocking flag keeps the lead out of one-tap approve and "Approve N
+  // A blocking flag keeps the lead out of one-tap confirm and "Confirm N
   // ready". Non-blocking flags are information only.
   blocking: boolean;
 }
@@ -32,7 +32,7 @@ export function hasOrg(c: ContactListItem): boolean {
 
 // Why a lead needs a human look, in the order a rep should fix them. An
 // empty list means Ready. Each blocking rule maps to something that has
-// already gone wrong for real: a still-pending match can't be approved at all
+// already gone wrong for real: a still-pending match can't be confirmed at all
 // (contacts-patch rejects it), a duplicate needs a decision, and a lead with no
 // way to reach the person or no organisation is not worth exporting as-is.
 export function leadFlags(c: ContactListItem): LeadFlag[] {
@@ -65,7 +65,7 @@ export function leadFlags(c: ContactListItem): LeadFlag[] {
 
 // Still in the automatic pipeline (research, then the Zoho match), as opposed
 // to stuck: a stuck lead has been given up on and will not finish by itself, so
-// "it'll be done in a few minutes" would be a lie. Approve is impossible while
+// "it'll be done in a few minutes" would be a lie. Confirm is impossible while
 // processing (contacts-patch and bulk-approve both refuse a pending match), and
 // Reject is hidden too so a half-processed lead can't be discarded by a stray
 // tap before the rep has seen what the pipeline found.
@@ -77,11 +77,13 @@ export function isReady(c: ContactListItem): boolean {
   return c.reviewStatus === 'needs_review' && !leadFlags(c).some((f) => f.blocking);
 }
 
-// The one name for "nothing left for you to do but approve". "Ready" alone never
+// The one name for "nothing left for you to do but confirm". (The stored status is
+// still 'approved' and the API names still say approve: only the words people read
+// changed, 2026-10-06.) "Ready" alone never
 // said what it was ready for, so every chip, count and button uses this wording.
-export const READY_LABEL = 'Ready to approve';
+export const READY_LABEL = 'Ready to confirm';
 
-// What a lead that can't be approved yet asks of the rep, as the short call to
+// What a lead that can't be confirmed yet asks of the rep, as the short call to
 // action shown on its phone card (the card opens the lead where the fix is). Null
 // for a lead that is ready or still processing: those have a ✓ / ✕ or a bar.
 // Order follows leadFlags, so the first thing to fix is the one named.
@@ -107,7 +109,7 @@ export function leadBucket(c: ContactListItem): LeadBucket | null {
   return isReady(c) ? 'ready' : 'needsInfo';
 }
 
-// The counts under "2 ready to approve · 1 needs info · 1 processing".
+// The counts under "2 ready to confirm · 1 needs info · 1 processing".
 export function summaryCounts(list: ContactListItem[]): { ready: number; needsInfo: number; processing: number } {
   const n = { ready: 0, needsInfo: 0, processing: 0 };
   for (const c of list) {
@@ -117,7 +119,7 @@ export function summaryCounts(list: ContactListItem[]): { ready: number; needsIn
   return n;
 }
 
-// Why "ready to approve" means what it means, one line per condition of
+// Why "ready to confirm" means what it means, one line per condition of
 // isReady. The open lead shows these: four ticks when it is ready, and a cross
 // with the fix where it isn't. Derived from the same fields as leadFlags; the
 // test holds the two together (all ticks <=> ready).
@@ -210,41 +212,71 @@ export function accountDetailLabel(c: ContactListItem): string {
 
 // ── Signup source ────────────────────────────────────────────────────────
 //
-// How a lead got into the system: contacts.source, plus qr_channel for a typed
-// form (the public Kiosk/QR form is the only intake that records which QR the
-// visitor scanned: the booth's or a breakout session's). Booth vs session is
-// part of the key, not a second filter, so "where did this lead come from" is
-// one question with one answer. Source never changes after capture, which is
-// why (unlike the heat it replaced) it can sort live without a row jumping
-// under a rep's finger.
+// How a lead got into the system. contacts.source says the broad kind; two more
+// facts say which kind of "form" or "note" it was, because Review's labels tell
+// them apart (2026-10-06):
+//
+//   * intakePath: which door the public form came in by (contacts.intake_path,
+//     recorded by contacts-create from 2026-10-07: 'rep_qr' a rep's own reusable
+//     QR, 'event_qr' an old per-event QR, 'kiosk' the in-app Kiosk tab). Null on
+//     every form lead from before it was recorded, and on a form submitted with
+//     no QR and nobody signed in. Those can't be told apart, so they stay "Form"
+//     rather than being relabelled as something they might not be.
+//   * noteOrigin: where a pasted note came from, read from the note_submissions
+//     row the contact points at ('sms' = one contact texted in, from_phone set;
+//     'import' = pasted on the Import page, submitted_by set). It is derived at
+//     read time, not stored a second time, so it can't drift from the note row.
+//
+// qrChannel (booth / session) is a field the attendee picks themselves on the
+// form's "How did you hear about us?" and rides along on every door, so it only
+// names the lead's source when the door doesn't: an old per-event QR or a form
+// from before intakePath. A rep's own QR or the Kiosk tab keeps its own label
+// even when the attendee also said "At the booth".
+//
+// Source never changes after capture, which is why (unlike the heat it replaced)
+// it can sort live without a row jumping under a rep's finger.
 
 export type SourceKey =
-  | 'form_booth' | 'form_session' | 'form_none'
-  | 'card_photo' | 'directory_photo' | 'note' | 'voice_memo'
+  | 'qr_scan' | 'qr_booth' | 'qr_session' | 'kiosk' | 'form'
+  | 'card_photo' | 'list_photo' | 'voice_memo' | 'sms' | 'imported_note'
   | 'other';
+
+type SourceFields = Pick<ContactListItem, 'source' | 'qrChannel' | 'intakePath' | 'noteOrigin'>;
 
 // Also the order the "Source" sort groups by.
 export const SOURCE_OPTIONS: { value: SourceKey; label: string }[] = [
-  { value: 'form_booth', label: 'Form · Booth' },
-  { value: 'form_session', label: 'Form · Session' },
-  { value: 'form_none', label: 'Form · no QR' },
+  { value: 'qr_scan', label: 'QR scan' },
+  { value: 'qr_booth', label: 'QR Booth' },
+  { value: 'qr_session', label: 'QR Session' },
+  { value: 'kiosk', label: 'Kiosk' },
+  { value: 'form', label: 'Form' },
   { value: 'card_photo', label: 'Card photo' },
-  { value: 'directory_photo', label: 'Directory photo' },
-  { value: 'note', label: 'Note' },
+  { value: 'list_photo', label: 'List photo' },
   { value: 'voice_memo', label: 'Voice memo' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'imported_note', label: 'Imported note' },
 ];
 
 const OTHER_OPTION = { value: 'other' as SourceKey, label: 'Other' };
 
-export function sourceKey(c: Pick<ContactListItem, 'source' | 'qrChannel'>): SourceKey {
+export function sourceKey(c: SourceFields): SourceKey {
   switch (c.source) {
     case 'form':
-      return c.qrChannel === 'booth' ? 'form_booth' : c.qrChannel === 'session' ? 'form_session' : 'form_none';
+      if (c.intakePath === 'kiosk') return 'kiosk';
+      if (c.intakePath === 'rep_qr') return 'qr_scan';
+      if (c.qrChannel === 'booth') return 'qr_booth';
+      if (c.qrChannel === 'session') return 'qr_session';
+      // An old per-event QR the attendee gave no channel on: still a QR.
+      return c.intakePath === 'event_qr' ? 'qr_scan' : 'form';
     case 'card_photo':
-    case 'directory_photo':
-    case 'note':
     case 'voice_memo':
       return c.source;
+    case 'directory_photo':
+      return 'list_photo';
+    case 'note':
+      // A note whose submission row is gone (contacts.source_note_id is ON DELETE
+      // SET NULL) can't be said to be either, so it is Other, not a guess.
+      return c.noteOrigin === 'sms' ? 'sms' : c.noteOrigin === 'import' ? 'imported_note' : 'other';
     // contacts_source_check has grown twice (directory_photo, voice_memo). A
     // value this file does not know yet shows as "Other" rather than vanishing
     // from the filter; the test below fails when the DB list and this one drift.
@@ -253,21 +285,18 @@ export function sourceKey(c: Pick<ContactListItem, 'source' | 'qrChannel'>): Sou
   }
 }
 
-// The chip on a row. A form with no QR is just "Form": the "no QR" wording is
-// only needed to tell it apart in the filter.
-export function sourceLabel(c: Pick<ContactListItem, 'source' | 'qrChannel'>): string {
+export function sourceLabel(c: SourceFields): string {
   const key = sourceKey(c);
-  if (key === 'form_none') return 'Form';
   return [...SOURCE_OPTIONS, OTHER_OPTION].find((o) => o.value === key)?.label ?? 'Other';
 }
 
-export function sourceTone(c: Pick<ContactListItem, 'source' | 'qrChannel'>): Tone {
+export function sourceTone(c: Pick<ContactListItem, 'source'>): Tone {
   return c.source === 'form' ? 'blue' : 'grey';
 }
 
 // The filter's choices: the known sources always, "Other" only when a loaded
 // lead needs it.
-export function sourceFilterOptions(list: Pick<ContactListItem, 'source' | 'qrChannel'>[]): { value: SourceKey | null; label: string }[] {
+export function sourceFilterOptions(list: SourceFields[]): { value: SourceKey | null; label: string }[] {
   const extra = list.some((c) => sourceKey(c) === 'other') ? [OTHER_OPTION] : [];
   return [{ value: null, label: 'All sources' }, ...SOURCE_OPTIONS, ...extra];
 }
@@ -417,7 +446,7 @@ export function searchLeads(list: ContactListItem[], query: string): ContactList
 // The list carries no event date, so "newest event" is the event whose most
 // recent lead is newest. Computed over EVERY status the rep has loaded, not
 // just the visible tab, so the section order doesn't reshuffle when they
-// switch between Needs Review / Approved / Rejected.
+// switch between Needs Review / Confirmed / Rejected.
 export function eventRecency(all: ContactListItem[]): Map<string, number> {
   const recency = new Map<string, number>();
   for (const c of all) {

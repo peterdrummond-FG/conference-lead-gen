@@ -1,7 +1,7 @@
 <template>
-  <!-- "Check it, then approve it", a while after the leads came in (so the Zoho
+  <!-- "Check it, then confirm it", a while after the leads came in (so the Zoho
        match has finished): open Priya, whose pasted note had no phone, see it has
-       already been checked against Zoho, tick Followed up, add her phone, approve. -->
+       already been checked against Zoho, tick Followed up, add her phone, confirm. -->
   <TourAppShell :manager="manager" active="review">
     <TourReviewScreen
       :manager="manager"
@@ -76,8 +76,8 @@ async function run(t: TourRun) {
   await t.tap(phone.closest('.q-field') ?? phone, { press: true });
   await t.type(phone, '(512) 555-0176');
   await t.wait(400);
-  // 5. Approve.
-  await t.tap(t.findText('Approve', `${where} .le-foot button`));
+  // 5. Confirm.
+  await t.tap(t.findText('Confirm', `${where} .le-foot button`));
   await t.wait(900);
   t.hideFinger();
 }

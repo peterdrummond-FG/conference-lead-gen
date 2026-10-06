@@ -120,7 +120,7 @@ export function useSmartReview() {
     buckets[to] = [...buckets[to], contact];
   }
 
-  // One in-flight action per contact: a double tap on Approve must not send
+  // One in-flight action per contact: a double tap on Confirm must not send
   // two PATCHes, and Undo racing a second tap would leave the tab and the
   // server disagreeing about where the lead is.
   async function guarded<T>(id: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -171,7 +171,7 @@ export function useSmartReview() {
 
   const approve = (id: string, edits?: UpdateContactPayload, display?: DisplayPatch) => {
     const c = find(id);
-    return setStatus(id, 'approved', { edits, display, message: c ? `Approved ${fullName(c)}` : 'Approved' });
+    return setStatus(id, 'approved', { edits, display, message: c ? `Confirmed ${fullName(c)}` : 'Confirmed' });
   };
   const reject = (id: string) => {
     const c = find(id);
@@ -219,7 +219,7 @@ export function useSmartReview() {
     const skippedCount = data.skipped.length;
     const n = data.approved.length;
     if (skippedCount === 0) {
-      Notify.create({ type: 'positive', message: `Approved ${n} contact${n === 1 ? '' : 's'}.` });
+      Notify.create({ type: 'positive', message: `Confirmed ${n} contact${n === 1 ? '' : 's'}.` });
       return;
     }
     const stillMatching = data.skipped.filter((s) => s.reason === 'still pending').length;
@@ -229,7 +229,7 @@ export function useSmartReview() {
     Notify.create({
       type: 'warning',
       timeout: 8000,
-      message: `Approved ${n}, skipped ${skippedCount} (${parts.join(', ')}). Skipped contacts stay in Needs Review.`,
+      message: `Confirmed ${n}, skipped ${skippedCount} (${parts.join(', ')}). Skipped contacts stay in Needs Review.`,
     });
   }
 

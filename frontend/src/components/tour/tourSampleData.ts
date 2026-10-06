@@ -1,6 +1,6 @@
 // Made-up people for the animated tour. They are only ever handed to
 // components rendered inside a TourDevice; none of them is ever added to a real
-// Review list, count or bulk selection ("Approve all N" acts on lead ids, and
+// Review list, count or bulk selection ("Confirm all N" acts on lead ids, and
 // these ids don't exist). Each scene asks for a fresh copy so a loop always
 // starts from the same state.
 import type { ContactListItem, UnassignedSubmission, UpdateContactPayload } from '@/types/review';
@@ -11,7 +11,7 @@ export { TOUR_CONFERENCE };
 // The blank every sample lead starts from (tourSampleData.ts overrides what makes
 // each person different). The tour's leads are only ever handed to components
 // drawn inside a TourDevice and must never be added to a real list: Review's
-// "Approve all N" acts on ids, and these don't exist.
+// "Confirm all N" acts on ids, and these don't exist.
 const BASE_LEAD: ContactListItem = {
   id: 'tour-sample-lead',
   firstName: 'Jordan',
@@ -21,6 +21,8 @@ const BASE_LEAD: ContactListItem = {
   title: 'Assistant Principal',
   source: 'card_photo',
   qrChannel: null,
+  intakePath: null,
+  noteOrigin: null,
   repId: null,
   repName: null,
   eventId: 'tour-sample-event',
@@ -124,7 +126,7 @@ export function patchLead(
 //   Priya, Tom, Ana   the pasted note (Priya has no phone or email in the note,
 //          so she is the real "Needs a phone or email" lead the Check it scene fixes)
 //   Grace  the attendee who scanned the QR code
-// A brand-new rep has nothing else: Approved and Rejected start at 0.
+// A brand-new rep has nothing else: Confirmed and Rejected start at 0.
 export type TourPerson = 'dana' | 'sam' | 'priya' | 'tom' | 'ana' | 'grace';
 
 // How the lead looks once the Zoho match has finished.
@@ -142,30 +144,33 @@ const MATCHED: Record<TourPerson, ContactListItem> = {
     email: 'sortiz@lakeviewisd.org', phone: null,
     schoolDistrictId: 'tour-lakeview', districtName: 'Lakeview ISD', schoolId: 'tour-lakeview-hs', schoolName: 'Lakeview High School',
     matchStatus: 'existing_contact', matchedZohoContactName: 'Sam Ortiz', matchedZohoAccountName: 'Lakeview High School', matchedZohoAccountLevel: 'school',
-    source: 'note', createdAt: '2026-01-01T14:06:00Z',
+    // Texted in (Send scene), so its chip says SMS.
+    source: 'note', noteOrigin: 'sms', createdAt: '2026-01-01T14:06:00Z',
   }),
   priya: lead({
     id: 'tour-priya', firstName: 'Priya', lastName: 'Shah', title: 'Superintendent', email: null, phone: null,
     schoolDistrictId: 'tour-cedar', districtName: 'Cedar ISD',
     matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Cedar ISD', matchedZohoAccountLevel: 'district',
-    source: 'note', interactionNotes: 'Wants a call about spring PD.', createdAt: '2026-01-01T14:21:00Z',
+    // Priya, Tom and Ana come in on Review's Import button, so "Imported note".
+    source: 'note', noteOrigin: 'import', interactionNotes: 'Wants a call about spring PD.', createdAt: '2026-01-01T14:21:00Z',
   }),
   tom: lead({
     id: 'tour-tom', firstName: 'Tom', lastName: 'Reyes', title: 'Counselor', email: 'tom.reyes@pvisd.org', phone: null,
     schoolDistrictId: 'tour-pine-valley', districtName: 'Pine Valley ISD', schoolId: 'tour-pine-valley-hs', schoolName: 'Pine Valley High School',
-    matchStatus: 'new_account', source: 'note', createdAt: '2026-01-01T14:21:20Z',
+    matchStatus: 'new_account', source: 'note', noteOrigin: 'import', createdAt: '2026-01-01T14:21:20Z',
   }),
   ana: lead({
     id: 'tour-ana', firstName: 'Ana', lastName: 'Cruz', title: 'Assistant Principal', email: null, phone: null,
     schoolDistrictId: 'tour-westlake', districtName: 'Westlake ISD', schoolId: 'tour-westlake-ms', schoolName: 'Westlake Middle School',
     matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Westlake ISD', matchedZohoAccountLevel: 'district',
-    source: 'note', interactionNotes: 'Met at the keynote.', createdAt: '2026-01-01T14:21:40Z',
+    source: 'note', noteOrigin: 'import', interactionNotes: 'Met at the keynote.', createdAt: '2026-01-01T14:21:40Z',
   }),
   grace: lead({
     id: 'tour-grace', firstName: 'Grace', lastName: 'Kim', title: 'Dean of Students', email: 'gkim@cedarisd.org', phone: null,
     schoolDistrictId: 'tour-cedar', districtName: 'Cedar ISD',
     matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Cedar ISD', matchedZohoAccountLevel: 'district',
-    source: 'form', qrChannel: null, createdAt: '2026-01-01T15:20:00Z',
+    // Added themselves by scanning the rep's own QR (the QR scene), so "QR scan".
+    source: 'form', qrChannel: null, intakePath: 'rep_qr', createdAt: '2026-01-01T15:20:00Z',
   }),
 };
 

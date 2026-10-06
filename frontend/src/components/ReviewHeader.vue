@@ -97,7 +97,7 @@
       </button>
     </div>
 
-    <!-- Source is for everyone on To review and Approved; the rep, conference
+    <!-- Source is for everyone on To review and Confirmed; the rep, conference
          and sync filters are only for the people who see every rep's leads.
          A rep's Rejected tab has nothing to slice, so it keeps no filter row. -->
     <div v-if="tab !== 'rejected' || !isSales" class="rs-filters">
@@ -164,7 +164,7 @@ const props = defineProps<{
 defineEmits<{ toggleReadiness: [key: LeadBucket]; sort: [tab: ReviewStatus, value: SortKey] }>();
 
 // The words are one word each on purpose (see the status row in the template).
-// "Ready" here is the same state as the card's "Ready to approve" chip.
+// "Ready" here is the same state as the card's "Ready to confirm" chip.
 const pills: { key: LeadBucket; label: string; dot: string }[] = [
   { key: 'ready', label: 'ready', dot: 'rs-dot-ready' },
   { key: 'needsInfo', label: 'incomplete', dot: 'rs-dot-info' },

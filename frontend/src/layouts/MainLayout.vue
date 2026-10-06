@@ -11,7 +11,7 @@
 
       <!-- Previewing someone: say so on every page, in words, with the way back.
            On a phone the switcher above is an icon with no label, so before this
-           an admin could be looking at a rep's Review (or approving their leads)
+           an admin could be looking at a rep's Review (or confirming their leads)
            with nothing on screen saying whose view it was. -->
       <div v-if="sessionStore.viewingAs" ref="previewBarEl" class="preview-bar" role="status">
         <q-icon name="visibility" size="18px" class="q-mr-sm" />

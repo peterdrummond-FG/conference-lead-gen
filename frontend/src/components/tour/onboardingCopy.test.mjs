@@ -131,7 +131,7 @@ test('nothing a rep reads uses developer words', () => {
 // The bold rule (see SceneCopy in tourCopy.ts): bold is only the name of a tab or
 // button the person taps, or SETUP as the word they text. Anything else bold reads
 // as random emphasis (a field label, a phone number), which is what this replaced.
-const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Review', 'Import', 'Export', 'Admin', 'Approve', 'Followed up', 'Yes, it downloaded', '?'];
+const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Review', 'Import', 'Export', 'Admin', 'Confirm', 'Followed up', 'Yes, it downloaded', '?'];
 test('bold is only a tab or button the person taps, or the word SETUP', () => {
   for (const text of allCopy()) {
     for (const [, word] of text.matchAll(/\*\*(.+?)\*\*/g)) {
@@ -169,7 +169,7 @@ test('the tour\'s leads are made up, and look like a new rep\'s Review', () => {
   const all = reviewLeads();
   assert.equal(all.length, 6);
   assert.ok(all.every((l) => l.id.startsWith('tour-')), 'sample lead ids must never look real');
-  assert.ok(all.every((l) => l.reviewStatus === 'needs_review'), 'a new rep has approved nothing');
+  assert.ok(all.every((l) => l.reviewStatus === 'needs_review'), 'a new rep has confirmed nothing');
   const by = Object.fromEntries(all.map((l) => [l.firstName, l]));
   // Priya's note had no phone or email: the real "Needs a phone or email" lead.
   assert.ok(leadFlags(by.Priya).some((f) => f.key === 'no-contact'));

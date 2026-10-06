@@ -7,7 +7,7 @@ export interface SceneCopy {
   // utils/smsNumber.ts, which Setup uses too). Nothing else is markup.
   // Bold follows ONE rule (a test holds it): bold only the name of a tab or
   // button the person taps in that sentence (Admin, Import, Setup, Kiosk, Export,
-  // Approve, Followed up, Yes, it downloaded), or SETUP as the word they text.
+  // Confirm, Followed up, Yes, it downloaded), or SETUP as the word they text.
   // Field labels, numbers and other mid-sentence phrases are plain; emphasis that
   // isn't something to tap reads as random.
   body: string;
@@ -67,14 +67,14 @@ export const SCENE_COPY: SceneCopyEntry[] = [
   },
   {
     id: 'review',
-    title: 'Check it, then approve it',
-    body: 'Every lead arrives already checked against Zoho. Tap one, fix anything missing, tick **Followed up**, then **Approve**.',
+    title: 'Check it, then confirm it',
+    body: 'Every lead arrives already checked against Zoho. Tap one, fix anything missing, tick **Followed up**, then **Confirm**.',
     note: 'Notes you add go to Zoho with the lead.',
   },
   {
     id: 'export',
     title: 'Export to Zoho',
-    body: 'Open **Export** and download your approved leads, ready to import into Zoho.',
+    body: 'Open **Export** and download your confirmed leads, ready to import into Zoho.',
     note: 'Then tap **Yes, it downloaded** so they are not in your next file.',
     managersOnly: true,
   },

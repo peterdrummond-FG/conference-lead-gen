@@ -11,8 +11,24 @@ import { escapeLike } from "./validate.ts";
 // needs. Confirmed via a throwaway debug function rather than assumed.
 // A plain follow-up query (attachDuplicateNames below) sidesteps the
 // ambiguity entirely.
+//
+// note:note_submissions is how a pasted-note lead says where it came from (SMS or
+// the Import page). It is named by its foreign key because a bare table name
+// would be ambiguous the day another relationship to note_submissions appears,
+// and only a derived word leaves the server, never the texter's phone number.
 export const CONTACT_SELECT =
-  "*, event:events(name), school_district:school_districts(name), school:schools(name), rep:profiles(name)";
+  "*, event:events(name), school_district:school_districts(name), school:schools(name), rep:profiles(name), note:note_submissions!contacts_source_note_id_fkey(from_phone, submitted_by)";
+
+// 'sms': one contact texted in (note_submissions.from_phone). 'import': pasted
+// on the Import page (submitted_by). A note lead whose submission row is gone
+// (source_note_id is ON DELETE SET NULL) is null: unknown, not guessed.
+// deno-lint-ignore no-explicit-any
+function noteOriginOf(c: any): "sms" | "import" | null {
+  if (!c.note) return null;
+  if (c.note.from_phone) return "sms";
+  if (c.note.submitted_by) return "import";
+  return null;
+}
 
 // deno-lint-ignore no-explicit-any
 export function toListItem(c: any, duplicateNames?: Record<string, DuplicateContext>) {
@@ -25,6 +41,8 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     title: c.title,
     source: c.source,
     qrChannel: c.qr_channel ?? null,
+    intakePath: c.intake_path ?? null,
+    noteOrigin: noteOriginOf(c),
     repId: c.rep_id ?? null,
     repName: c.rep?.name ?? null,
     eventId: c.event_id,

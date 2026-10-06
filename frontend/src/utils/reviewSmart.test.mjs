@@ -11,7 +11,7 @@ import {
 function lead(over = {}) {
   return {
     id: 'c1', firstName: 'Dana', lastName: 'Whitfield', email: 'dana@example.org', phone: null, title: null,
-    source: 'card_photo', qrChannel: null, repId: 'r1', repName: 'Rep', eventId: 'e1', eventName: 'Event One',
+    source: 'card_photo', qrChannel: null, intakePath: null, noteOrigin: null, repId: 'r1', repName: 'Rep', eventId: 'e1', eventName: 'Event One',
     state: 'TN', schoolDistrictId: 'd1', districtName: 'Knox County', schoolDistrictNameRaw: null,
     schoolId: null, schoolName: null, schoolNameRaw: null, matchStatus: 'new_account', matchAttempts: 0,
     matchedZohoAccountLevel: null, localDuplicateOfContactName: null, reviewStatus: 'needs_review',
@@ -189,7 +189,7 @@ test('the summary puts every lead in exactly one bucket, agreeing with its chip'
   assert.equal(n.ready, readyIds(list).length);
 });
 
-test('the checklist is all ticks exactly when the lead is ready to approve', () => {
+test('the checklist is all ticks exactly when the lead is ready to confirm', () => {
   const cases = [
     lead(),
     lead({ email: null, phone: null }),
@@ -290,22 +290,56 @@ test('leadBucket puts every to-review lead in exactly one pill, matching summary
 
 // ── Signup source ────────────────────────────────────────────────────────
 
-test('a form lead is split by the QR it came through; other sources ignore the channel', () => {
-  assert.equal(sourceKey({ source: 'form', qrChannel: 'booth' }), 'form_booth');
-  assert.equal(sourceKey({ source: 'form', qrChannel: 'session' }), 'form_session');
-  assert.equal(sourceKey({ source: 'form', qrChannel: null }), 'form_none');
-  assert.equal(sourceKey({ source: 'card_photo', qrChannel: 'booth' }), 'card_photo');
-  assert.equal(sourceKey({ source: 'voice_memo', qrChannel: null }), 'voice_memo');
-  assert.equal(sourceKey({ source: 'something_new', qrChannel: null }), 'other');
+const src = (over) => ({ source: 'form', qrChannel: null, intakePath: null, noteOrigin: null, ...over });
+
+test('a form lead is named by the door it came in by, then by the QR channel, else just "Form"', () => {
+  assert.equal(sourceKey(src({ intakePath: 'rep_qr' })), 'qr_scan');
+  assert.equal(sourceKey(src({ intakePath: 'kiosk' })), 'kiosk');
+  assert.equal(sourceKey(src({ qrChannel: 'booth' })), 'qr_booth');
+  assert.equal(sourceKey(src({ qrChannel: 'session' })), 'qr_session');
+  assert.equal(sourceKey(src({ intakePath: 'event_qr', qrChannel: 'booth' })), 'qr_booth');
+  assert.equal(sourceKey(src({ intakePath: 'event_qr' })), 'qr_scan');
+  // Legacy: before the door was recorded QR and Kiosk can't be told apart, so
+  // they are NOT relabelled as one of them.
+  assert.equal(sourceKey(src()), 'form');
 });
 
-test('chip wording: a form with no QR is just "Form"; the filter says "Form · no QR"', () => {
-  assert.equal(sourceLabel({ source: 'form', qrChannel: 'booth' }), 'Form · Booth');
-  assert.equal(sourceLabel({ source: 'form', qrChannel: null }), 'Form');
-  assert.equal(SOURCE_OPTIONS.find((o) => o.value === 'form_none').label, 'Form · no QR');
-  assert.equal(sourceLabel({ source: 'directory_photo', qrChannel: null }), 'Directory photo');
-  assert.equal(sourceTone({ source: 'form', qrChannel: null }), 'blue');
-  assert.equal(sourceTone({ source: 'note', qrChannel: null }), 'grey');
+test("the attendee's own booth/session answer never renames a rep's QR or the Kiosk", () => {
+  assert.equal(sourceKey(src({ intakePath: 'rep_qr', qrChannel: 'booth' })), 'qr_scan');
+  assert.equal(sourceKey(src({ intakePath: 'kiosk', qrChannel: 'session' })), 'kiosk');
+});
+
+test('a note is SMS or Imported note by where its note row came from; a note with no row is Other', () => {
+  assert.equal(sourceKey(src({ source: 'note', noteOrigin: 'sms' })), 'sms');
+  assert.equal(sourceKey(src({ source: 'note', noteOrigin: 'import' })), 'imported_note');
+  assert.equal(sourceKey(src({ source: 'note', noteOrigin: null })), 'other');
+});
+
+test('other sources ignore the form fields', () => {
+  assert.equal(sourceKey(src({ source: 'card_photo', qrChannel: 'booth', intakePath: 'kiosk' })), 'card_photo');
+  assert.equal(sourceKey(src({ source: 'directory_photo' })), 'list_photo');
+  assert.equal(sourceKey(src({ source: 'voice_memo' })), 'voice_memo');
+  assert.equal(sourceKey(src({ source: 'something_new' })), 'other');
+});
+
+test('the words people see: chip and filter agree', () => {
+  const labels = (over) => sourceLabel(src(over));
+  assert.equal(labels({ intakePath: 'rep_qr' }), 'QR scan');
+  assert.equal(labels({ qrChannel: 'booth' }), 'QR Booth');
+  assert.equal(labels({ qrChannel: 'session' }), 'QR Session');
+  assert.equal(labels({ intakePath: 'kiosk' }), 'Kiosk');
+  assert.equal(labels({}), 'Form');
+  assert.equal(labels({ source: 'card_photo' }), 'Card photo');
+  assert.equal(labels({ source: 'directory_photo' }), 'List photo');
+  assert.equal(labels({ source: 'voice_memo' }), 'Voice memo');
+  assert.equal(labels({ source: 'note', noteOrigin: 'sms' }), 'SMS');
+  assert.equal(labels({ source: 'note', noteOrigin: 'import' }), 'Imported note');
+  assert.equal(labels({ source: 'something_new' }), 'Other');
+  assert.deepEqual(SOURCE_OPTIONS.map((o) => o.label), [
+    'QR scan', 'QR Booth', 'QR Session', 'Kiosk', 'Form', 'Card photo', 'List photo', 'Voice memo', 'SMS', 'Imported note',
+  ]);
+  assert.equal(sourceTone(src({})), 'blue');
+  assert.equal(sourceTone({ source: 'note' }), 'grey');
 });
 
 // The lesson of contacts_source_check growing twice: a source added to the DB
@@ -319,8 +353,26 @@ test('every source the database allows has its own filter option', () => {
     if (m) allowed = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
   }
   assert.ok(allowed && allowed.length >= 5, 'could not find contacts_source_check');
+  // A note has no filter option of its own (it is SMS or Imported note), so give
+  // it the origin the way the API does.
   for (const source of allowed) {
-    assert.notEqual(sourceKey({ source, qrChannel: null }), 'other', `${source} needs a source option`);
+    assert.notEqual(sourceKey(src({ source, noteOrigin: 'sms' })), 'other', `${source} needs a source option`);
+  }
+});
+
+// Same lesson for the new column: a door the database allows but this file
+// doesn't know would silently read as "Form".
+test('every intake_path the database allows is a door sourceKey knows', () => {
+  const dir = new URL('../../../supabase/migrations/', import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  let allowed = null;
+  for (const f of files) {
+    const m = readFileSync(new URL(f, dir), 'utf8').match(/add column intake_path text check \(intake_path in \(([^)]+)\)\)/);
+    if (m) allowed = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  }
+  assert.ok(allowed && allowed.length === 3, 'could not find intake_path check');
+  for (const intakePath of allowed) {
+    assert.notEqual(sourceKey(src({ intakePath })), 'form', `${intakePath} needs a source option`);
   }
 });
 
@@ -332,26 +384,35 @@ test('filter options list every source and add Other only when a lead needs it',
 test('filtering by source keeps only that source; null keeps all', () => {
   const list = [
     lead({ id: 'a', source: 'form', qrChannel: 'booth' }),
-    lead({ id: 'b', source: 'form', qrChannel: 'session' }),
+    lead({ id: 'b', source: 'form', intakePath: 'kiosk' }),
     lead({ id: 'c', source: 'card_photo' }),
+    lead({ id: 'd', source: 'note', noteOrigin: 'import' }),
   ];
-  assert.deepEqual(filterBySource(list, 'form_booth').map((c) => c.id), ['a']);
+  assert.deepEqual(filterBySource(list, 'qr_booth').map((c) => c.id), ['a']);
+  assert.deepEqual(filterBySource(list, 'kiosk').map((c) => c.id), ['b']);
   assert.deepEqual(filterBySource(list, 'card_photo').map((c) => c.id), ['c']);
-  assert.equal(filterBySource(list, null).length, 3);
+  assert.deepEqual(filterBySource(list, 'imported_note').map((c) => c.id), ['d']);
+  assert.equal(filterBySource(list, null).length, 4);
 });
 
 test('source sort groups in the filter order, newest first inside a group', () => {
   const list = [
-    lead({ id: 'note-new', source: 'note', createdAt: '2026-09-05T10:00:00Z' }),
+    lead({ id: 'sms-new', source: 'note', noteOrigin: 'sms', createdAt: '2026-09-05T10:00:00Z' }),
     lead({ id: 'session', source: 'form', qrChannel: 'session', createdAt: '2026-09-02T10:00:00Z' }),
     lead({ id: 'card-old', source: 'card_photo', createdAt: '2026-09-01T10:00:00Z' }),
-    lead({ id: 'booth', source: 'form', qrChannel: 'booth', createdAt: '2026-09-03T10:00:00Z' }),
+    lead({ id: 'kiosk', source: 'form', intakePath: 'kiosk', createdAt: '2026-09-03T10:00:00Z' }),
     lead({ id: 'card-new', source: 'card_photo', createdAt: '2026-09-04T10:00:00Z' }),
+    lead({ id: 'scan', source: 'form', intakePath: 'rep_qr', createdAt: '2026-09-02T09:00:00Z' }),
   ];
-  assert.deepEqual(sortLeads(list, 'source').map((c) => c.id), ['booth', 'session', 'card-new', 'card-old', 'note-new']);
+  assert.deepEqual(sortLeads(list, 'source').map((c) => c.id), ['scan', 'session', 'kiosk', 'card-new', 'card-old', 'sms-new']);
 });
 
-test('search finds a lead by its source', () => {
-  const list = [lead({ id: 'a', source: 'voice_memo' }), lead({ id: 'b' })];
+test('search finds a lead by its source word', () => {
+  const list = [
+    lead({ id: 'a', source: 'voice_memo' }), lead({ id: 'b' }),
+    lead({ id: 'k', source: 'form', intakePath: 'kiosk' }), lead({ id: 's', source: 'note', noteOrigin: 'sms' }),
+  ];
   assert.deepEqual(searchLeads(list, 'voice memo').map((c) => c.id), ['a']);
+  assert.deepEqual(searchLeads(list, 'kiosk').map((c) => c.id), ['k']);
+  assert.deepEqual(searchLeads(list, 'sms').map((c) => c.id), ['s']);
 });
