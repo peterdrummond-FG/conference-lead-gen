@@ -230,7 +230,11 @@ Supabase CLI on this machine.
   fills the district in). Clear downstream answers on the person's own change
   (`changeState`/`changeDistrict`), never in a watcher: a page re-points the whole model at
   another lead in one go and a watcher wipes what it just loaded. Only our tables are used
-  (no NCES/Zoho import). Details: `docs/ARCHITECTURE.md`, "State, District and School".
+  (no NCES/Zoho import). A lead with a school and no district gets its district looked up by
+  `research-contact` (`resolvedDistrict`), stored by `finalize_contact_match` only if the lead
+  still has no district at write time and shown with its source; the "We'll look up the
+  district for you" hint is a promise about that pipeline. Details: `docs/ARCHITECTURE.md`,
+  "State, District and School".
 
 - **The tab is called "Kiosk", the URL is still `/connect`.** Only the label in
   `MainLayout.vue` changed. `/connect/<repSlug>` is printed on slides and QR
