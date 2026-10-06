@@ -128,12 +128,12 @@ test('the progress bar counts the remainder, not the whole tour', () => {
 });
 
 // ── the lists agree ──
-test('the scene ids are the same in the rules, the tour and the Edge Function', async () => {
+test('the scene ids are the same in the rules, the tour and the Edge Function (_shared/onboardingEvent.ts)', async () => {
   const { readFileSync } = await import('node:fs');
   const { dirname, join } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const here = dirname(fileURLToPath(import.meta.url));
-  const fn = readFileSync(join(here, '../../../supabase/functions/profiles-complete-onboarding/index.ts'), 'utf8');
+  const fn = readFileSync(join(here, '../../../supabase/functions/_shared/onboardingEvent.ts'), 'utf8');
   const inFn = /RESUME_IDS = \[([^\]]*)\]/.exec(fn)[1].match(/"([a-z-]+)"/g).map((s) => s.replaceAll('"', ''));
   assert.deepEqual([...inFn].sort(), [...RESUME_IDS].sort());
   assert.deepEqual(SCENES.map((s) => s.id), ['setup', 'send', 'qr', 'review', 'export', 'admin']);
