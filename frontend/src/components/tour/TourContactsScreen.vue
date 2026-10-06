@@ -7,16 +7,10 @@
   <div class="tsr-root">
     <div class="tsr-scroll">
       <div class="rs-page">
-        <!-- The app's own header (tabs, ready / incomplete / processing, search, filters),
-             with sample numbers and nothing wired to anything. -->
-        <ContactsHeader
-          v-model:tab="tab"
-          :tab-defs="TAB_DEFS" :counts="{ needs_review: toReview.length, approved: approvedCount, rejected: 0 }"
-          :summary="counts" :readiness-filter="null" :is-sales="!manager"
-          :sort-options="SORT_OPTIONS" :sort-by-tab="DEFAULT_SORT"
-          :event-filter-options="NO_OPTIONS" :rep-filter-options="REP_OPTIONS"
-          :synced-filter-options="NO_OPTIONS" :source-options="SOURCE_OPTIONS"
-        />
+        <!-- The app's own header (search, Filter, Import, the status bar and the
+             conference line), with sample numbers and nothing wired to anything.
+             TOUR PASS PENDING: the scenes' words and taps still describe the old tabs. -->
+        <ContactsHeader v-model:segment="segment" :counts="counts" :conference-line="manager ? 'All conferences' : TOUR_CONFERENCE" />
 
         <!-- Managers only, like the real page: scans nobody could place under a
              conference wait here for Solutions Success. -->
@@ -28,16 +22,8 @@
         <div class="rs-split" :class="{ 'is-split': !isPhone }">
           <div class="rs-left">
             <section class="rs-section">
-              <div class="rs-sec-head">
-                <div class="rs-sec-title">
-                  <div class="rs-sec-name">{{ manager ? 'All conferences' : TOUR_CONFERENCE }}</div>
-                  <div class="rs-sec-sub">{{ manager ? '' : 'This event · ' }}{{ toReview.length }} {{ toReview.length === 1 ? 'lead' : 'leads' }}</div>
-                </div>
-                <q-btn v-if="readyN > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyN}`" class="rs-ready-btn" />
-              </div>
               <ContactList
-                :leads="toReview"
-                tab="needs_review"
+                :leads="leads"
                 :active-id="isPhone ? null : (activeId ?? null)"
                 :compact="!isPhone"
                 :busy="noBusy"
@@ -91,7 +77,7 @@ import ContactEditor from '@/components/contacts/ContactEditor.vue';
 import UnassignedScansList from '@/components/UnassignedScansList.vue';
 import { TOUR_CONFERENCE, tourUnassigned } from './tourSampleData';
 import ContactsHeader from '@/components/ContactsHeader.vue';
-import { DEFAULT_SORT, SORT_OPTIONS, sourceFilterOptions, summaryCounts, type ReviewStatus } from '@/utils/contactsList';
+import { statusCounts, type StatusSegment } from '@/utils/contactsList';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 
 const props = defineProps<{
@@ -114,27 +100,20 @@ defineEmits<{
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 const noBusy = new Set<string>();
-const tab = ref<ReviewStatus>('needs_review');
-const TAB_DEFS: { value: ReviewStatus; label: string }[] = [
-  { value: 'needs_review', label: 'To review' },
-  { value: 'approved', label: 'Confirmed' },
-  { value: 'rejected', label: 'Rejected' },
-];
-const NO_OPTIONS = [{ label: 'All', value: null as string | null }];
-const REP_OPTIONS = [{ label: 'All reps', value: null as string | null }];
-const SOURCE_OPTIONS = sourceFilterOptions([]);
+const segment = ref<StatusSegment>('all');
 const unassigned = tourUnassigned();
 
-const toReview = computed(() => props.leads.filter((l) => l.reviewStatus === 'needs_review'));
 // A first-time rep has confirmed nothing yet; a scene that stands for a manager's
 // busier account passes approvedBase.
-const approvedCount = computed(() => (props.approvedBase ?? 0) + props.leads.filter((l) => l.reviewStatus === 'approved').length);
-const counts = computed(() => summaryCounts(toReview.value));
-const readyN = computed(() => counts.value.ready);
+const counts = computed(() => {
+  const n = statusCounts(props.leads);
+  const base = props.approvedBase ?? 0;
+  return { ...n, confirmed: n.confirmed + base, all: n.all + base };
+});
 const active = computed(() => props.leads.find((l) => l.id === props.activeId) ?? null);
 const position = computed(() => {
-  const i = toReview.value.findIndex((l) => l.id === props.activeId);
-  return i < 0 ? null : { index: i + 1, total: toReview.value.length };
+  const i = props.leads.findIndex((l) => l.id === props.activeId);
+  return i < 0 ? null : { index: i + 1, total: props.leads.length };
 });
 </script>
 
@@ -160,12 +139,6 @@ const position = computed(() => {
 .rs-split { display: block; }
 .rs-split.is-split { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .rs-pane { background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 14px; overflow: hidden; }
-.rs-sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 48px; padding: 0 2px 6px; }
-.rs-sec-head > .rs-sec-title { flex: 1 1 10rem; min-width: 0; }
-.rs-sec-title { display: flex; flex-direction: column; min-width: 0; text-align: left; }
-.rs-sec-name { font-size: 16px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
-.rs-sec-sub { font-size: 13px; color: #5B6670; }
-.rs-ready-btn { min-height: 40px; padding: 0 12px; flex: none; }
 @media (max-width: 599px) {
   .rs-page { padding: 10px 12px 28px; }
 }

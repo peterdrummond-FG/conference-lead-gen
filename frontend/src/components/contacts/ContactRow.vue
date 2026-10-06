@@ -1,5 +1,5 @@
 <template>
-  <div class="lr" :class="{ 'is-active': active, 'is-busy': busy, 'is-card': phone }" :data-lead-id="contact.id" @click="onCardClick">
+  <div class="lr" :class="[`st-${status}`, { 'is-active': active, 'is-busy': busy, 'is-card': phone }]" :data-lead-id="contact.id" @click="onCardClick">
     <q-checkbox
       v-if="selectable"
       :model-value="selected"
@@ -21,9 +21,12 @@
         </span>
         <span v-if="orgLine(contact)" class="lr-org">{{ orgLine(contact) }}</span>
         <span v-if="showEvent || showRep" class="lr-meta">{{ [showEvent ? contact.eventName : null, showRep ? contact.repName : null].filter(Boolean).join(' · ') }}</span>
-        <span v-if="contact.interactionNotes" class="lr-note" :class="{ 'lr-note-2': tab === 'approved' }">{{ contact.interactionNotes }}</span>
+        <span v-if="contact.interactionNotes" class="lr-note" :class="{ 'lr-note-2': confirmed }">{{ contact.interactionNotes }}</span>
         <span class="lr-chips">
-          <template v-if="tab === 'needs_review'">
+          <!-- A confirmed lead sits in the same list as the unconfirmed ones, so the card
+               has to say so in words, not only in its (softer green) edge. -->
+          <LeadChip v-if="confirmed" tone="green"><q-icon name="check" size="14px" />Confirmed</LeadChip>
+          <template v-if="unconfirmed">
             <LeadChip v-if="flags.length === 0" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
             <LeadChip v-for="f in shownFlags" :key="f.key" :tone="f.tone">{{ f.label }}</LeadChip>
           </template>
@@ -47,7 +50,7 @@
            follow-up and note controls save straight away, so they stay on the
            compact desktop rows too; Confirm / Reject live in the pane there. -->
       <div v-if="showBar" class="lr-bar">
-        <div v-if="tab !== 'rejected'" class="lr-bar-left">
+        <div v-if="!rejected" class="lr-bar-left">
           <q-checkbox
             :model-value="contact.followedUp"
             label="Followed up"
@@ -75,7 +78,7 @@
         </div>
 
         <div class="lr-bar-right">
-          <template v-if="tab === 'needs_review' && !compact">
+          <template v-if="unconfirmed && !compact">
             <!-- Still in the pipeline: nothing to decide yet, so a bar stands where the
                  buttons will be. The list reloads itself, which swaps them in. -->
             <ProcessingBar v-if="processing" class="lr-proc" />
@@ -105,7 +108,7 @@
             </template>
           </template>
 
-          <q-btn v-else-if="tab === 'rejected' && !compact" outline no-caps color="primary" icon="undo" label="Restore" class="lr-btn lr-btn-main" :disable="busy" @click="$emit('restore')" />
+          <q-btn v-else-if="rejected && !compact" outline no-caps color="primary" icon="undo" label="Restore" class="lr-btn lr-btn-main" :disable="busy" @click="$emit('restore')" />
         </div>
       </div>
     </div>
@@ -118,11 +121,10 @@ import { useQuasar } from 'quasar';
 import LeadChip from '@/components/contacts/LeadChip.vue';
 import ProcessingBar from '@/components/contacts/ProcessingBar.vue';
 import type { ContactListItem } from '@/types/review';
-import { accountBadge, fullName, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, sourceLabel, sourceTone, type ReviewStatus } from '@/utils/contactsList';
+import { accountBadge, fullName, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, rowStatus, sourceLabel, sourceTone } from '@/utils/contactsList';
 
 const props = defineProps<{
   contact: ContactListItem;
-  tab: ReviewStatus;
   active?: boolean;
   // Desktop split pane: the pane owns Confirm / Reject, so the list row stays
   // a compact summary (Followed up still saves straight from here).
@@ -148,7 +150,14 @@ const $q = useQuasar();
 // Phone widths drop the button labels to icons so the action bar fits one line.
 const phone = computed(() => $q.screen.lt.sm);
 // Nothing to show on a compact rejected row (its Restore lives in the pane).
-const showBar = computed(() => props.tab !== 'rejected' || !props.compact);
+const showBar = computed(() => !rejected.value || !props.compact);
+// The list is one deck of every status, so each row reads its own: unconfirmed (the
+// old To review), confirmed, or rejected (only in the Rejected view). `status` is
+// finer (ready / needs info / processing) and names the edge colour.
+const status = computed(() => rowStatus(props.contact));
+const unconfirmed = computed(() => props.contact.reviewStatus === 'needs_review');
+const confirmed = computed(() => props.contact.reviewStatus === 'approved');
+const rejected = computed(() => props.contact.reviewStatus === 'rejected');
 
 // On a phone the whole card opens the lead, not just the name. The identity block
 // stays the one real <button> (keyboard, screen readers); this only widens the
@@ -175,17 +184,37 @@ const badge = computed(() => accountBadge(props.contact));
 
 <style scoped>
 .lr {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 4px;
-  padding: 10px 12px 10px 8px;
+  padding: 10px 12px 10px 12px;
   background: #fff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  border-left: 3px solid transparent;
 }
+/* The left edge ALWAYS means status, never "this one is open": green ready, orange
+   needs info, blue processing, soft green confirmed, grey rejected. The open lead
+   is a background tint and an outline instead (it used to be this edge, in blue,
+   which would now read as "processing"). */
+.lr::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--edge, transparent);
+  pointer-events: none;
+}
+.lr.st-ready { --edge: #1E8E3E; }
+.lr.st-needsInfo { --edge: #E07B00; }
+.lr.st-processing { --edge: #0067AC; }
+.lr.st-confirmed { --edge: #7CC49A; }
+.lr.st-rejected { --edge: #B6BEC6; }
 .lr.is-active {
   background: #F1F8FD;
-  border-left-color: var(--q-primary);
+  outline: 2px solid var(--q-primary);
+  outline-offset: -2px;
 }
 .lr.is-busy { opacity: 0.6; }
 
@@ -275,13 +304,13 @@ const badge = computed(() => accountBadge(props.contact));
     margin: 0 0 8px;
     padding: 12px;
     border: 1px solid rgba(0, 0, 0, 0.08);
-    border-left-width: 3px;
     border-radius: 12px;
+    overflow: hidden;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     cursor: pointer;
     -webkit-tap-highlight-color: rgba(0, 103, 172, 0.08);
   }
-  .lr.is-card.is-active { border-left-color: var(--q-primary); }
+  .lr.is-card.is-active { background: #F1F8FD; }
   .lr.is-card .lr-bar {
     margin-top: 8px;
     padding-top: 6px;

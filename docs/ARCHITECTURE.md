@@ -379,9 +379,9 @@ Things to preserve:
   in fast mode) for every variant (rep/manager QR, phone/laptop, import-only) and fails if
   a declared length is more than 15% off. A smooth scroll's real duration isn't modelled,
   hence the allowance. Re-measure with `TOUR_LENGTHS_PRINT=1`. CI used to run only the
-  frontend typecheck, not `npm test`, so none of these tests (Smart view, tour copy)
+  frontend typecheck, not `npm test`, so none of these tests (Contacts list logic, tour copy)
   gated anything; both CI files now run it.
-- **The copy makes promises about Setup and Contacts.** If Smart's Ready rule, Setup's flow,
+- **The copy makes promises about Setup and Contacts.** If the Ready rule, the status bar's words, Setup's flow,
   the text-in replies or the intake form change, update the tour's copy in the same change.
 
 ### State, District and School (the pickers)
@@ -647,11 +647,10 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 `contacts.followed_up` (`20260928130000_add_contact_followed_up.sql`) is a
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
 any skill or auto-classification — a rep toggles it directly via
-`contacts-patch`, and it saves as they tap. It's on every To review and Confirmed
-row and at the top of the editor (see "Contacts" below). The
-Confirmed tab's follow-up filter is the only place it drives behavior beyond
-display — the All / To follow up /
-Followed up toggle plus a default "Follow up first" sort — and it's a
+`contacts-patch`, and it saves as they tap. It's on every contact's
+row and at the top of the editor (see "Contacts" below). Filter's **Followed up**
+(Any / Not yet / Done) and the confirmed group's default "Follow up first" order are the only
+places it drives behavior beyond display, and it's a
 client-side filter over the already-loaded list (same mechanism as the
 conference filter), not a server query param. `export-csv` carries it through
 as its own `Follow Up Done` column —
@@ -684,24 +683,25 @@ own names changed; the database's words did not (`review_status`, `'needs_review
 `ReviewStatus`, the `contacts-*` functions, `types/review.ts`). (There used to be a second
 "Classic" card-grid view behind a ⋮ switch; it was retired 2026-10-01, and the
 switch did nothing on phones anyway. A browser that still has `ckh.review.view`
-saved just ignores it.) It is a list of compact rows
-with a plain-language flag for why a lead needs a look (or a green "Ready to confirm"),
-live tab counts, search and sort, one-tap Confirm / Reject with a 6-second
+saved just ignores it.) It is **one list, no tabs** (redesigned 2026-10-06): compact rows
+with a plain-language flag for why a contact needs a look (or a green "Ready to confirm"),
+a status bar with live counts, search, Filter, one-tap Confirm / Reject with a 6-second
 Undo, "Confirm all N", tap-to-call / tap-to-email, and Followed up, Add
 note straight from the row. On a desktop (≥1024px)
 the list sits beside a sticky editor pane (J / K move, C confirms, R
-rejects); below that the same editor is a bottom sheet. Leaving a lead with
-unsaved edits asks first.
+rejects, both only on an unconfirmed contact); below that the same editor is a bottom
+sheet. Leaving a lead with unsaved edits asks first.
 
-Header, top to bottom: underline tabs (To review / Confirmed / Rejected, with
-counts); **one row** of ready / incomplete / processing filters plus **Import**
-(each cell stacks number over word so four fit at 320px); then search, sort and,
-for a rep, the this-event / past-events icon. There is no title row (the nav bar
-says Contacts). The account bar carries a **QR** button (`RepQrDialog.vue`, the
-same phone-screen artwork Setup saves, drawn on screen as a `blob:` image because the CSP forbids `data:`) for anyone with a
+Top of the page, one line each: **search** ("Search contacts"), **Filter** (a count badge
+when anything differs from the defaults) and **Import** (icon-only under 375px); then the
+**status bar**, one joined control, All · Ready · Needs info · Processing · Confirmed, each
+with a coloured dot, its count and its word; then the **conference line**. There is no title
+row (the nav bar says Contacts). On a laptop the top row sits at the top of the list column.
+The account bar carries a **QR** button (`RepQrDialog.vue`, the
+same phone-screen artwork Setup saves, drawn on screen as a `blob:` image because the CSP forbids `data:`) for
 `repSlug`, or the previewed rep's.
 
-Rules worth knowing before changing Smart:
+Rules worth knowing before changing Contacts:
 
 - **"Approve" is "Confirm" in every word a person reads** (2026-10-06). Only the words changed: the stored status is still `approved`, and `contacts-bulk-approve`, `reviewStatus: 'approved'`, `approveClick` and the like keep their names. The keyboard shortcut moved from A to C. `utils/confirmWording.test.mjs` fails if a screen says Approve again. The editor's separate **Confirm match** button (confirms the Zoho match) is unchanged. Reject / Rejected are unchanged.
 - **Nothing is ever auto-confirmed** (Peter, 2026-10-06). A match result always leaves a lead in `needs_review`; `finalize_contact_match` no longer touches `review_status`. The only writers of `approved` are a person: a lead's Confirm (`contacts-patch`), "Confirm all N" (`contacts-bulk-approve`) and Undo/restore. `scripts/check-no-auto-confirm.mjs` (CI) fails if server code, the agents, the n8n pipelines or workflow nodes, or a migration from this decision on writes `approved` or `auto_approved = true`, and the database refuses `auto_approved = true` (`contacts_never_auto_approved`). `contacts.auto_approved` stays as history. A queue scan that Solutions Success files (`assign_unassigned_submission`) arrives as `needs_review` like any new lead.
@@ -709,52 +709,60 @@ Rules worth knowing before changing Smart:
   possible duplicate, has an email or phone, and has a school or district.
   Bulk confirm only ever sends ready ids; the server still skips any pending
   ones and the response is read and reported.
-- **Saving never moves a lead.** To review is plain arrival order (newest first);
-  there is no "needs attention first" sort. That sort ranked on the readiness flags,
-  so on 2026-10-01 adding a district to the newest lead flipped it to Ready and sent
-  it from row 1 to row 41 the instant Save landed. The sorts that still read editable
-  fields (Follow up first) are computed once (`buildRank`, on load / sort
-  change / tab switch) and kept (`orderByRank`), not re-run live. The background poll
-  (`load({ keepOrder: true })`) keeps that order and yields to any write in flight
-  rather than putting stale values back. "Save changes" says "Saved <name>".
-- **The status cells are filters.** "ready / incomplete / processing"
-  over To review (`leadBucket`, same rules as the chips) are toggles: one at a time,
-  tap again to clear, counts always over the whole tab (of the current this-event / past-events view), never just the filtered list. The lead just edited stays
-  listed even if the edit stops it matching a pill or the search (`pinnedId`), until
-  the rep opens another lead or changes the filter. The editor's checklist hides
-  "Checked against Zoho" and "Not a duplicate" unless they are the problem.
-- **This event / past events (reps).** One icon, calendar for this event and a
-  filled history icon for past events. Tab counts, the status cells and the lists
-  all follow it, so a number matches the list under it. Past events open folded,
-  one section per conference. Admin and Solutions Success have one flat list and
-  no toggle.
-- **Phone layout.** Below 600px each lead is a card: a › chevron, the whole card
-  opens the lead, and the footer holds only what saves in one tap. A ready lead
-  has a round ✕ and ✓ (no words); a lead that can't be confirmed yet has a cue from
-  `leadCue` ("Add missing info", "Resolve duplicate", "Open to retry"); a
-  processing lead has `ProcessingBar`. Add note lives in the open lead there.
-  A strip above the To review list (`summaryCounts`) says how many are ready to
-  confirm, need info, or are processing (and filters by each), and the open lead
-  checks the conditions of `isReady` as a list (`readinessChecklist`; the Zoho and
-  duplicate lines show only when they are the problem). A test keeps
-  the checklist, the chip and `isReady` in agreement: change one, change all.
+- **The deck: unconfirmed first, confirmed after, and nothing moves under a finger.**
+  Unconfirmed contacts (Ready / Needs info / Processing, interleaved) come first in plain
+  arrival order (newest first); confirmed contacts follow at the bottom of the same list;
+  rejected ones are hidden (Filter, Show: Rejected). There is still no "needs attention
+  first" sort: that sort ranked on the readiness flags, so on 2026-10-01 adding a district
+  to the newest lead flipped it to Ready and sent it from row 1 to row 41 the instant Save
+  landed. Orders that read editable fields are computed once (`buildRank`, on load / sort
+  change) and kept (`orderByRank`), not re-run live; the background poll
+  (`load({ keepOrder: true })`) keeps that order and yields to any write in flight.
+  **Confirming a contact one at a time turns it confirmed IN PLACE** (green edge, "Confirmed"
+  chip, no ✓ ✕): the page *holds* it (`held`, `orderDeck`). It slides to the top of the
+  confirmed group (a ~350ms FLIP, instant under `prefers-reduced-motion`; `TransitionGroup`'s
+  move class in `ContactList.vue`) only when the person goes on to another contact: opens
+  another card, ticks another card's ✓ / ✕ / Followed up, or presses Next / J / K, and
+  on a laptop Confirm's auto-advance counts as selecting the next contact. Changing the
+  search, a filter or the status bar settles too; **Confirm all N settles right away**.
+  The held and just-edited (`pinnedId`) contacts stay listed even when they stop matching the
+  status bar or a filter, until the person moves on.
+- **The status bar is the filter.** One segment at a time; tap the selected one again for
+  All. It is ALWAYS drawn, even when every count is 0 (zero segments go grey and, other than
+  All, are disabled): the old pills vanished with no contacts and left Import floating alone.
+  Counts (`statusCounts`, same rules as the chips via `rowStatus`) follow conference, search,
+  source and followed-up, so a number is what the list shows. With **Ready** selected a full
+  width green "Confirm all N" sits above the list; it acts only on what is on screen. A
+  card's 4px left edge always means status (`rowStatus`): green ready, orange needs info,
+  blue processing, soft green confirmed, grey rejected; the open contact is a tint and an
+  outline, never the edge.
+- **Which conference** (`homeConference`, `inConferenceView`, `conferenceLine`). A rep sees
+  their current conference; with none, their most recent one (the line then says "Your most
+  recent conference: X"); typing a search looks across ALL their conferences and the cards name
+  theirs; managers default to All conferences. Reps can choose Earlier or All conferences in
+  Filter, which keep the per-conference sections (`groupByEvent`, the first open). The line under
+  the status bar opens Filter at Conference. Link / Unlink are gone from this page: **Setup
+  owns the conference** (a rep with no conference and no contacts gets an empty state with a
+  Go to Setup button).
+- **Filter** (`ContactsFilter.vue`, state in `ContactFilters`): a bottom sheet under 1024px, a
+  dropdown under the button on a laptop. Show (Contacts | Rejected), Conference, Followed up,
+  Source, Sort (applies within the unconfirmed group), and for managers a Team section (Rep,
+  Sent to Zoho: the server filters those two). Reset, and a sticky "Show N contacts".
+  Rejected view: a slim "Showing rejected contacts (n)" bar, Select all / Delete selected,
+  Restore on the cards.
 - **Processing** (`isProcessing`): a lead whose match is still `pending` and not
   yet given up on has no Confirm and no Reject, in the editor or on the row. A
   notice ("We're still processing this contact…") takes the buttons' place, and
   `ContactsPage` re-fetches quietly every 8 seconds while any lead is processing,
   which is what brings the buttons back. A *stuck* match (attempts exhausted) is
   not processing: it keeps Reject, loses Confirm, and points at Retry match.
-- Smart loads all three statuses at once (six requests for a rep: current and
-  past scope) so tab counts are live and approve/reject/undo move a lead
-  between tabs locally. No backend change was needed.
-- A rep sees their current event first, then past events as collapsible
-  sections ordered by each event's most recent lead. `contacts-list` carries
-  no event date, so that proxy is computed over every status, not the visible
-  tab, to keep the order stable when switching tabs.
-- Empty states are deliberate: "You're all caught up" only when To review is
-  empty and the rep has other leads; a rep with no leads at all is told to join
-  a conference (with a Link button); a search or filter with no hits offers to
-  clear it.
+- All three statuses are loaded at once (six requests for a rep: current and past
+  scope; the page filters by conference itself) so the status bar's counts are live and
+  confirm / reject / undo move a contact between the lists locally. No backend change was
+  needed. `contacts-list` carries no event date, so section order uses the event whose most
+  recent contact is newest, computed over every status.
+- Empty states are deliberate: nothing matches (clear search and filters), no contacts yet
+  (or "choose a conference in Setup" for a rep with none), and nothing rejected.
 - Reps get "New / Existing school / district" and the contact-already-in-Zoho
   banner and candidate picker; the match score, opportunity line and full
   "Account: ..." wording are Admin / Solutions Success only (`isSales` in
@@ -778,8 +786,7 @@ Rules worth knowing before changing Smart:
 - **Heat is retired (2026-10-05); Source replaced it.** The hot/warm/cold control,
   chip and "Hot first" sort, the classifier skill, its n8n pipeline and local-agent
   loop, and the DB trigger that fired it are gone. `contacts.contact_intent*` stays
-  as inert history (~17 rows). Contacts' **Source** select (everyone, To review and
-  Confirmed; admin/Solutions Success also on Rejected) filters by how a lead was
+  as inert history (~17 rows). Contacts' **Source** filter (Filter -> Source; everyone, on every list) filters by how a lead was
   captured, and "Source" is a sort. The labels (2026-10-06): **QR scan** (a rep's own
   reusable QR), **QR Booth / QR Session** (the older per-event QR with a channel),
   **Kiosk** (the in-app Kiosk tab), **Form** (legacy only: a form lead from before the

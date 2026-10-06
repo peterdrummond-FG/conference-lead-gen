@@ -1,9 +1,11 @@
 <template>
-  <div class="ll" role="list">
+  <!-- TransitionGroup is here only for its move animation: a confirmed contact that
+       is settled slides down to the confirmed group (~350ms) instead of jumping. It
+       defines no enter / leave, so a row that appears or goes does neither. -->
+  <TransitionGroup name="ll" tag="div" class="ll" role="list">
     <div v-for="c in leads" :key="c.id" role="listitem">
       <ContactRow
         :contact="c"
-        :tab="tab"
         :active="c.id === activeId"
         :compact="compact"
         :show-event="showEvent"
@@ -20,17 +22,15 @@
         @update:selected="(v: boolean) => $emit('select', c.id, v)"
       />
     </div>
-  </div>
+  </TransitionGroup>
 </template>
 
 <script setup lang="ts">
 import ContactRow from '@/components/contacts/ContactRow.vue';
 import type { ContactListItem } from '@/types/review';
-import type { ReviewStatus } from '@/utils/contactsList';
 
 defineProps<{
   leads: ContactListItem[];
-  tab: ReviewStatus;
   activeId: string | null;
   busy: Set<string>;
   compact?: boolean;
@@ -61,6 +61,12 @@ defineEmits<{
   overflow: hidden;
 }
 .ll > div:last-child :deep(.lr) { border-bottom: 0; }
+
+/* The slide. Instant under prefers-reduced-motion. */
+.ll-move { transition: transform 0.35s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .ll-move { transition: none; }
+}
 
 /* Phone: the rows are cards of their own (see ContactRow), so the shared
    white box around them goes, leaving a gap between cards instead. */
