@@ -108,7 +108,7 @@ node scripts/deploy-functions.mjs              # all
 node scripts/deploy-functions.mjs export-csv   # some
 node scripts/deploy-functions.mjs --dry-run    # plan, no token needed
 
-# Repo guards (both run in CI)
+# Repo guards (both run in CI; also node scripts/check-no-auto-confirm.mjs)
 node scripts/check-skill-profiles.mjs
 bash scripts/check-deployed-functions.sh
 
@@ -193,12 +193,33 @@ Supabase CLI on this machine.
 - **Review is one view, and its rules live in one file.** `/review` is
   `ReviewSmart.vue` (the old Classic view and its ⋮ switch were retired
   2026-10-01). Its readiness / flag / sort / search / grouping logic is
-  `frontend/src/utils/reviewSmart.ts` with tests; "Ready to approve"
-  (`READY_LABEL`; one-tap ✓, "Approve all N") means match finished, no possible
+  `frontend/src/utils/reviewSmart.ts` with tests; "Ready to confirm"
+  (`READY_LABEL`; one-tap ✓, "Confirm all N") means match finished, no possible
   duplicate, an email or phone, and a school or district. Change the rule there,
   not in a component. To review is newest-first and **must not sort on
   readiness** (it made a just-saved lead vanish to the bottom). Details:
   `docs/ARCHITECTURE.md`, "Review".
+
+- **Nothing is ever auto-confirmed, and "Confirm" is only a word.** Reps always
+  confirm a lead (Peter, 2026-10-06). `finalize_contact_match` used to set
+  `review_status = 'approved'` on a high-confidence match, which sent a lead to
+  Zoho with no person looking; it now always leaves the lead in `needs_review`,
+  and the database refuses `auto_approved = true`. The only writers of
+  `approved` are a person: a lead's Confirm and Undo/restore (`contacts-patch`) and
+  "Confirm all N" (`contacts-bulk-approve`). `scripts/check-no-auto-confirm.mjs`
+  fails CI if anything else writes it. The button says "Confirm", the tab
+  "Confirmed", the shortcut is C; the stored status, API names and
+  `contacts-bulk-approve` keep "approve" (`confirmWording.test.mjs` holds the
+  words, not the identifiers).
+
+- **Lead sources have plain names, and only some are stored.** Review's chips
+  and Source filter say QR scan, QR Booth, QR Session, Kiosk, Form (legacy only),
+  Card photo, List photo, Voice memo, SMS, Imported note. `contacts.intake_path`
+  (`rep_qr`/`event_qr`/`kiosk`, set by `contacts-create` from the request, carried
+  through `unassigned_submissions`) tells QR scan from Kiosk; SMS vs Imported note
+  is read from `note_submissions` at list time. `qr_channel` is the attendee's own
+  answer and is what Zoho's "Capture Channel" column exports, so don't reuse it for
+  anything else. Old form leads stay "Form": there is nothing to backfill them from.
 
 - **The tab is called "Kiosk", the URL is still `/connect`.** Only the label in
   `MainLayout.vue` changed. `/connect/<repSlug>` is printed on slides and QR
@@ -226,7 +247,7 @@ Supabase CLI on this machine.
   component (scripts find things by their own labels). The words are promises about the
   pipeline: a first-time rep isn't linked yet, so the tour shows the real from-scratch
   SETUP conversation (checked against `twilio-webhook`'s source), a lead that just
-  arrived is *processing*, not Ready, and "Ready to approve" / notes-reach-Zoho /
+  arrived is *processing*, not Ready, and "Ready to confirm" / notes-reach-Zoho /
   scans-wait-for-Solutions-Success must stay true. If you change Smart's Ready rule,
   Setup's flow, the SETUP replies, the intake form or what `export-csv` emits, update
   `components/tour/tourCopy.ts` / `tourText.ts` too; the tests catch the replies, form
@@ -309,7 +330,7 @@ version:
   place it applies, in the same change.
 - **Fix the class, not the instance.** A fabricated CRM id led to a regex on
   two fields; fourteen others stayed unvalidated, including the one that
-  auto-approves a lead for export.
+  then auto-approved a lead for export (auto-approval is gone, see below).
 - **Prose is not a control.** If a doc states a guarantee, something in the
   runtime must enforce it. "X is reachable but don't use X" is a finding.
 - **Verify the running system, not the artifact.** Deleting source is not
