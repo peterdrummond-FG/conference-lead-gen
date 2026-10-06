@@ -190,18 +190,21 @@ Supabase CLI on this machine.
   what `export-csv` emits, update Contacts' tooltips (`ContactEditor.vue`,
   `AddNoteDialog.vue`, `ContactRow.vue`) too — and redeploy `export-csv`.
 
-- **Contacts is one view, and its rules live in one file.** `/contacts` (it was
-  Review until 2026-10-06; `/review` redirects, query kept) is
-  `ContactsPage.vue` (the old Classic view and its ⋮ switch were retired
-  2026-10-01). Its readiness / flag / sort / search / grouping logic is
-  `frontend/src/utils/contactsList.ts` with tests; "Ready to confirm"
-  (`READY_LABEL`; one-tap ✓, "Confirm all N") means match finished, no possible
-  duplicate, an email or phone, and a school or district. Change the rule there,
-  not in a component. To review is newest-first and **must not sort on
-  readiness** (it made a just-saved lead vanish to the bottom). Details:
-  `docs/ARCHITECTURE.md`, "Contacts". The database's words keep "review"
-  (`review_status`, `needs_review`, `ReviewStatus`, `types/review.ts`): only the
-  page's own names changed.
+- **Contacts is one list, and its rules live in one file.** `/contacts` (Review until
+  2026-10-06; `/review` redirects, query kept) is `ContactsPage.vue`: no tabs; unconfirmed
+  contacts first (newest first), confirmed after, rejected hidden behind Filter → Show:
+  Rejected. Its readiness / status / sort / search / conference logic is
+  `frontend/src/utils/contactsList.ts` with tests; "Ready to confirm" (`READY_LABEL`;
+  one-tap ✓, "Confirm all N") means match finished, no possible duplicate, an email or
+  phone, and a school or district. Change the rule there, not in a component. The list
+  **must not sort on readiness** (it made a just-saved lead vanish to the bottom), and
+  **confirming must not move the row**: a contact confirmed one at a time is held in place
+  and slides down only when the person goes on to another contact (`orderDeck`; bulk
+  confirm settles at once). The slide animates only for that settle (a TransitionGroup
+  animates *any* re-render that moves rows, and a resize once stacked cards on top of each
+  other at 320px). Conferences are chosen in Setup, never on this page. The database keeps
+  its "review" words (`review_status`, `needs_review`, `ReviewStatus`, `types/review.ts`).
+  Details: `docs/ARCHITECTURE.md`, "Contacts".
 
 - **Nothing is ever auto-confirmed, and "Confirm" is only a word.** Reps always
   confirm a lead (Peter, 2026-10-06). `finalize_contact_match` used to set
