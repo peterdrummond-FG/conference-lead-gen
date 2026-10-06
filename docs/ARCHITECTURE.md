@@ -394,6 +394,17 @@ attendee fills in on their own phone or at a booth device. Two rules:
   Submit. Field labels and edges use the darker greys (`#5f6368` / `#8b95a1`);
   the old `#9a9a9a` / `#d8d8d8` were about 2.7:1 and 1.4:1.
 
+### Signing out
+
+Log out and the 401 handler (`boot/axios.ts`, any 401 from a staff-gated function) both end
+in `session-store.logout()`, which calls `supabase.auth.signOut({ scope: 'local' })`: this
+device's session only. supabase-js's default is `'global'`, which revokes every session the
+account has, so one Log out on a phone (or one stray 401) used to sign the account out of
+its kiosk iPad mid-conference too; Peter's own account was found with zero sessions
+(2026-10-06). Nothing in the app signs out everywhere. `scripts/check-auth-signout.mjs`
+(CI) fails any `signOut(` without `scope: 'local'`; a deliberate "sign out everywhere" must
+be its own explicit choice, marked `// sign-out-everywhere: <why>` on the line above.
+
 ### Password reset
 
 Sign-in is Supabase Auth from the browser (`lib/supabase.ts`). "Forgot password?"

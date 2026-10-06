@@ -35,4 +35,5 @@ repo-guards:
   script:
     - node scripts/check-skill-profiles.mjs
     - node scripts/check-conference-writers.mjs
+    - node scripts/check-auth-signout.mjs
     - bash scripts/check-deployed-functions.sh
