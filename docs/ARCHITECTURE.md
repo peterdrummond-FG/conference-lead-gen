@@ -185,14 +185,26 @@ never resolved through the profile. The disclosure ("By texting this code, …")
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
-Setup is a short list of cards, each a step with a number that becomes a green
-check when it's done: **Choose your conference** (folds to one line with a
-"Change" button, plus an "Ended N days ago" chip once its last day has passed),
-**Set up your phone** (status, the number we have on file, the Text SETUP button,
-Check connection, and the consent line), **Kiosk setup** (PIN). Then **Your QR
-code**, which is a resource rather than a step (no number, no check) so the page
-doesn't read as finished before the rep has done anything. Return visits are all
-checks and the rep taps the one to change. Keep it that way:
+Setup is two sections, because there are two jobs, each in one card. **You send leads
+in** is the rep's own: **Choose your conference** (folds to one line with a "Change"
+button, plus an "Ended N days ago" chip once its last day has passed) and **Your phone**
+(status, the number we have on file, the Text SETUP action, Check connection, and the
+consent line). **Other people add themselves** is the QR code and **Kiosk** (PIN); for
+Admin and Solutions Success it lists the Rep QR slides instead of a personal QR. The two
+rows of the first section are numbered circles that become green checks when done, so
+return visits are all checks and the rep taps the one to change; the second section is
+resources, with no numbers, so the page doesn't read as finished before the rep has done
+anything. It used to be five or six separate cards plus a "You're ready to capture leads"
+card, which was overwhelming and repeated what the Connected badge already says; that
+card is gone (the tabs still reach Review and Kiosk).
+
+Phone and laptop are laid out differently and each keeps only its own controls. On a
+laptop-sized window the two sections sit side by side; below that they stack in one
+column with full-width buttons. The controls follow the device: the Text SETUP button
+(opens Messages) is phone-only and a QR to scan with a phone camera is laptop-only
+(`TextSetupAction`), and the QR buttons say "Save QR" (share sheet) on a phone and
+"Download QR" on a laptop (`QrSaveButtons`). Don't show a control on a device it can't
+work on. Keep it that way:
 
 - **One picker.** "Choose" and "Change" both open `StartConferenceDialog`, which
   lists live conferences (Join) and upcoming ones (Activate). Setup has no inline

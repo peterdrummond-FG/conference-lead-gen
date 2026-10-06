@@ -238,9 +238,14 @@ Supabase CLI on this machine.
   `TextSetupAction`, so the opt-in disclosure lives in one place. Details:
   `docs/ARCHITECTURE.md`, "Onboarding".
 
-- **Setup is a card per step, and its QR line is a claim about the server.**
-  Conference, phone and kiosk are numbered cards that turn into green checks; the
-  QR is an unnumbered resource. "Choose"/"Change" both open the one conference
+- **Setup is two sections, and its QR line is a claim about the server.**
+  "You send leads in" (conference, phone) and "Other people add themselves" (QR,
+  Kiosk), each one card; side by side on a laptop, stacked on a phone, with each
+  device keeping only the controls that work on it (Text SETUP button on a phone, a
+  QR to scan on a laptop; "Save QR" vs "Download QR"). The conference and phone rows
+  are numbered circles that turn into green checks; the second section has no
+  numbers. There is no "You're ready to capture leads" card (the Connected badge says
+  it). "Choose"/"Change" both open the one conference
   dialog (no inline list, no separate Start button), and the QR line names the
   conference scans go to or says they wait for Solutions Success when none is
   chosen, because `contacts-create` holds a scan from a rep with no
