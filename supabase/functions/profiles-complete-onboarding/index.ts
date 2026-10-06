@@ -10,22 +10,20 @@
 //   { event: 'reminder-shown' }                        the one-hour reminder was shown
 //   { event: 'complete' }                              nothing left to see (tour finished)
 //
-// Idempotent, and every value is validated: the body comes from a browser, and
-// resumeFrom later decides which scenes a person is shown, so it must be one of
-// the scene ids the tour really has (tourFlow.ts; a test keeps the two lists the
-// same). The ? replay button only ever sends 'complete'; 'seen' is stamped once
-// and never rewritten, so a replay can't re-open the splash.
+// Idempotent, and every value is validated (_shared/onboardingEvent.ts): the body comes
+// from a browser, and resumeFrom later decides which scenes a person is shown, so it must
+// be one of the scene ids the tour really has. The ? replay button only ever sends
+// 'complete'; 'seen' is stamped once and never rewritten, so a replay can't re-open the
+// splash.
 //
-// Replaces the old body-less call that stamped profiles.onboarded_at (the first
-// welcome tour). A body-less call is now a 400: an older cached tab finishing the
-// old tour just fails quietly on its own, which is harmless.
+// A call with NO body is still accepted: it is the old welcome tour finishing, and it
+// stamps profiles.onboarded_at as it always did. This function is deployed before the
+// frontend that replaces that tour, so a tab still running the old frontend keeps making
+// that call; a 400 would break it mid-flow.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
-
-// The ids in frontend/src/components/tour/tourFlow.ts (TOUR_SCENES) plus the
-// import-only half of "Send us leads". Keep in step; frontend test checks.
-export const RESUME_IDS = ["setup", "send", "send-import", "qr", "review", "export", "admin"];
+import { parseOnboardingBody } from "../_shared/onboardingEvent.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -35,10 +33,8 @@ Deno.serve(async (req) => {
   const user = await requireUser(req);
   if (!user) return errorResponse(req, 401, "Unauthorized");
 
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.event !== "string") {
-    return errorResponse(req, 400, "event is required.");
-  }
+  const parsed = parseOnboardingBody(await req.text());
+  if (parsed.kind === "invalid") return errorResponse(req, 400, parsed.message);
 
   const now = new Date().toISOString();
   const supabase = serviceClient();
@@ -50,27 +46,27 @@ Deno.serve(async (req) => {
     return error;
   };
 
-  switch (body.event) {
+  switch (parsed.kind) {
+    case "legacy": {
+      // The old tour finishing (see the header). First stamp wins, as it always did.
+      const error = await stampOnce("onboarded_at");
+      if (error) return errorResponse(req, 500, error.message);
+      break;
+    }
     case "seen": {
       const error = await stampOnce("onboarding_v2_seen_at");
       if (error) return errorResponse(req, 500, error.message);
       break;
     }
     case "ended": {
-      if (body.path !== "quick" && body.path !== "tour") {
-        return errorResponse(req, 400, "path must be 'quick' or 'tour'.");
-      }
-      if (body.resumeFrom !== null && !RESUME_IDS.includes(body.resumeFrom)) {
-        return errorResponse(req, 400, "resumeFrom must be a known scene id or null.");
-      }
       // Leaving also means they have seen the splash. A new ending replaces the
       // old one and re-arms the reminder, because what is left may have changed.
       const { error } = await supabase
         .from("profiles")
         .update({
-          onboarding_path: body.path,
+          onboarding_path: parsed.path,
           onboarding_ended_at: now,
-          tour_resume_from: body.resumeFrom,
+          tour_resume_from: parsed.resumeFrom,
           onboarding_reminder_shown_at: null,
         })
         .eq("id", user.id);
@@ -102,8 +98,6 @@ Deno.serve(async (req) => {
       if (pathError) return errorResponse(req, 500, pathError.message);
       break;
     }
-    default:
-      return errorResponse(req, 400, "Unknown event.");
   }
 
   return jsonResponse(req, { ok: true });
