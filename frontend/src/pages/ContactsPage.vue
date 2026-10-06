@@ -65,6 +65,7 @@
               :busy="busy"
               :selectable="showRejected"
               :selected-ids="deleteSel"
+              :animate="sliding"
               v-bind="rowHandlers"
             />
           </section>
@@ -82,6 +83,7 @@
           :show-rep="!isSales"
           :selectable="showRejected"
           :selected-ids="deleteSel"
+          :animate="sliding"
           v-bind="rowHandlers"
         />
 
@@ -229,7 +231,20 @@ const sheetId = ref<string | null>(null); // phone
 // utils/contactsList.ts. A reactive Set: the list recomputes when it changes.
 const held = reactive(new Set<string>());
 function settleOthers(keepId: string | null) {
-  for (const id of [...held]) if (id !== keepId) held.delete(id);
+  const settling = [...held].filter((id) => id !== keepId);
+  if (!settling.length) return;
+  // The slide runs for this re-render only; anything else that moves rows (a resize,
+  // the processing poll, a filter change) stays still. Set in the same tick as the
+  // delete, so the list sees both in one render.
+  startSliding();
+  for (const id of settling) held.delete(id);
+}
+const sliding = ref(false);
+let slideTimer: ReturnType<typeof setTimeout> | null = null;
+function startSliding() {
+  sliding.value = true;
+  if (slideTimer !== null) clearTimeout(slideTimer);
+  slideTimer = setTimeout(() => { sliding.value = false; slideTimer = null; }, 600);
 }
 
 // The order the lists are shown in, fixed when it is computed rather than recomputed
@@ -634,7 +649,10 @@ onMounted(async () => {
   if (!isSales.value) jobs.push(api.get<Profile[]>('/profiles-list').then(({ data }) => { profiles.value = data; }));
   await Promise.all(jobs);
 });
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  if (slideTimer !== null) clearTimeout(slideTimer);
+});
 
 // Leads still in the pipeline have no Confirm / Reject until they finish, and
 // nothing else would tell this page they had: the list is only fetched on load.
