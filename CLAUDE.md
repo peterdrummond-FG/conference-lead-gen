@@ -221,6 +221,17 @@ Supabase CLI on this machine.
   answer and is what Zoho's "Capture Channel" column exports, so don't reuse it for
   anything else. Old form leads stay "Form": there is nothing to backfill them from.
 
+- **State / District / School is one component and the lists are loaded whole.**
+  `InstitutionFields.vue` + `useInstitutionPicker.ts` are the only code that draws or
+  loads them (attendee form, lead editor, merge dialog; `institutionFields.test.mjs` holds it).
+  A state's districts, or a district's schools, are fetched once (`districts-list` /
+  `schools-list` with `all=1`) and filtered on the device; "Use '<typed>'" is always last and
+  commits on blur as well as Enter/Tab; School works with no district as typed text (research
+  fills the district in). Clear downstream answers on the person's own change
+  (`changeState`/`changeDistrict`), never in a watcher: a page re-points the whole model at
+  another lead in one go and a watcher wipes what it just loaded. Only our tables are used
+  (no NCES/Zoho import). Details: `docs/ARCHITECTURE.md`, "State, District and School".
+
 - **The tab is called "Kiosk", the URL is still `/connect`.** Only the label in
   `MainLayout.vue` changed. `/connect/<repSlug>` is printed on slides and QR
   codes, so the route, its redirects and `generateConnectSlide.ts` keep the old

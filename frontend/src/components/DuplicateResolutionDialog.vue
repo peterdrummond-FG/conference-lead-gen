@@ -97,57 +97,12 @@
                 </div>
               </div>
 
-              <div class="col-12 col-sm-6">
-                <q-select
-                  v-model="draft.state"
-                  :options="stateOptions"
-                  option-label="name"
-                  outlined
-                  :dense="!isPhone"
-                  use-input
-                  fill-input
-                  hide-selected
-                  input-debounce="0"
-                  label="State (optional)"
-                  @filter="filterStates"
-                />
-              </div>
-              <div class="col-12 col-sm-6">
-                <q-select
-                  v-model="draft.district"
-                  :options="districtTypeahead.options.value"
-                  option-label="name"
-                  outlined
-                  :dense="!isPhone"
-                  use-input
-                  fill-input
-                  hide-selected
-                  input-debounce="300"
-                  new-value-mode="add-unique"
-                  label="School district (optional)"
-                  :disable="!draft.state"
-                  @filter="districtTypeahead.filterFn"
-                  @new-value="onNewDistrict"
-                />
-              </div>
-              <div class="col-12">
-                <q-select
-                  v-model="draft.school"
-                  :options="schoolTypeahead.options.value"
-                  option-label="name"
-                  outlined
-                  :dense="!isPhone"
-                  use-input
-                  fill-input
-                  hide-selected
-                  input-debounce="300"
-                  new-value-mode="add-unique"
-                  label="School or campus (optional)"
-                  :disable="!draft.district"
-                  @filter="schoolTypeahead.filterFn"
-                  @new-value="onNewSchool"
-                />
-              </div>
+              <!-- The same State / District / School fields as the attendee form and the lead editor. -->
+              <InstitutionFields
+                :model="draft" variant="editor" :dense="!isPhone"
+                state-label="State (optional)" district-label="School district (optional)" school-label="School or campus (optional)"
+                state-class="col-12 col-sm-6" district-class="col-12 col-sm-6" school-class="col-12"
+              />
             </div>
           </div>
         </template>
@@ -187,8 +142,9 @@
 import { ref, reactive, computed, watch, onUnmounted } from 'vue';
 import { Dialog, Notify, useQuasar } from 'quasar';
 import { api } from '@/boot/axios';
-import { useTypeahead, type TypeaheadOption } from '@/composables/useTypeahead';
-import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
+import InstitutionFields from '@/components/InstitutionFields.vue';
+import type { TypeaheadOption } from '@/utils/institutionPicker';
+import type { UsStateOption } from '@/constants/usStates';
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import { alternativeValues, differingFields, evidenceTags, orgText, shortDate, sourceInfo, suggestedId, type FieldKey } from '@/utils/duplicateEvidence';
 import type { ContactListItem } from '@/types/review';
@@ -281,8 +237,6 @@ function alts(key: TextKey) {
   return alternativeValues(group.value, key as FieldKey, draft[key]);
 }
 
-const stateOptions = ref<UsStateOption[]>(US_STATES);
-
 const draft = reactive({
   firstName: '',
   lastName: '',
@@ -292,13 +246,6 @@ const draft = reactive({
   state: null as UsStateOption | null,
   district: null as TypeaheadOption | null,
   school: null as TypeaheadOption | null,
-});
-
-watch(() => draft.state, (_newState, oldState) => {
-  if (oldState) draft.district = null;
-});
-watch(() => draft.district, (_newDistrict, oldDistrict) => {
-  if (oldDistrict) draft.school = null;
 });
 
 function selectKeeper(c: ContactListItem) {
@@ -316,36 +263,6 @@ watch(keeperId, () => {
   draft.district = districtOptionFor(keeper.value);
   draft.school = schoolOptionFor(keeper.value);
 });
-
-function filterStates(val: string, update: (cb: () => void) => void) {
-  update(() => {
-    stateOptions.value = filterStateOptions(val);
-  });
-}
-
-const districtTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.state) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/districts-list', {
-    params: { search, state: draft.state.name },
-  });
-  return data;
-});
-
-const schoolTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.district?.id) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/schools-list', {
-    params: { search, districtId: draft.district.id },
-  });
-  return data;
-});
-
-function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
-
-function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
 
 async function load() {
   loading.value = true;

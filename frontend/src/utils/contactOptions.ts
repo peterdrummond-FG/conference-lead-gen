@@ -4,7 +4,7 @@
 // typed value that never matched anything shows its raw text instead
 // (id: null) — never a new school_districts/schools row.
 import { US_STATES, type UsStateOption } from '@/constants/usStates';
-import type { TypeaheadOption } from '@/composables/useTypeahead';
+import type { TypeaheadOption } from '@/utils/institutionPicker';
 import type { ContactListItem } from '@/types/review';
 
 export function stateOptionFor(name: string | null): UsStateOption | null {

@@ -76,11 +76,18 @@ test('the attendee form in the tour IS the app\'s form, not a copy', () => {
   const screen = read(HERE, 'screens/TourIntakeScreen.vue');
   assert.ok(intake.includes('<IntakeFormFields') && screen.includes('<IntakeFormFields'), 'both must render IntakeFormFields');
   assert.ok(!/<q-input|<q-select/.test(screen), 'the tour screen must not draw its own fields');
-  // What a first scan from a rep's QR shows: the channel question, then district and school after State.
-  for (const l of ['First name *', 'Last name *', 'Email', 'Phone', 'Title', 'How did you hear about us?', 'State', 'School district', 'School or campus']) {
+  // What a first scan from a rep's QR shows: the channel question, then State, District and
+  // School (InstitutionFields, which the lead editor and merge dialog draw too).
+  const institution = read(SRC, 'components/InstitutionFields.vue');
+  assert.ok(fields.includes('<InstitutionFields'), 'the form must render InstitutionFields for State, District and School');
+  for (const l of ['First name *', 'Last name *', 'Email', 'Phone', 'Title', 'How did you hear about us?']) {
     assert.ok(fields.includes(`label="${l}"`), `the form has no field labelled "${l}"`);
   }
-  for (const h of ['Add your email and phone number', 'Pick a state first', 'Pick a district first']) assert.ok(fields.includes(h), h);
+  for (const l of ['State', 'School district', 'School or campus']) {
+    assert.ok(institution.includes(`Label: '${l}'`), `the form has no field labelled "${l}"`);
+  }
+  for (const h of ['Add your email and phone number']) assert.ok(fields.includes(h), h);
+  assert.ok(institution.includes('Pick a state first'));
   assert.ok(fields.includes('label="Submit"'));
 });
 

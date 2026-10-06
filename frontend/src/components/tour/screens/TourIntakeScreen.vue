@@ -18,7 +18,6 @@
           <div class="intake-subtitle">Tell us a bit about yourself.</div>
           <IntakeFormFields
             :form="form" :folded="folded" :show-channel="true"
-            :state-options="[]" :district-options="[]" :school-options="[]"
             :autofill="false" readonly phone
           />
         </div>
