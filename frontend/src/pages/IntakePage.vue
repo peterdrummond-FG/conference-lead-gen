@@ -41,20 +41,10 @@
           <IntakeFormFields
             ref="fields"
             :form="form" :folded="folded" :show-channel="!initialChannel"
-            :state-options="stateOptions" :district-options="districtTypeahead.options.value" :school-options="schoolTypeahead.options.value"
             :autofill="autofillOn" :submitting="submitting" :previewing="previewing"
             @submit="onSubmit"
             @focus-outside="onFocusOutside"
             @unfold="unfold"
-            @filter-states="filterStates"
-            @filter-district="districtTypeahead.filterFn"
-            @filter-school="schoolTypeahead.filterFn"
-            @new-district="onNewDistrict"
-            @new-school="onNewSchool"
-            @district-input="(val) => (districtInputText = val)"
-            @school-input="(val) => (schoolInputText = val)"
-            @district-blur="onDistrictBlur"
-            @school-blur="onSchoolBlur"
           />
         </div>
       </transition>
@@ -70,8 +60,8 @@ import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
 import { useKioskModeStore } from '@/stores/kiosk-mode-store';
 import LockKioskButton from '@/components/LockKioskButton.vue';
-import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
-import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
+import type { TypeaheadOption } from '@/utils/institutionPicker';
+import type { UsStateOption } from '@/constants/usStates';
 import IntakeFormFields from '@/components/IntakeFormFields.vue';
 
 const eventStore = useEventStore();
@@ -142,12 +132,12 @@ const canLock = computed(() => (
 ));
 
 // The form's fields are IntakeFormFields (which the onboarding tour draws too);
-// this page keeps the data, the typeahead requests and the submit.
+// State, District and School are InstitutionFields inside it (lists, typed entries and
+// clearing rules live there); this page keeps the data and the submit.
 const fields = ref<{ validate: () => Promise<boolean>; resetValidation: () => void; focusFirstName: () => void } | null>(null);
 const folded = ref(false);
 const submitting = ref(false);
 const submitted = ref(false);
-const stateOptions = ref<UsStateOption[]>(US_STATES);
 
 const form = reactive({
   firstName: '',
@@ -163,15 +153,6 @@ const form = reactive({
   // they scanned. Left null rather than defaulted, so "didn't answer" stays
   // distinguishable from a real choice.
   channel: initialChannel as 'booth' | 'session' | null,
-});
-
-// State gates district, district gates school — changing an upstream field
-// invalidates whatever was picked downstream of it.
-watch(() => form.state, (_newState, oldState) => {
-  if (oldState) form.district = null;
-});
-watch(() => form.district, (_newDistrict, oldDistrict) => {
-  if (oldDistrict) form.school = null;
 });
 
 // Name plus at least one way to reach them. An email that doesn't look like one
@@ -196,57 +177,6 @@ async function unfold() {
   fields.value?.focusFirstName();
 }
 
-function filterStates(val: string, update: (cb: () => void) => void) {
-  update(() => {
-    stateOptions.value = filterStateOptions(val);
-  });
-}
-
-const districtTypeahead = useTypeahead(async (search: string) => {
-  if (!form.state) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/districts-list', {
-    params: { search, state: form.state.name },
-  });
-  return data;
-});
-
-const schoolTypeahead = useTypeahead(async (search: string) => {
-  // A district the rep typed but that didn't match anything real (id: null)
-  // has no schools to search — the campus field just stays free-text there.
-  if (!form.district?.id) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/schools-list', {
-    params: { search, districtId: form.district.id },
-  });
-  return data;
-});
-
-// A typed value with no match in the list is kept as plain text on submit
-// (schoolDistrictNameRaw/schoolNameRaw) rather than becoming a new
-// school_districts/schools row — see contacts-create.
-function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
-
-function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
-
-// Backstop for onNewDistrict/onNewSchool: those only fire on Enter/Tab
-// (Quasar's own new-value gate), so a rep who types a name and taps Submit
-// without pressing Enter first would otherwise have it silently dropped —
-// see resolveTypedOption's own comment for the QSelect source this was
-// verified against.
-const districtInputText = ref('');
-const schoolInputText = ref('');
-
-function onDistrictBlur() {
-  form.district = resolveTypedOption(districtInputText.value, form.district, districtTypeahead.options.value);
-}
-
-function onSchoolBlur() {
-  form.school = resolveTypedOption(schoolInputText.value, form.school, schoolTypeahead.options.value);
-}
-
 function resetForm() {
   form.firstName = '';
   form.lastName = '';
@@ -258,8 +188,6 @@ function resetForm() {
   form.school = null;
   form.channel = initialChannel;
   folded.value = false;
-  districtInputText.value = '';
-  schoolInputText.value = '';
   fields.value?.resetValidation();
 }
 

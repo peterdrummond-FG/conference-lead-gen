@@ -416,3 +416,12 @@ test('search finds a lead by its source word', () => {
   assert.deepEqual(searchLeads(list, 'kiosk').map((c) => c.id), ['k']);
   assert.deepEqual(searchLeads(list, 'sms').map((c) => c.id), ['s']);
 });
+
+// A school typed with no district (the quiet fallback on the pickers) is a school: the lead
+// is Ready on it, the org line shows it, and it isn't flagged "no school or district".
+test('a typed school with no district counts as an organisation', () => {
+  const c = lead({ schoolDistrictId: null, districtName: null, schoolDistrictNameRaw: null, schoolNameRaw: 'Grace Lutheran School' });
+  assert.equal(isReady(c), true);
+  assert.deepEqual(leadFlags(c), []);
+  assert.ok(readinessChecklist(c).find((i) => i.key === 'org').state === 'ok');
+});

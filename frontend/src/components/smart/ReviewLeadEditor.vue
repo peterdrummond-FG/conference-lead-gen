@@ -158,57 +158,11 @@
           <q-input v-model="draft.phone" dense outlined type="tel" class="le-s2" label="Phone" />
           <q-input v-model="draft.title" dense outlined class="le-s6" label="Title" />
 
-          <q-select
-            v-model="draft.state"
-            :options="stateOptions"
-            option-label="name"
-            dense
-            outlined
-            use-input
-            fill-input
-            hide-selected
-            input-debounce="0"
-            class="le-s2"
-            label="State"
-            @filter="filterStates"
-          />
-          <q-select
-            v-model="draft.district"
-            :options="districtTypeahead.options.value"
-            option-label="name"
-            dense
-            outlined
-            use-input
-            fill-input
-            hide-selected
-            input-debounce="300"
-            new-value-mode="add-unique"
-            class="le-s4"
-            label="District"
-            :disable="!draft.state"
-            @filter="districtTypeahead.filterFn"
-            @new-value="onNewDistrict"
-            @input-value="(val) => (districtInputText = val)"
-            @blur="onDistrictBlur"
-          />
-          <q-select
-            v-model="draft.school"
-            :options="schoolTypeahead.options.value"
-            option-label="name"
-            dense
-            outlined
-            use-input
-            fill-input
-            hide-selected
-            input-debounce="300"
-            new-value-mode="add-unique"
-            class="le-s6"
-            label="School / campus"
-            :disable="!draft.district"
-            @filter="schoolTypeahead.filterFn"
-            @new-value="onNewSchool"
-            @input-value="(val) => (schoolInputText = val)"
-            @blur="onSchoolBlur"
+          <!-- Same State / District / School fields as the attendee form and the merge dialog. -->
+          <InstitutionFields
+            :model="draft" variant="editor"
+            state-label="State" district-label="District" school-label="School / campus"
+            state-class="le-s2" district-class="le-s4" school-class="le-s6"
           />
           <div v-if="isPhotoSourced" class="le-s6 text-caption text-grey le-suggest">
             State and district are suggested from the conference. Confirm or change.
@@ -276,9 +230,8 @@ import LeadChip from '@/components/smart/LeadChip.vue';
 import ProcessingBar from '@/components/smart/ProcessingBar.vue';
 import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
 import DuplicateResolutionDialog from '@/components/DuplicateResolutionDialog.vue';
-import { useTypeahead, resolveTypedOption, type TypeaheadOption } from '@/composables/useTypeahead';
+import InstitutionFields from '@/components/InstitutionFields.vue';
 import { useContactPhoto } from '@/composables/useContactPhoto';
-import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/usStates';
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { DisplayPatch } from '@/composables/useSmartReview';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
@@ -331,8 +284,6 @@ const showNoteDialog = ref(false);
 const { url: thumbnailPhotoUrl, error: thumbnailPhotoError } = useContactPhoto(() => props.contact.id, { enabled: () => props.contact.hasPhoto });
 const { url: fullPhotoUrl, error: fullPhotoError } = useContactPhoto(() => props.contact.id, { full: () => true, enabled: () => showFullSheet.value });
 
-const stateOptions = ref<UsStateOption[]>(US_STATES);
-
 const draft = reactive({
   firstName: props.contact.firstName,
   lastName: props.contact.lastName,
@@ -344,46 +295,6 @@ const draft = reactive({
   school: schoolOptionFor(props.contact),
   interactionNotes: props.contact.interactionNotes ?? '',
 });
-
-// State gates district, district gates school — changing an upstream field
-// invalidates whatever was picked downstream of it.
-watch(() => draft.state, (_n, old) => { if (old) draft.district = null; });
-watch(() => draft.district, (_n, old) => { if (old) draft.school = null; });
-
-function filterStates(val: string, update: (cb: () => void) => void) {
-  update(() => { stateOptions.value = filterStateOptions(val); });
-}
-
-const districtTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.state) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/districts-list', { params: { search, state: draft.state.name } });
-  return data;
-});
-const schoolTypeahead = useTypeahead(async (search: string) => {
-  if (!draft.district?.id) return [];
-  const { data } = await api.get<TypeaheadOption[]>('/schools-list', { params: { search, districtId: draft.district.id } });
-  return data;
-});
-
-// A typed value with no match in the list is kept as plain text on save
-// (schoolDistrictNameRaw / schoolNameRaw), never a new districts/schools row.
-function onNewDistrict(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
-function onNewSchool(val: string, done: (item?: TypeaheadOption, mode?: 'add-unique') => void) {
-  done({ id: null, name: val }, 'add-unique');
-}
-
-// Backstop: new-value only fires on Enter/Tab, so a name typed and then
-// followed by a tap on Save would otherwise be dropped (see resolveTypedOption).
-const districtInputText = ref('');
-const schoolInputText = ref('');
-function onDistrictBlur() {
-  draft.district = resolveTypedOption(districtInputText.value, draft.district, districtTypeahead.options.value);
-}
-function onSchoolBlur() {
-  draft.school = resolveTypedOption(schoolInputText.value, draft.school, schoolTypeahead.options.value);
-}
 
 const isDirty = computed(() => {
   const currentDistrict = districtOptionFor(props.contact);

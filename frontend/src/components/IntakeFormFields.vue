@@ -79,59 +79,10 @@
       label="How did you hear about us?"
     />
 
-    <q-select
-      :readonly="readonly"
-      v-model="form.state"
-      :options="stateOptions"
-      option-label="name"
-      use-input
-      fill-input
-      hide-selected
-      borderless
-      input-debounce="0"
-      label="State"
-      @filter="(v: string, u: (cb: () => void) => void) => $emit('filterStates', v, u)"
-    />
-
-    <q-select
-      :readonly="readonly"
-      v-model="form.district"
-      :options="districtOptions"
-      option-label="name"
-      use-input
-      fill-input
-      hide-selected
-      borderless
-      input-debounce="300"
-      new-value-mode="add-unique"
-      label="School district"
-      :disable="!form.state"
-      :hint="!form.state ? 'Pick a state first' : undefined"
-      @filter="(v: string, u: (cb: () => void) => void, a: () => void) => $emit('filterDistrict', v, u, a)"
-      @new-value="(v: string, d: NewValueDone) => $emit('newDistrict', v, d)"
-      @input-value="(v: string) => $emit('districtInput', v)"
-      @blur="$emit('districtBlur')"
-    />
-
-    <q-select
-      :readonly="readonly"
-      v-model="form.school"
-      :options="schoolOptions"
-      option-label="name"
-      use-input
-      fill-input
-      hide-selected
-      borderless
-      input-debounce="300"
-      new-value-mode="add-unique"
-      label="School or campus"
-      :disable="!form.district"
-      :hint="!form.district ? 'Pick a district first' : undefined"
-      @filter="(v: string, u: (cb: () => void) => void, a: () => void) => $emit('filterSchool', v, u, a)"
-      @new-value="(v: string, d: NewValueDone) => $emit('newSchool', v, d)"
-      @input-value="(v: string) => $emit('schoolInput', v)"
-      @blur="$emit('schoolBlur')"
-    />
+    <!-- State, District and School: the same fields the lead editor and the merge dialog
+         use (InstitutionFields), so the lists, the "Use '<typed>'" entry and the clearing
+         rules are one piece of code. -->
+    <InstitutionFields :model="form" variant="form" hints :readonly="readonly" />
 
     <div class="intake-submit-row">
       <q-btn
@@ -153,7 +104,8 @@
 import { ref } from 'vue';
 import type { QForm } from 'quasar';
 import type { UsStateOption } from '@/constants/usStates';
-import type { TypeaheadOption } from '@/composables/useTypeahead';
+import type { TypeaheadOption } from '@/utils/institutionPicker';
+import InstitutionFields from '@/components/InstitutionFields.vue';
 
 // The attendee form's fields and the fold-up, with nothing about where the
 // answers go: IntakePage owns the data (typeahead requests, validation, the
@@ -171,16 +123,12 @@ export interface IntakeFormModel {
   school: TypeaheadOption | null;
   channel: 'booth' | 'session' | null;
 }
-type NewValueDone = (item?: TypeaheadOption, mode?: 'add-unique') => void;
 
 const props = defineProps<{
   form: IntakeFormModel;
   folded: boolean;
   // A booth or breakout-session QR already says how they found us.
   showChannel: boolean;
-  stateOptions: UsStateOption[];
-  districtOptions: TypeaheadOption[];
-  schoolOptions: TypeaheadOption[];
   // Browser autofill is off on a shared device (see IntakePage).
   autofill: boolean;
   submitting?: boolean;
@@ -196,15 +144,6 @@ const emit = defineEmits<{
   unfold: [];
   // Focus moved to a field outside the name-and-contact block.
   focusOutside: [];
-  filterStates: [val: string, update: (cb: () => void) => void];
-  filterDistrict: [val: string, update: (cb: () => void) => void, abort: () => void];
-  filterSchool: [val: string, update: (cb: () => void) => void, abort: () => void];
-  newDistrict: [val: string, done: NewValueDone];
-  newSchool: [val: string, done: NewValueDone];
-  districtInput: [val: string];
-  schoolInput: [val: string];
-  districtBlur: [];
-  schoolBlur: [];
 }>();
 
 const form = props.form;
