@@ -150,7 +150,7 @@ is usable (https, not masked):
 The local path can only answer the Account half of the question. Zoho Contacts
 and Deals are not copied, so it never returns `existing_contact`, never sets an
 active-opportunity flag, and caps confidence at `medium`, which keeps every row
-it produces out of auto-approve and in front of a reviewer. Those limits are
+it produces in front of a reviewer, as every lead is now (nothing auto-confirms). Those limits are
 enforced in the `Enforce Local Limits` Code node, not just requested in the
 prompt; the same node rejects any Account id that was not in the list it was
 given. Its `notes` always open with a line saying Contacts and Deals were not

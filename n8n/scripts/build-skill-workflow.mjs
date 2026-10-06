@@ -333,7 +333,7 @@ const runLocalSkill = node({
 
 // The prompt asks for all of this; this node enforces it. A model that ignores
 // the preamble cannot reach the database with an invented Account id, a Contact
-// match it had no data for, or a confidence that lets the row auto-approve.
+// match it had no data for, or a confidence a reviewer would over-trust.
 const enforceLocalLimits = node({
   type: 'n8n-nodes-base.code',
   version: 2,

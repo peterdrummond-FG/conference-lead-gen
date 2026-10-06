@@ -3,8 +3,10 @@
 //
 // Model output reaches CRM-bound columns: contacts.match_* feeds the Zoho
 // export CSV, contacts.interaction_notes feeds the
-// review card, and match_confidence='high' AUTO-APPROVES a contact for export
-// with no human ever seeing it. Before this file, two fields were checked
+// review card, and match_confidence='high' used to AUTO-APPROVE a contact for
+// export with no human ever seeing it (removed 2026-10-06: reps always confirm; see
+// scripts/check-no-auto-confirm.mjs). It still has to be true, because it is
+// shown to the person deciding. Before this file, two fields were checked
 // (matchStatus !== 'pending', and a Zoho-id regex) and the other ~14 went
 // straight through.
 //
@@ -86,8 +88,9 @@ export const MatchOutput = z.object({
   .refine((o) => o.matchStatus !== 'new_contact_existing_account' || o.matchedZohoAccountId !== null, {
     message: 'matchStatus=new_contact_existing_account requires a matchedZohoAccountId',
   })
-  // The auto-approve trap: 'high' is what sends a lead to Zoho unreviewed, so
-  // it must be backed by an actual matched account.
+  // The 'high' trap: a 'high' label with no account behind it is a fabrication a
+  // reviewer would trust (it used to auto-approve the lead too; nothing does now),
+  // so it must be backed by an actual matched account.
   .refine((o) => o.matchConfidence !== 'high' || o.matchedZohoAccountId !== null, {
     message: 'matchConfidence=high requires a matched account — refusing to auto-approve an unmatched contact',
   });

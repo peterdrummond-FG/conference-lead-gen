@@ -92,10 +92,10 @@ Deno.serve(async (req) => {
     school_name_raw: body.schoolId ? null : (body.schoolNameRaw?.trim() || null),
     local_duplicate_of_contact_id: null,
   };
-  // The pipeline's own auto-approve rule can't know a *later* card will turn
-  // out to be a duplicate of this one — safe to undo automatically. A
-  // reviewer's own explicit Approve (auto_approved already false) is never
-  // touched here.
+  // The pipeline used to auto-approve a lead before a *later* card could turn out
+  // to be a duplicate of it, so this undid that. Nothing auto-confirms any more
+  // (2026-10-06), so this never fires on new rows; it is harmless history. A
+  // reviewer's own explicit Confirm (auto_approved already false) is never touched.
   if (keeper.review_status === "approved" && keeper.auto_approved) {
     keeperUpdate.review_status = "needs_review";
     keeperUpdate.auto_approved = false;
