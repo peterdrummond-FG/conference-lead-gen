@@ -118,7 +118,15 @@ export const useSessionStore = defineStore('session', {
       await this.fetchMe();
     },
     async logout() {
-      await supabase.auth.signOut();
+      // scope 'local': end THIS device's session only. supabase-js's default is
+      // 'global', which revokes every session the account has. This is called by
+      // the Log out button AND by boot/axios.ts on any 401, so one Log out on a
+      // phone (or one stray 401) signed the account out of every other device too,
+      // including a locked kiosk iPad mid-conference (Peter's own account was
+      // found with zero sessions, 2026-10-06). Nothing in the app signs out
+      // everywhere; if that is ever wanted it must be its own, explicit choice
+      // (scripts/check-auth-signout.mjs fails CI on any other scope).
+      await supabase.auth.signOut({ scope: 'local' });
       this.user = null;
       this.viewingAs = null;
       this.preview = null;

@@ -78,6 +78,8 @@ jobs:
       # directly, and the webhook re-checks is_active for a bound phone.
       - name: Conference writers
         run: node scripts/check-conference-writers.mjs
+      - name: Check nothing signs an account out of every device
+        run: node scripts/check-auth-signout.mjs
 
       # audit N1: a deployed function with no source in the repo, or a
       # "retired" one that doesn't actually answer 410.
