@@ -2,58 +2,10 @@
   <header class="rs-head">
     <h1 class="sr-only">Contacts</h1>
 
-    <!-- Underline tabs: the status control used to be a 52px grey tray, which
-         with the title row above it pushed the first lead off a phone screen.
-         The nav bar already says "Contacts", so the page has no title row. -->
-    <div class="rs-tabs" role="tablist" aria-label="Contacts status">
-      <button
-        v-for="t in tabDefs"
-        :key="t.value"
-        type="button"
-        role="tab"
-        class="rs-tab"
-        :class="{ 'is-on': tab === t.value }"
-        :aria-selected="tab === t.value"
-        @click="tab = t.value"
-      >
-        {{ t.label }}<span class="rs-count">{{ counts[t.value] }}</span>
-      </button>
-    </div>
-
-    <!-- What the three states of a lead are, before any card is read, and a way
-         to look at just one of them. Counted by the same rules as each card's
-         chip and button (leadBucket), over the whole tab, so a count never
-         shrinks just because you are filtering by it. Tap again to show
-         everything. Each cell stacks its number over its word, so it is only as
-         wide as its longest word ("processing") and Import fits on the same
-         row at 320px. A lead-count row with the words beside the numbers
-         ("10 ready") did not, and clipped. Import is here because it is the
-         other thing you do with contacts from this page. -->
-    <div class="rs-status-row" role="group" aria-label="Filter leads by status, and import contacts">
-      <template v-if="tab === 'needs_review' && summary.ready + summary.needsInfo + summary.processing > 0">
-        <button
-          v-for="p in pills"
-          :key="p.key"
-          type="button"
-          class="rs-cell"
-          :class="{ 'is-on': readinessFilter === p.key }"
-          :aria-pressed="readinessFilter === p.key"
-          :aria-label="`${summary[p.key]} ${p.label}`"
-          :disabled="summary[p.key] === 0 && readinessFilter !== p.key"
-          @click="$emit('toggleReadiness', p.key)"
-        >
-          <span class="rs-cell-n"><span class="rs-sum-dot" :class="p.dot" />{{ summary[p.key] }}</span>
-          <span class="rs-cell-l">{{ p.label }}</span>
-        </button>
-      </template>
-      <router-link to="/notes" class="rs-cell rs-cell-import" aria-label="Import contacts">
-        <span class="rs-cell-n"><q-icon name="note_add" size="22px" /></span>
-        <span class="rs-cell-l">Import</span>
-        <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
-      </router-link>
-    </div>
-
-    <div class="rs-tools">
+    <!-- One line at 320px: search takes what is left, Filter and Import keep their
+         size. Import drops to its icon under 375px (the aria-label keeps its name).
+         The sort button and the this-event / past-events toggle live in Filter now. -->
+    <div class="rs-top">
       <q-input
         v-model="search"
         dense
@@ -61,236 +13,240 @@
         clearable
         debounce="150"
         class="rs-search"
-        :placeholder="$q.screen.gt.xs ? 'Search name, school, email, phone' : 'Search'"
-        aria-label="Search leads"
+        placeholder="Search contacts"
+        aria-label="Search contacts"
         enterkeyhint="search"
       >
-        <template #prepend><q-icon name="search" /></template>
+        <template #prepend><q-icon name="search" size="20px" /></template>
       </q-input>
 
-      <q-btn flat no-caps dense color="grey-9" icon="sort" :label="$q.screen.gt.xs ? sortLabel : undefined" class="rs-sort" aria-label="Sort">
-        <q-menu auto-close anchor="bottom right" self="top right">
-          <q-list dense style="min-width: 200px">
-            <q-item v-for="o in sortOptions[tab]" :key="o.value" clickable @click="$emit('sort', tab, o.value)">
-              <q-item-section avatar style="min-width: 32px"><q-icon v-if="sortByTab[tab] === o.value" name="check" color="primary" size="18px" /></q-item-section>
-              <q-item-section>{{ o.label }}</q-item-section>
-            </q-item>
-          </q-list>
-        </q-menu>
-      </q-btn>
-
-      <!-- A rep's leads are this conference's, or everything before it folded
-           away under its own conference. One icon that changes with the view
-           (calendar: this event; history, filled: past events), so the default
-           looks quiet and being somewhere else is obvious. Admin and Solutions
-           Success see one flat list across everyone, so they have no such split. -->
-      <button
-        v-if="isSales"
-        type="button"
-        class="rs-scope"
-        :class="{ 'is-past': scopeView === 'past' }"
-        :aria-label="scopeView === 'current' ? 'Showing this event. Show past events' : 'Showing past events. Show this event'"
-        @click="scopeView = scopeView === 'current' ? 'past' : 'current'"
-      >
-        <q-icon :name="scopeView === 'current' ? 'event' : 'history'" size="22px" />
-        <q-tooltip>{{ scopeView === 'current' ? 'Show past events' : 'Show this event' }}</q-tooltip>
+      <button id="cf-filter-btn" type="button" class="rs-tbtn" :aria-label="filterCount ? `Filter, ${filterCount} on` : 'Filter'" @click="$emit('openFilter', null)">
+        <q-icon name="tune" size="20px" />
+        <span>Filter</span>
+        <span v-if="filterCount" class="rs-badge">{{ filterCount }}</span>
       </button>
+
+      <router-link to="/notes" class="rs-tbtn rs-import" aria-label="Import contacts">
+        <q-icon name="note_add" size="20px" />
+        <span class="rs-import-label">Import</span>
+        <q-tooltip>Paste typed notes and pull the contacts out of them</q-tooltip>
+      </router-link>
     </div>
 
-    <!-- Source is for everyone on To review and Confirmed; the rep, conference
-         and sync filters are only for the people who see every rep's leads.
-         A rep's Rejected tab has nothing to slice, so it keeps no filter row. -->
-    <div v-if="tab !== 'rejected' || !isSales" class="rs-filters">
-      <q-btn-toggle
-        v-if="tab === 'approved'"
-        v-model="followFilter"
-        dense
-        no-caps
-        unelevated
-        toggle-color="primary"
-        color="white"
-        text-color="grey-9"
-        class="rs-follow-toggle"
-        :options="[
-          { label: 'All', value: 'all' },
-          { label: 'To follow up', value: 'todo' },
-          { label: 'Followed up', value: 'done' },
-        ]"
-      />
-      <!-- Admin and Solutions Success see every rep's leads across every
-           conference, so they slice; a rep only ever sees their own. -->
-      <template v-if="!isSales">
-        <q-select v-if="eventFilterOptions.length > 2" v-model="eventFilter" :options="eventFilterOptions" option-label="label" dense outlined emit-value map-options label="Conference" class="rs-select" />
-        <q-select v-model="repFilter" :options="repFilterOptions" option-label="label" dense outlined emit-value map-options label="Rep" class="rs-select" />
-        <q-select v-model="syncedFilter" :options="syncedFilterOptions" option-label="label" dense outlined emit-value map-options label="Sync status" class="rs-select" />
-      </template>
-      <q-select v-model="sourceFilter" :options="sourceOptions" option-label="label" dense outlined emit-value map-options label="Source" class="rs-select rs-source" aria-label="Filter by source" />
+    <!-- Rejected contacts are hidden from the list; this is the way in and out. -->
+    <div v-if="rejected" class="rs-rejbar">
+      <span class="rs-rejbar-text">Showing rejected contacts ({{ rejectedCount }})</span>
+      <button type="button" class="rs-rejbar-back" @click="$emit('backToContacts')">Back to contacts</button>
     </div>
+
+    <template v-else>
+      <!-- ONE joined control: All, then a segment per status. Always drawn, even when
+           every count is 0 (zero segments go grey but stay), so the page never loses
+           its controls and leaves Import floating alone: that was the bug when the
+           old pills vanished with no contacts. Each segment is a filter; tap the
+           selected one again to go back to All. The counts follow the conference,
+           search, source and followed-up filters (statusCounts in utils), so a number
+           is what the list under it shows. Number over word so five fit at 320px with
+           nothing under 12px. -->
+      <div class="rs-seg" role="group" aria-label="Filter contacts by status">
+        <button
+          v-for="s in STATUS_SEGMENTS"
+          :key="s.key"
+          type="button"
+          class="rs-sgm"
+          :class="[`rs-sgm-${s.key}`, { 'is-on': segment === s.key, 'is-zero': counts[s.key] === 0 }]"
+          :aria-pressed="segment === s.key"
+          :aria-label="`${counts[s.key]} ${s.label}`"
+          :disabled="s.key !== 'all' && counts[s.key] === 0 && segment !== s.key"
+          @click="pick(s.key)"
+        >
+          <span class="rs-sgm-n"><span v-if="s.key !== 'all'" class="rs-sgm-dot" />{{ counts[s.key] }}</span>
+          <span class="rs-sgm-w">{{ s.label }}</span>
+        </button>
+      </div>
+
+      <!-- Which conference the list is showing; tapping it opens Filter at Conference. -->
+      <button type="button" class="rs-cline" :aria-label="`${conferenceLine}. Change conference`" @click="$emit('openFilter', 'conference')">
+        <q-icon name="event" size="20px" class="rs-cline-ic" />
+        <span class="rs-cline-t">{{ conferenceLine }}</span>
+        <q-icon name="expand_more" size="22px" />
+      </button>
+    </template>
   </header>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { LeadBucket, ReviewStatus, SortKey, SourceKey } from '@/utils/contactsList';
+import { STATUS_SEGMENTS, type StatusSegment } from '@/utils/contactsList';
 
-// Contacts' header (status tabs, the ready / incomplete / processing pills with
-// Import, search and sort, the filters) as pure display. ContactsPage owns the data
-// and every filter's state and hands them in; the onboarding tour renders this same
-// component with sample counts. The filters are v-models so each one still writes
-// straight into the page's own ref, as before this was split out.
-const tab = defineModel<ReviewStatus>('tab', { required: true });
+// Contacts' header (search, Filter, Import, the status bar and the conference line)
+// as pure display. ContactsPage owns the data and every filter's state and hands them
+// in; the onboarding tour renders this same component with sample counts.
+const segment = defineModel<StatusSegment>('segment', { required: true });
 const search = defineModel<string | null>('search', { default: '' });
-const followFilter = defineModel<'all' | 'todo' | 'done'>('followFilter', { default: 'all' });
-const eventFilter = defineModel<string | null>('eventFilter', { default: null });
-const repFilter = defineModel<string | null>('repFilter', { default: null });
-const syncedFilter = defineModel<string | null>('syncedFilter', { default: null });
-const sourceFilter = defineModel<SourceKey | null>('sourceFilter', { default: null });
-const scopeView = defineModel<'current' | 'past'>('scopeView', { default: 'current' });
 
-type Option<V> = { label: string; value: V };
-const props = defineProps<{
-  tabDefs: { value: ReviewStatus; label: string }[];
-  counts: Record<ReviewStatus, number>;
-  summary: Record<LeadBucket, number>;
-  readinessFilter: LeadBucket | null;
-  isSales: boolean;
-  sortOptions: Record<ReviewStatus, { value: SortKey; label: string }[]>;
-  sortByTab: Record<ReviewStatus, SortKey>;
-  eventFilterOptions: Option<string | null>[];
-  repFilterOptions: Option<string | null>[];
-  syncedFilterOptions: Option<string | null>[];
-  sourceOptions: Option<SourceKey | null>[];
-}>();
-defineEmits<{ toggleReadiness: [key: LeadBucket]; sort: [tab: ReviewStatus, value: SortKey] }>();
+withDefaults(defineProps<{
+  counts: Record<StatusSegment, number>;
+  // How many Filter settings differ from the defaults (the badge).
+  filterCount?: number;
+  conferenceLine: string;
+  // The Rejected view: a slim bar replaces the status bar and the conference line.
+  rejected?: boolean;
+  rejectedCount?: number;
+}>(), { filterCount: 0, rejected: false, rejectedCount: 0 });
 
-// The words are one word each on purpose (see the status row in the template).
-// "Ready" here is the same state as the card's "Ready to confirm" chip.
-const pills: { key: LeadBucket; label: string; dot: string }[] = [
-  { key: 'ready', label: 'ready', dot: 'rs-dot-ready' },
-  { key: 'needsInfo', label: 'incomplete', dot: 'rs-dot-info' },
-  { key: 'processing', label: 'processing', dot: 'rs-dot-proc' },
-];
+defineEmits<{ openFilter: [section: 'conference' | null]; backToContacts: [] }>();
 
-const sortLabel = computed(() => props.sortOptions[tab.value]?.find((o) => o.value === props.sortByTab[tab.value])?.label ?? 'Sort');
+function pick(key: StatusSegment) {
+  segment.value = segment.value === key ? 'all' : key;
+}
 </script>
 
 <style scoped>
-.rs-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.rs-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-/* Underline tabs with live counts. The nav bar already says "Contacts", so the
-   page has no title row; the tray this used to sit in is gone too. 44px tall. */
-.rs-tabs { display: flex; border-bottom: 1px solid rgba(0, 0, 0, 0.12); margin: 0 -4px; }
-.rs-tab {
-  flex: 1;
-  min-height: 44px;
-  padding: 0 4px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: transparent;
-  color: #4A5B6B;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.rs-tab:focus-visible { outline: 2px solid #0067AC; outline-offset: -2px; }
-.rs-tab.is-on { color: var(--q-primary); border-bottom-color: var(--q-primary); }
-.rs-count {
-  min-width: 22px;
-  padding: 0 7px;
-  border-radius: 11px;
-  background: rgba(0, 0, 0, 0.07);
-  font-size: 12px;
-  line-height: 22px;
-}
-.rs-tab.is-on .rs-count { background: #E3F1FA; color: #0067AC; }
-
-/* Search, sort and the this-event / past-events icon. */
-.rs-tools { display: flex; align-items: center; gap: 4px; }
+/* ── Top row ── */
+.rs-top { display: flex; align-items: center; gap: 8px; }
 .rs-search { flex: 1; min-width: 0; }
-.rs-sort { min-height: 40px; }
-.rs-scope {
+.rs-search :deep(.q-field__control) { height: 44px; border-radius: 10px; }
+.rs-search :deep(.q-field__marginal) { height: 44px; }
+/* 14px like the buttons beside it, so "Search contacts" is not cut off at 375px. */
+.rs-search :deep(.q-field__native), .rs-search :deep(.q-field__input) { font-size: 14px; }
+.rs-search :deep(.q-field__control) { padding: 0 8px; }
+.rs-search :deep(.q-field__prepend) { padding-right: 4px; }
+.rs-search :deep(.q-field__append) { padding-left: 0; }
+.rs-tbtn {
+  position: relative;
   flex: none;
-  width: 40px;
-  height: 40px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #B9C3CE;
-  border-radius: 8px;
+  gap: 4px;
   background: #fff;
-  color: #5B6B7B;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  color: #0067AC;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
   cursor: pointer;
 }
-.rs-scope:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
-/* Filled when you are looking somewhere other than the default. */
-.rs-scope.is-past { background: #1D5C93; border-color: #1D5C93; color: #fff; }
+.rs-tbtn:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
+/* A badge on the corner rather than in the flow: it must not take width from the
+   search field, whose placeholder is already tight at 375px. */
+.rs-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #0067AC;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+/* Import is icon-only on the narrowest phones; its aria-label still names it. */
+@media (max-width: 374px) {
+  .rs-import-label { display: none; }
+  .rs-import { padding: 0; width: 44px; }
+}
 
-.rs-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.rs-follow-toggle { border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 8px; }
-.rs-follow-toggle :deep(.q-btn) { min-height: 40px; }
-.rs-select { min-width: 170px; }
+/* ── Rejected bar ── */
+.rs-rejbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: #FBEAEA;
+  color: #8E2B2B;
+  font-size: 14px;
+}
+.rs-rejbar-text { font-weight: 500; min-width: 0; }
+.rs-rejbar-back { flex: none; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: #0067AC; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.rs-rejbar-back:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 4px; }
 
-/* One row: ready / incomplete / processing filters and Import. Each cell stacks
-   its number over its word, so it is as wide as "processing" and no wider, which
-   is what lets four of them fit at 320px. min-width: 0 and no wrapping on the
-   words are what keep it from overflowing. 46px tall, so a comfortable tap. */
-.rs-status-row { display: flex; gap: 6px; align-items: stretch; }
-.rs-cell {
-  flex: 1 1 0;
+/* ── The status bar (C2, the segmented scoreboard) ── */
+.rs-seg {
+  display: flex;
+  height: 56px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.rs-sgm {
+  --c: #9AA5AE;
+  --tint: #E3F1FA;
+  --ink: #0B4F82;
+  position: relative;
+  flex: 1 1 auto;
   min-width: 0;
-  min-height: 46px;
-  padding: 3px 2px;
+  height: 100%;
+  padding: 0 2px;
+  border: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  background: none;
+  font: inherit;
+  color: #2F3A44;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  font: inherit;
-  color: #2F3A44;
-  white-space: nowrap;
+  line-height: 1.15;
   cursor: pointer;
-  text-decoration: none;
 }
-.rs-cell:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
-.rs-cell-n { display: inline-flex; align-items: center; gap: 5px; font-size: 16px; font-weight: 500; line-height: 1.1; }
-.rs-cell-l { font-size: 11px; line-height: 1.2; color: #4A5B6B; }
-.rs-cell.is-on { background: #E3F1FA; border-color: #0067AC; }
-.rs-cell.is-on .rs-cell-l { color: #0067AC; }
-.rs-cell:disabled { opacity: 0.5; cursor: default; }
-.rs-cell-import { margin-left: auto; flex: 0 0 auto; min-width: 64px; padding: 3px 8px; border-color: #1D5C93; color: #1D5C93; }
-.rs-cell-import .rs-cell-l { color: #1D5C93; }
-.rs-sum-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.rs-dot-ready { background: #1E8E3E; }
-.rs-dot-info { background: #E07B00; }
-.rs-dot-proc { background: #0067AC; }
+.rs-sgm:first-child { border-left: 0; }
+.rs-sgm-all { --c: #0067AC; }
+.rs-sgm-ready { --c: #1E8E3E; --tint: #E6F4EA; --ink: #14532D; }
+.rs-sgm-needsInfo { --c: #E07B00; --tint: #FDEEE3; --ink: #7A3B00; }
+.rs-sgm-processing { --c: #0067AC; --tint: #E3F1FA; --ink: #0B4F82; }
+.rs-sgm-confirmed { --c: #7CC49A; --tint: #E6F4EA; --ink: #14532D; }
+.rs-sgm-n { display: inline-flex; align-items: center; gap: 4px; font-size: 17px; font-weight: 600; line-height: 24px; }
+.rs-sgm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.rs-sgm-w { font-size: 12px; color: #5B6670; white-space: nowrap; }
+/* The selected segment fills with its tint and gets a 3px bar in its own colour. */
+.rs-sgm::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--c); opacity: 0; }
+.rs-sgm.is-on { background: var(--tint); }
+.rs-sgm.is-on::before { opacity: 1; }
+.rs-sgm.is-on .rs-sgm-w { color: var(--ink); font-weight: 600; }
+/* Zero goes grey but stays. */
+.rs-sgm.is-zero .rs-sgm-n, .rs-sgm.is-zero .rs-sgm-w { color: #7A858E; }
+.rs-sgm.is-zero .rs-sgm-dot { background: #B6BEC6; }
+.rs-sgm:disabled { cursor: default; }
+.rs-sgm:hover:not(.is-on):not(:disabled) { background: #F1F4F6; }
+.rs-sgm:focus-visible { outline: 2px solid #0067AC; outline-offset: -2px; }
 
-@media (min-width: 600px) {
-  .rs-tabs { max-width: 520px; }
-  .rs-status-row { max-width: 440px; }
+/* ── Conference line ── */
+.rs-cline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding-block: 4px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: #5B6670;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
 }
-
-@media (max-width: 599px) {
-  /* Filters sit two to a row instead of one full-width select per row; the
-     follow-up toggle and Conference select take a whole row. */
-  .rs-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .rs-filters .rs-select { min-width: 0; }
-  .rs-follow-toggle { grid-column: 1 / -1; width: 100%; }
-  .rs-follow-toggle :deep(.q-btn) { flex: 1; }
-  .rs-filters .rs-select:first-of-type:nth-last-of-type(4) { grid-column: 1 / -1; }
-  .rs-filters .rs-source { grid-column: 1 / -1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rs-tab { transition: none; }
-}
+.rs-cline:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 6px; }
+.rs-cline-ic { color: #0067AC; flex: none; }
+/* Two lines before it truncates: "Your most recent conference: <name>" is long. */
+.rs-cline-t { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.25; }
 </style>

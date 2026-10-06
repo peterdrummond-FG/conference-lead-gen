@@ -1,4 +1,4 @@
-import { reactive, ref, shallowRef } from 'vue';
+import { reactive, ref } from 'vue';
 import { Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useSessionStore } from '@/stores/session-store';
@@ -13,10 +13,10 @@ export type DisplayPatch = Partial<Pick<ContactListItem, 'districtName' | 'schoo
 
 const UNDO_MS = 6000;
 
-// All three review statuses are held at once, not just the visible tab. That
-// is what gives the tabs live counts, lets an approve/reject move a lead
-// between tabs locally (no refetch, no flicker, no lost place), and makes
-// Undo a plain PATCH back. A rep's contacts are a few hundred rows of JSON at
+// All three review statuses are held at once. That is what gives the status bar
+// live counts, lets an approve/reject move a lead between the unconfirmed,
+// confirmed and rejected lists locally (no refetch, no flicker, no lost place),
+// and makes Undo a plain PATCH back. A rep's contacts are a few hundred rows of JSON at
 // most — the card photos are separate requests, and only the open lead's is
 // ever fetched.
 export function useContacts() {
@@ -27,10 +27,6 @@ export function useContacts() {
     approved: [],
     rejected: [],
   });
-  // Which leads belong to the rep's current event. Filled from the server's
-  // own scope=current answer rather than guessed from event ids client-side,
-  // so "current" means exactly what contacts-list means by it.
-  const currentIds = shallowRef<Set<string>>(new Set());
   const loading = ref(false);
   const loaded = ref(false);
   const busy = reactive(new Set<string>());
@@ -76,27 +72,24 @@ export function useContacts() {
       const jobs = REVIEW_STATUSES.flatMap((status) => {
         if (sales) {
           return [
-            fetchList(status, { scope: 'current' }).then((rows) => ({ status, current: true, rows })),
-            fetchList(status, { scope: 'past' }).then((rows) => ({ status, current: false, rows })),
+            // contacts-list splits a rep's leads into their current conference and the
+            // rest; the page wants all of them (it filters by conference itself).
+            fetchList(status, { scope: 'current' }).then((rows) => ({ status, rows })),
+            fetchList(status, { scope: 'past' }).then((rows) => ({ status, rows })),
           ];
         }
         const extra: Record<string, string> = {};
         if (serverFilters.repId) extra.repId = serverFilters.repId;
         if (serverFilters.synced) extra.synced = serverFilters.synced;
-        return [fetchList(status, extra).then((rows) => ({ status, current: false, rows }))];
+        return [fetchList(status, extra).then((rows) => ({ status, rows }))];
       });
       const results = await Promise.all(jobs);
       if (seq !== loadSeq) return;
       if (opts.quiet && (writes !== writesAtStart || writingAtStart || busy.size > 0)) return;
 
       const next: Record<ReviewStatus, ContactListItem[]> = { needs_review: [], approved: [], rejected: [] };
-      const ids = new Set<string>();
-      for (const r of results) {
-        next[r.status].push(...r.rows);
-        if (r.current) for (const c of r.rows) ids.add(c.id);
-      }
+      for (const r of results) next[r.status].push(...r.rows);
       for (const status of REVIEW_STATUSES) buckets[status] = next[status];
-      currentIds.value = ids;
       loaded.value = true;
     } finally {
       if (seq === loadSeq) loading.value = false;
@@ -249,7 +242,7 @@ export function useContacts() {
   }
 
   return {
-    buckets, currentIds, loading, loaded, busy, serverFilters,
+    buckets, loading, loaded, busy, serverFilters,
     load, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete,
   };
 }

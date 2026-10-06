@@ -103,9 +103,10 @@ export function leadCue(c: ContactListItem): string | null {
   }
 }
 
-// Which of the three summary pills a lead falls under. Each lead is in exactly
-// one, decided by the same rules as its chip and button, so a pill's count and
-// the list it filters to can never disagree with the cards.
+// Which status a lead is in, one answer per lead, decided by the same rules as its
+// chip and button so a count and the list it filters to can never disagree with the
+// cards. The first three are the unconfirmed leads (the old "To review" tab);
+// 'confirmed' and 'rejected' are the stored statuses 'approved' and 'rejected'.
 export type LeadBucket = 'ready' | 'needsInfo' | 'processing';
 export function leadBucket(c: ContactListItem): LeadBucket | null {
   if (c.reviewStatus !== 'needs_review') return null;
@@ -113,12 +114,40 @@ export function leadBucket(c: ContactListItem): LeadBucket | null {
   return isReady(c) ? 'ready' : 'needsInfo';
 }
 
-// The counts under "2 ready to confirm · 1 needs info · 1 processing".
-export function summaryCounts(list: ContactListItem[]): { ready: number; needsInfo: number; processing: number } {
-  const n = { ready: 0, needsInfo: 0, processing: 0 };
+export type RowStatus = LeadBucket | 'confirmed' | 'rejected';
+export function rowStatus(c: ContactListItem): RowStatus {
+  if (c.reviewStatus === 'approved') return 'confirmed';
+  if (c.reviewStatus === 'rejected') return 'rejected';
+  return leadBucket(c) ?? 'needsInfo';
+}
+
+// The status bar above the list: one joined control, All and then one segment per
+// status. Rejected is not a segment: those contacts are hidden and reached only
+// through Filter -> Show: Rejected.
+export type StatusSegment = 'all' | LeadBucket | 'confirmed';
+export const STATUS_SEGMENTS: { key: StatusSegment; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'ready', label: 'Ready' },
+  { key: 'needsInfo', label: 'Needs info' },
+  { key: 'processing', label: 'Processing' },
+  { key: 'confirmed', label: 'Confirmed' },
+];
+
+export function inSegment(c: ContactListItem, seg: StatusSegment): boolean {
+  const st = rowStatus(c);
+  if (st === 'rejected') return false;
+  return seg === 'all' || st === seg;
+}
+
+// The counts under each segment. Rejected contacts are in none of them, and All is
+// the sum of the other four, so the numbers always add up to the list.
+export function statusCounts(list: ContactListItem[]): Record<StatusSegment, number> {
+  const n: Record<StatusSegment, number> = { all: 0, ready: 0, needsInfo: 0, processing: 0, confirmed: 0 };
   for (const c of list) {
-    const b = leadBucket(c);
-    if (b) n[b] += 1;
+    const st = rowStatus(c);
+    if (st === 'rejected') continue;
+    n[st] += 1;
+    n.all += 1;
   }
   return n;
 }
@@ -419,6 +448,160 @@ export function orderByRank(list: ContactListItem[], status: ReviewStatus, rank:
   }
   ranked.sort((a, b) => a.r - b.r);
   return [...sortLeads(unseen, 'newest'), ...ranked.map((x) => x.c)];
+}
+
+// ── The deck: unconfirmed first, confirmed after ─────────────────────────
+//
+// One list, no tabs. Unconfirmed contacts (Ready / Needs info / Processing,
+// interleaved, newest first by default and NEVER sorted on readiness: that is the
+// 2026-10-01 incident above) come first, then confirmed contacts at the bottom.
+//
+// Confirming a contact must not move it under the person's finger, which is the
+// same failure as the readiness sort in a new place. So a contact confirmed one at
+// a time is HELD: it turns confirmed where it stands (its rank is still the one it
+// had as an unconfirmed contact) and only slides down to the confirmed group when
+// the page settles it, i.e. when the person goes on to another contact. Once
+// settled it has no confirmed-group rank, so it files at the top of the confirmed
+// group (newest first), the nearest thing to "the one I just did". The next full
+// re-sort files everything properly. `held` is a set of ids owned by the page;
+// ids that are not (or no longer) confirmed are ignored here.
+export function orderDeck(
+  unconfirmed: ContactListItem[],
+  confirmed: ContactListItem[],
+  rank: LeadRank,
+  held: ReadonlySet<string>,
+): ContactListItem[] {
+  const heldNow = confirmed.filter((c) => held.has(c.id));
+  const settled = confirmed.filter((c) => !held.has(c.id));
+  return [
+    ...orderByRank([...unconfirmed, ...heldNow], 'needs_review', rank),
+    ...orderByRank(settled, 'approved', rank),
+  ];
+}
+
+// ── Which conference ─────────────────────────────────────────────────────
+//
+// A rep's page opens on one conference, not on everything they ever captured:
+//   * their current conference, if they have one;
+//   * otherwise their most recent one (the newest lead's), so a rep who has not
+//     (re)joined a conference still sees what they have, with the line saying so;
+//   * typing a search looks across ALL their conferences, because someone who
+//     types a name is looking for a person, not for a conference.
+// Managers (admin / Solutions Success) see everything by default and may pick one.
+// "Earlier conferences" and "All conferences" keep the per-conference grouping
+// (groupByEvent) so a big history stays tidy.
+
+export type ConferenceScope = 'current' | 'earlier' | 'all';
+
+export interface HomeConference {
+  id: string | null;
+  name: string | null;
+  kind: 'current' | 'recent' | 'none';
+}
+
+export function homeConference(
+  all: ContactListItem[],
+  current: { id: string | null; name: string | null },
+): HomeConference {
+  const nameOf = (id: string) => all.find((c) => c.eventId === id)?.eventName ?? null;
+  if (current.id) return { id: current.id, name: current.name ?? nameOf(current.id), kind: 'current' };
+  let best: { id: string; at: number } | null = null;
+  for (const [id, at] of eventRecency(all)) {
+    if (!best || at > best.at) best = { id, at };
+  }
+  return best ? { id: best.id, name: nameOf(best.id), kind: 'recent' } : { id: null, name: null, kind: 'none' };
+}
+
+export interface ConferenceView {
+  isSales: boolean;
+  scope: ConferenceScope; // reps
+  eventId: string | null; // managers: one conference, or null for all
+  home: HomeConference;
+  searching: boolean;
+}
+
+export function inConferenceView(c: ContactListItem, v: ConferenceView): boolean {
+  if (v.searching) return true;
+  if (!v.isSales) return !v.eventId || c.eventId === v.eventId;
+  if (v.scope === 'all') return true;
+  const isHome = c.eventId === v.home.id;
+  return v.scope === 'current' ? isHome : !isHome;
+}
+
+// Whether the list is shown grouped under a header per conference. A rep's current
+// conference is one flat list; earlier / all is grouped; a search is flat (the cards
+// then name their own conference); a manager's list is flat with the conference on
+// each card.
+export function groupedByConference(v: ConferenceView): boolean {
+  return v.isSales && !v.searching && v.scope !== 'current';
+}
+
+// The words on the line under the status bar, and on the Filter panel's radio.
+export function conferenceLine(v: ConferenceView, eventName: string | null): string {
+  if (v.searching) return v.isSales ? 'Searching all your conferences' : 'Searching all conferences';
+  if (!v.isSales) return v.eventId ? (eventName ?? 'One conference') : 'All conferences';
+  if (v.scope === 'earlier') return 'Earlier conferences';
+  if (v.scope === 'all') return 'All conferences';
+  if (v.home.kind === 'recent') return `Your most recent conference: ${v.home.name ?? 'unknown'}`;
+  return v.home.name ?? 'No conference yet';
+}
+
+export function homeRadioLabel(home: HomeConference): string {
+  if (home.kind === 'recent') return `Most recent conference (${home.name ?? 'unknown'})`;
+  return home.name ? `This conference (${home.name})` : 'This conference';
+}
+
+// Every conference the loaded contacts belong to, newest first: the manager's select.
+export function conferenceOptions(all: ContactListItem[]): { value: string; label: string }[] {
+  const names = new Map<string, string>();
+  for (const c of all) if (!names.has(c.eventId)) names.set(c.eventId, c.eventName);
+  const recency = eventRecency(all);
+  return [...names.entries()]
+    .sort((a, b) => (recency.get(b[0]) ?? 0) - (recency.get(a[0]) ?? 0))
+    .map(([value, label]) => ({ value, label }));
+}
+
+// ── The Filter panel's state ─────────────────────────────────────────────
+
+export type FollowFilter = 'any' | 'todo' | 'done';
+
+export interface ContactFilters {
+  show: 'contacts' | 'rejected';
+  scope: ConferenceScope;
+  eventId: string | null;
+  follow: FollowFilter;
+  source: SourceKey | null;
+  // Applies within the unconfirmed group; confirmed contacts keep their own order.
+  sort: SortKey;
+  // Managers only: the server slices by these two.
+  repId: string | null;
+  synced: string | null;
+}
+
+export const DEFAULT_FILTERS: ContactFilters = {
+  show: 'contacts', scope: 'current', eventId: null, follow: 'any', source: null,
+  sort: DEFAULT_SORT.needs_review, repId: null, synced: null,
+};
+
+// The number on the Filter button: how many things differ from the defaults. The
+// conference counts only where it is a choice the person made (a rep off "this
+// conference", a manager on one conference), and the manager-only filters only
+// count for a manager, so a rep never sees a number for something they cannot see.
+export function activeFilterCount(f: ContactFilters, isSales: boolean): number {
+  let n = 0;
+  if (f.show !== 'contacts') n += 1;
+  if (isSales ? f.scope !== 'current' : f.eventId !== null) n += 1;
+  if (f.follow !== 'any') n += 1;
+  if (f.source) n += 1;
+  if (f.sort !== DEFAULT_FILTERS.sort) n += 1;
+  if (!isSales && f.repId) n += 1;
+  if (!isSales && f.synced) n += 1;
+  return n;
+}
+
+export function filterByFollowUp(list: ContactListItem[], f: FollowFilter): ContactListItem[] {
+  if (f === 'any') return list;
+  return list.filter((c) => c.followedUp === (f === 'done'));
 }
 
 // ── Search ───────────────────────────────────────────────────────────────

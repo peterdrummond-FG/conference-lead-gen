@@ -104,7 +104,7 @@ async function run(t: TourRun) {
   emit('size', appSize());
   await nextTick();
   await t.wait(900);
-  const importBtn = t.find('.rs-cell-import');
+  const importBtn = t.find('.rs-import');
   await t.ring(importBtn, 1200);
   await t.tap(importBtn, { press: true });
   part.value = 'notes';
@@ -135,7 +135,7 @@ async function run(t: TourRun) {
   await nextTick();
   await t.wait(700);
   t.hideFinger();
-  await t.ring(t.findIncl('processing', '.rs-cell'), 2600);
+  await t.ring(t.findIncl('processing', '.rs-sgm'), 2600);
 }
 
 defineExpose({ run, reset });

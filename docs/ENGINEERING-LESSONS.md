@@ -435,7 +435,11 @@ and say the save landed. Two corollaries from the same fix: a background refresh
 must yield to any write in flight (it was a snapshot from before the write), and
 when someone reports data "vanished", check the database before assuming it was
 lost: it was a display problem here, and the logs showed it in one query.
-Tests: `contactsList.test.mjs` ("Order").
+The same rule bit again when the tabs went (2026-10-06): a confirmed contact moving to
+the confirmed group the instant ✓ is tapped is the same row jumping under the finger. It is
+*held* (confirmed in place, same position) and slides down only when the person goes on to
+another contact (`orderDeck`, the page's `held` set); a bulk confirm settles at once.
+Tests: `contactsList.test.mjs` ("Order", "The deck").
 
 ---
 

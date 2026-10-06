@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
-  accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, summaryCounts,
+  accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, statusCounts,
   filterBySource, sourceFilterOptions, sourceKey, sourceLabel, sourceTone, SOURCE_OPTIONS,
 } from './contactsList.ts';
 
@@ -183,8 +183,8 @@ test('the summary puts every lead in exactly one bucket, agreeing with its chip'
     lead({ id: 'e', matchStatus: 'pending', matchAttempts: 3 }),
     lead({ id: 'f', reviewStatus: 'approved' }),
   ];
-  const n = summaryCounts(list);
-  assert.deepEqual(n, { ready: 2, needsInfo: 2, processing: 1 });
+  const n = statusCounts(list);
+  assert.deepEqual(n, { all: 6, ready: 2, needsInfo: 2, processing: 1, confirmed: 1 });
   assert.equal(n.ready + n.needsInfo + n.processing, list.filter((c) => c.reviewStatus === 'needs_review').length);
   assert.equal(n.ready, readyIds(list).length);
 });
@@ -276,7 +276,7 @@ test('a lead keeps its place across approve then undo', () => {
   assert.equal(back[0].id, 'jim');
 });
 
-test('leadBucket puts every to-review lead in exactly one pill, matching summaryCounts', () => {
+test('leadBucket puts every to-review lead in exactly one pill, matching statusCounts', () => {
   const list = [
     lead({ id: 'a' }),
     lead({ id: 'b', schoolDistrictId: null, districtName: null }),
@@ -285,7 +285,7 @@ test('leadBucket puts every to-review lead in exactly one pill, matching summary
     lead({ id: 'e', reviewStatus: 'approved' }),
   ];
   assert.deepEqual(list.map(leadBucket), ['ready', 'needsInfo', 'processing', 'needsInfo', null]);
-  assert.deepEqual(summaryCounts(list), { ready: 1, needsInfo: 2, processing: 1 });
+  assert.deepEqual(statusCounts(list), { all: 5, ready: 1, needsInfo: 2, processing: 1, confirmed: 1 });
 });
 
 // ── Signup source ────────────────────────────────────────────────────────
@@ -424,4 +424,200 @@ test('a typed school with no district counts as an organisation', () => {
   assert.equal(isReady(c), true);
   assert.deepEqual(leadFlags(c), []);
   assert.ok(readinessChecklist(c).find((i) => i.key === 'org').state === 'ok');
+});
+
+// ── The status bar ───────────────────────────────────────────────────────
+
+import { STATUS_SEGMENTS, inSegment, rowStatus } from './contactsList.ts';
+
+test('the status bar is All, Ready, Needs info, Processing, Confirmed, in that order', () => {
+  assert.deepEqual(STATUS_SEGMENTS.map((s) => s.label), ['All', 'Ready', 'Needs info', 'Processing', 'Confirmed']);
+});
+
+test('statusCounts: every non-rejected lead is in exactly one segment, and All is their sum', () => {
+  const list = [
+    lead({ id: 'a' }),
+    lead({ id: 'b', schoolDistrictId: null, districtName: null }),
+    lead({ id: 'c', matchStatus: 'pending' }),
+    lead({ id: 'd', reviewStatus: 'approved' }),
+    lead({ id: 'e', reviewStatus: 'approved' }),
+    lead({ id: 'f', reviewStatus: 'rejected' }),
+  ];
+  const n = statusCounts(list);
+  assert.deepEqual(n, { all: 5, ready: 1, needsInfo: 1, processing: 1, confirmed: 2 });
+  for (const c of list) {
+    const segs = STATUS_SEGMENTS.filter((s) => s.key !== 'all' && inSegment(c, s.key));
+    assert.equal(segs.length, c.reviewStatus === 'rejected' ? 0 : 1, c.id);
+    assert.equal(inSegment(c, 'all'), c.reviewStatus !== 'rejected');
+  }
+});
+
+test('statusCounts of nothing is all zeros, so the bar can still be drawn grey', () => {
+  assert.deepEqual(statusCounts([]), { all: 0, ready: 0, needsInfo: 0, processing: 0, confirmed: 0 });
+});
+
+test('rowStatus names the edge colour a card gets', () => {
+  assert.equal(rowStatus(lead()), 'ready');
+  assert.equal(rowStatus(lead({ email: null, phone: null })), 'needsInfo');
+  assert.equal(rowStatus(lead({ matchStatus: 'pending' })), 'processing');
+  assert.equal(rowStatus(lead({ matchStatus: 'pending', matchAttempts: 3 })), 'needsInfo');
+  assert.equal(rowStatus(lead({ reviewStatus: 'approved' })), 'confirmed');
+  assert.equal(rowStatus(lead({ reviewStatus: 'rejected' })), 'rejected');
+});
+
+// ── The deck: unconfirmed first, confirmed after; confirming settles later ──
+
+import { orderDeck } from './contactsList.ts';
+
+function deckFixture() {
+  // Newest first: n3 (ready), n2 (needs info), n1 (ready), then an older confirmed c1.
+  const n3 = lead({ id: 'n3', createdAt: '2026-09-30T10:00:00Z' });
+  const n2 = lead({ id: 'n2', email: null, phone: null, createdAt: '2026-09-29T10:00:00Z' });
+  const n1 = lead({ id: 'n1', createdAt: '2026-09-28T10:00:00Z' });
+  const c1 = lead({ id: 'c1', reviewStatus: 'approved', createdAt: '2026-09-01T10:00:00Z' });
+  const buckets = { needs_review: [n1, n2, n3], approved: [c1], rejected: [] };
+  const rank = buildRank(buckets, SORTS);
+  return { n1, n2, n3, c1, buckets, rank };
+}
+const ids = (list) => list.map((c) => c.id);
+
+test('the deck is unconfirmed newest-first, interleaving Ready / Needs info / Processing, then confirmed', () => {
+  const { n1, n2, n3, c1, buckets, rank } = deckFixture();
+  const proc = lead({ id: 'p', matchStatus: 'pending', createdAt: '2026-09-29T20:00:00Z' });
+  buckets.needs_review.push(proc);
+  const r = buildRank(buckets, SORTS);
+  assert.deepEqual(ids(orderDeck(buckets.needs_review, buckets.approved, r, new Set())), ['n3', 'p', 'n2', 'n1', 'c1']);
+  assert.deepEqual(ids(orderDeck([n1, n2, n3], [c1], rank, new Set())), ['n3', 'n2', 'n1', 'c1']);
+});
+
+test('a lead confirmed one at a time is held: it turns confirmed where it stands', () => {
+  const { n1, n2, n3, c1, rank } = deckFixture();
+  // n2 was just confirmed: its status is now approved, but the page is holding it.
+  n2.reviewStatus = 'approved';
+  const held = new Set(['n2']);
+  assert.deepEqual(ids(orderDeck([n1, n3], [c1, n2], rank, held)), ['n3', 'n2', 'n1', 'c1']);
+  assert.equal(rowStatus(n2), 'confirmed');
+});
+
+test('settling a held lead slides it to the top of the confirmed group, below every unconfirmed one', () => {
+  const { n1, n2, n3, c1, rank } = deckFixture();
+  n2.reviewStatus = 'approved';
+  assert.deepEqual(ids(orderDeck([n1, n3], [c1, n2], rank, new Set())), ['n3', 'n1', 'n2', 'c1']);
+});
+
+test('several held leads settle together, newest first, ahead of older confirmed ones', () => {
+  const { n1, n2, n3, c1, rank } = deckFixture();
+  n1.reviewStatus = 'approved';
+  n3.reviewStatus = 'approved';
+  assert.deepEqual(ids(orderDeck([n2], [c1, n1, n3], rank, new Set())), ['n2', 'n3', 'n1', 'c1']);
+});
+
+test('a held id that is no longer confirmed (undone) is ignored and keeps its place', () => {
+  const { n1, n2, n3, c1, rank } = deckFixture();
+  assert.deepEqual(ids(orderDeck([n1, n2, n3], [c1], rank, new Set(['n2']))), ['n3', 'n2', 'n1', 'c1']);
+});
+
+test('the order is frozen: a confirmed lead is not re-sorted by being confirmed, only by settling', () => {
+  const { n1, n2, n3, c1, rank } = deckFixture();
+  const before = ids(orderDeck([n1, n2, n3], [c1], rank, new Set()));
+  n3.reviewStatus = 'approved';
+  const held = ids(orderDeck([n1, n2], [c1, n3], rank, new Set(['n3'])));
+  assert.deepEqual(held, before, 'confirming changes the look, not the position');
+});
+
+// ── Which conference ─────────────────────────────────────────────────────
+
+import {
+  conferenceLine, conferenceOptions, groupedByConference, homeConference, homeRadioLabel, inConferenceView,
+  activeFilterCount, filterByFollowUp, DEFAULT_FILTERS,
+} from './contactsList.ts';
+
+function history() {
+  return [
+    lead({ id: 'a1', eventId: 'e-new', eventName: 'MoASSP Fall 2026', createdAt: '2026-10-02T10:00:00Z' }),
+    lead({ id: 'a2', eventId: 'e-new', eventName: 'MoASSP Fall 2026', createdAt: '2026-10-01T10:00:00Z' }),
+    lead({ id: 'b1', eventId: 'e-old', eventName: 'Region 4 Spring', createdAt: '2026-04-01T10:00:00Z' }),
+  ];
+}
+const repView = (over) => ({ isSales: true, scope: 'current', eventId: null, home: { id: 'e-new', name: 'MoASSP Fall 2026', kind: 'current' }, searching: false, ...over });
+
+test('a rep with a current conference sees that conference', () => {
+  const all = history();
+  const home = homeConference(all, { id: 'e-old', name: 'Region 4 Spring' });
+  assert.deepEqual(home, { id: 'e-old', name: 'Region 4 Spring', kind: 'current' });
+  assert.deepEqual(all.filter((c) => inConferenceView(c, repView({ home }))).map((c) => c.id), ['b1']);
+});
+
+test('a rep with no current conference sees their most recent one, and the line says so', () => {
+  const all = history();
+  const home = homeConference(all, { id: null, name: null });
+  assert.deepEqual(home, { id: 'e-new', name: 'MoASSP Fall 2026', kind: 'recent' });
+  const v = repView({ home });
+  assert.deepEqual(all.filter((c) => inConferenceView(c, v)).map((c) => c.id), ['a1', 'a2']);
+  assert.equal(conferenceLine(v, null), 'Your most recent conference: MoASSP Fall 2026');
+  assert.equal(homeRadioLabel(home), 'Most recent conference (MoASSP Fall 2026)');
+});
+
+test('a rep with no conference and no contacts has nothing to default to', () => {
+  const home = homeConference([], { id: null, name: null });
+  assert.deepEqual(home, { id: null, name: null, kind: 'none' });
+  assert.equal(conferenceLine(repView({ home }), null), 'No conference yet');
+});
+
+test('the current conference falls back to the name on a lead when the session has none', () => {
+  assert.equal(homeConference(history(), { id: 'e-old', name: null }).name, 'Region 4 Spring');
+});
+
+test('a rep choosing Earlier or All conferences gets grouping; this conference is one flat list', () => {
+  const all = history();
+  assert.deepEqual(all.filter((c) => inConferenceView(c, repView({ scope: 'earlier' }))).map((c) => c.id), ['b1']);
+  assert.deepEqual(all.filter((c) => inConferenceView(c, repView({ scope: 'all' }))).length, 3);
+  assert.equal(groupedByConference(repView({ scope: 'current' })), false);
+  assert.equal(groupedByConference(repView({ scope: 'earlier' })), true);
+  assert.equal(groupedByConference(repView({ scope: 'all' })), true);
+});
+
+test('typing a search looks across ALL the rep\'s conferences and shows them flat', () => {
+  const all = history();
+  const v = repView({ searching: true });
+  assert.equal(all.filter((c) => inConferenceView(c, v)).length, 3);
+  assert.equal(groupedByConference(repView({ scope: 'all', searching: true })), false);
+  assert.equal(conferenceLine(v, null), 'Searching all your conferences');
+});
+
+test('managers default to All conferences and may pick one; a search still looks across all', () => {
+  const all = history();
+  const mgr = (over) => ({ isSales: false, scope: 'current', eventId: null, home: { id: null, name: null, kind: 'none' }, searching: false, ...over });
+  assert.equal(all.filter((c) => inConferenceView(c, mgr())).length, 3);
+  assert.equal(conferenceLine(mgr(), null), 'All conferences');
+  assert.deepEqual(all.filter((c) => inConferenceView(c, mgr({ eventId: 'e-old' }))).map((c) => c.id), ['b1']);
+  assert.equal(conferenceLine(mgr({ eventId: 'e-old' }), 'Region 4 Spring'), 'Region 4 Spring');
+  assert.equal(all.filter((c) => inConferenceView(c, mgr({ eventId: 'e-old', searching: true }))).length, 3);
+  assert.equal(groupedByConference(mgr()), false);
+});
+
+test('the manager\'s conference select lists every conference with contacts, newest first', () => {
+  assert.deepEqual(conferenceOptions(history()), [
+    { value: 'e-new', label: 'MoASSP Fall 2026' },
+    { value: 'e-old', label: 'Region 4 Spring' },
+  ]);
+});
+
+// ── The Filter button's count ────────────────────────────────────────────
+
+test('the Filter badge counts what differs from the defaults, and only what the role can see', () => {
+  assert.equal(activeFilterCount(DEFAULT_FILTERS, true), 0);
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, show: 'rejected' }, true), 1);
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, scope: 'all', follow: 'todo', source: 'kiosk', sort: 'name' }, true), 4);
+  // A rep's leftover manager fields never show as a number they cannot clear.
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, repId: 'r9', synced: 'true', eventId: 'e1' }, true), 0);
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, repId: 'r9', synced: 'true', eventId: 'e1' }, false), 3);
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, scope: 'all' }, false), 0);
+});
+
+test('Followed up: Any keeps everything, Not yet and Done split it', () => {
+  const list = [lead({ id: 'a', followedUp: true }), lead({ id: 'b' })];
+  assert.equal(filterByFollowUp(list, 'any').length, 2);
+  assert.deepEqual(filterByFollowUp(list, 'todo').map((c) => c.id), ['b']);
+  assert.deepEqual(filterByFollowUp(list, 'done').map((c) => c.id), ['a']);
 });
