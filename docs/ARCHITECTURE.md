@@ -261,7 +261,7 @@ it. Every request still carries the admin's own token, so **a write made while
 previewing lands on the admin's account**, never the previewed person's.
 
 - **Review** reads that person's leads (`contacts-list?viewAsRepId=`,
-  `inbound-messages-unresolved-list?viewAsRepId=`). Approve / Reject still work
+  `inbound-messages-unresolved-list?viewAsRepId=`). Confirm / Reject still work
   and are done as the admin.
 - **Setup, Kiosk and Notes** show that person's own conference, phone and PIN
   state from `me?viewAsId=` (admin only; returns the same shape as `me` plus
@@ -340,7 +340,7 @@ Things to preserve:
   tour shows the real from-scratch conversation (SETUP, "What's the name of the
   conference?", a partial name, the list, a number, "You're linked to…"), quoted from
   `twilio-webhook`. Their leads arrive in the real **processing** state (`Checking
-  match…`), Approved and Rejected start at 0, and the people are one story across scenes
+  match…`), Confirmed and Rejected start at 0, and the people are one story across scenes
   (`tourSampleData.ts`). With no mobile number on the account (`me.hasPhone`), scene 1's
   note says who can add it, by role; once the phone is linked (`me.phoneConnected`),
   "Your turn" says "You're all set" and goes to Review instead of Setup.
@@ -636,9 +636,9 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 `contacts.followed_up` (`20260928130000_add_contact_followed_up.sql`) is a
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
 any skill or auto-classification — a rep toggles it directly via
-`contacts-patch`, and it saves as they tap. It's on every To review and Approved
+`contacts-patch`, and it saves as they tap. It's on every To review and Confirmed
 row and at the top of the editor (see "Review" below). The
-Approved tab's follow-up filter is the only place it drives behavior beyond
+Confirmed tab's follow-up filter is the only place it drives behavior beyond
 display — the All / To follow up /
 Followed up toggle plus a default "Follow up first" sort — and it's a
 client-side filter over the already-loaded list (same mechanism as the
@@ -671,15 +671,15 @@ one card, which put Merge ~1800px down.
 "Classic" card-grid view behind a ⋮ switch; it was retired 2026-10-01, and the
 switch did nothing on phones anyway. A browser that still has `ckh.review.view`
 saved just ignores it.) It is a list of compact rows
-with a plain-language flag for why a lead needs a look (or a green "Ready to approve"),
-live tab counts, search and sort, one-tap Approve / Reject with a 6-second
-Undo, "Approve all N", tap-to-call / tap-to-email, and Followed up, Add
+with a plain-language flag for why a lead needs a look (or a green "Ready to confirm"),
+live tab counts, search and sort, one-tap Confirm / Reject with a 6-second
+Undo, "Confirm all N", tap-to-call / tap-to-email, and Followed up, Add
 note straight from the row. On a desktop (≥1024px)
-the list sits beside a sticky editor pane (J / K move, A approves, R
+the list sits beside a sticky editor pane (J / K move, C confirms, R
 rejects); below that the same editor is a bottom sheet. Leaving a lead with
 unsaved edits asks first.
 
-Header, top to bottom: underline tabs (To review / Approved / Rejected, with
+Header, top to bottom: underline tabs (To review / Confirmed / Rejected, with
 counts); **one row** of ready / incomplete / processing filters plus **Import**
 (each cell stacks number over word so four fit at 320px); then search, sort and,
 for a rep, the this-event / past-events icon. There is no title row (the nav bar
@@ -689,9 +689,10 @@ same phone-screen artwork Setup saves, drawn on screen as a `blob:` image becaus
 
 Rules worth knowing before changing Smart:
 
-- **Ready to approve** (`READY_LABEL`; `utils/reviewSmart.ts`, `isReady`) means: match finished, no
+- **"Approve" is "Confirm" in every word a person reads** (2026-10-06). Only the words changed: the stored status is still `approved`, and `contacts-bulk-approve`, `reviewStatus: 'approved'`, `approveClick` and the like keep their names. The keyboard shortcut moved from A to C. `utils/confirmWording.test.mjs` fails if a screen says Approve again. The editor's separate **Confirm match** button (confirms the Zoho match) is unchanged. Reject / Rejected are unchanged.
+- **Ready to confirm** (`READY_LABEL`; `utils/reviewSmart.ts`, `isReady`) means: match finished, no
   possible duplicate, has an email or phone, and has a school or district.
-  Bulk approve only ever sends ready ids; the server still skips any pending
+  Bulk confirm only ever sends ready ids; the server still skips any pending
   ones and the response is read and reported.
 - **Saving never moves a lead.** To review is plain arrival order (newest first);
   there is no "needs attention first" sort. That sort ranked on the readiness flags,
@@ -714,20 +715,20 @@ Rules worth knowing before changing Smart:
   no toggle.
 - **Phone layout.** Below 600px each lead is a card: a › chevron, the whole card
   opens the lead, and the footer holds only what saves in one tap. A ready lead
-  has a round ✕ and ✓ (no words); a lead that can't be approved has a cue from
+  has a round ✕ and ✓ (no words); a lead that can't be confirmed yet has a cue from
   `leadCue` ("Add missing info", "Resolve duplicate", "Open to retry"); a
   processing lead has `ProcessingBar`. Add note lives in the open lead there.
   A strip above the To review list (`summaryCounts`) says how many are ready to
-  approve, need info, or are processing (and filters by each), and the open lead
+  confirm, need info, or are processing (and filters by each), and the open lead
   checks the conditions of `isReady` as a list (`readinessChecklist`; the Zoho and
   duplicate lines show only when they are the problem). A test keeps
   the checklist, the chip and `isReady` in agreement: change one, change all.
 - **Processing** (`isProcessing`): a lead whose match is still `pending` and not
-  yet given up on has no Approve and no Reject, in the editor or on the row. A
+  yet given up on has no Confirm and no Reject, in the editor or on the row. A
   notice ("We're still processing this contact…") takes the buttons' place, and
   `ReviewSmart` re-fetches quietly every 8 seconds while any lead is processing,
   which is what brings the buttons back. A *stuck* match (attempts exhausted) is
-  not processing: it keeps Reject, loses Approve, and points at Retry match.
+  not processing: it keeps Reject, loses Confirm, and points at Retry match.
 - Smart loads all three statuses at once (six requests for a rep: current and
   past scope) so tab counts are live and approve/reject/undo move a lead
   between tabs locally. No backend change was needed.
@@ -757,18 +758,31 @@ Rules worth knowing before changing Smart:
   exported at all. The Review tooltips promise this, so change both together,
   and redeploy `export-csv` when the export changes.
 - Followed up sits at the top of the editor (not the footer) and saves as you
-  tap, while the text fields still need Save (or Approve, which carries pending
+  tap, while the text fields still need Save (or Confirm, which carries pending
   edits on the same PATCH).
 - **Heat is retired (2026-10-05); Source replaced it.** The hot/warm/cold control,
   chip and "Hot first" sort, the classifier skill, its n8n pipeline and local-agent
   loop, and the DB trigger that fired it are gone. `contacts.contact_intent*` stays
   as inert history (~17 rows). Review's **Source** select (everyone, To review and
-  Approved; admin/Solutions Success also on Rejected) filters by how a lead was
-  captured, and "Source" is a sort. The key is `contacts.source` plus `qr_channel` for
-  forms (Form · Booth, Form · Session, Form · no QR, Card photo, Directory photo,
-  Note, Voice memo), all in `reviewSmart.ts` (`sourceKey`, `SOURCE_OPTIONS`). A test
-  reads the latest `contacts_source_check` migration and fails if the DB allows a
-  source the UI has no option for. Source never changes after capture, so unlike a
+  Confirmed; admin/Solutions Success also on Rejected) filters by how a lead was
+  captured, and "Source" is a sort. The labels (2026-10-06): **QR scan** (a rep's own
+  reusable QR), **QR Booth / QR Session** (the older per-event QR with a channel),
+  **Kiosk** (the in-app Kiosk tab), **Form** (legacy only: a form lead from before the
+  door was recorded, which can't be told apart, so it is not relabelled), **Card photo**,
+  **List photo** (was Directory photo), **Voice memo**, **SMS** (one contact texted in) and
+  **Imported note** (pasted on Import), plus **Other**. The key comes from
+  `contacts.source` plus three facts: `intake_path` (`rep_qr` / `event_qr` / `kiosk`,
+  written by `contacts-create` from the request's shape via `intakePathFor`, never from a
+  client value, and carried through `unassigned_submissions` so a scan that waited keeps
+  it), `qr_channel` (the attendee's own booth/session answer, which only names the
+  source when the door doesn't), and `noteOrigin` (read from `note_submissions` through
+  `source_note_id`: `from_phone` set is SMS, `submitted_by` set is Import; derived at read
+  time rather than stored again, so it can't drift, and the phone number never leaves
+  the server). None of it reaches Zoho: export-csv's "Lead Source" column is the
+  conference name and "Capture Channel" still reads only `qr_channel`. All in
+  `reviewSmart.ts` (`sourceKey`, `SOURCE_OPTIONS`). Tests read the latest
+  `contacts_source_check` and `intake_path` migrations and fail if the DB allows a
+  source or door the UI has no option for. Source never changes after capture, so unlike a
   field an edit can change it needs no frozen order.
 - Bulk selection (Rejected tab) is counted only over what is on screen. The
   same was fixed in Classic, whose bulk approve also now reads and reports the

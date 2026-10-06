@@ -1,5 +1,5 @@
 <template>
-  <!-- A sweeping bar instead of a paragraph: it stands where the Approve / Reject
+  <!-- A sweeping bar instead of a paragraph: it stands where the Confirm / Reject
        buttons will be, so "the bar is gone" is the signal that the lead can be
        acted on. Its own markup rather than q-linear-progress so the sweep can be
        switched off for reduced motion without reaching into Quasar's internals. -->

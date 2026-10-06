@@ -94,3 +94,21 @@ export async function resolveIntakeDestination(l: IntakeLookups, input: IntakeIn
   if (!(await l.eventIsActive(caller.currentEventId))) return queue("caller_no_conference", repId);
   return { kind: "event", eventId: caller.currentEventId, repId };
 }
+
+// Which door the submission came in by, recorded as contacts.intake_path (and
+// unassigned_submissions.intake_path, so a scan that waited keeps it) for Review's
+// "QR scan" / "Kiosk" source labels. Decided from the same input as the
+// destination, in the same priority order, so a request carrying both a repSlug
+// and an eventSlug is labelled by the path that actually decided where it went.
+//
+// A bare call is the Kiosk tab (a signed-in caller). One with nobody signed in is
+// `no_qr`: a form someone reached without any QR, which is neither, so it stays
+// null and Review calls it "Form" instead of claiming a door we can't vouch for.
+export type IntakePath = "rep_qr" | "event_qr" | "kiosk";
+
+export function intakePathFor(input: IntakeInput, destination: IntakeDestination): IntakePath | null {
+  if (input.repSlug) return "rep_qr";
+  if (input.eventSlug) return "event_qr";
+  if (destination.kind === "queue" && destination.reason === "no_qr") return null;
+  return "kiosk";
+}

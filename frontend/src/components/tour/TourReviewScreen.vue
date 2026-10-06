@@ -33,7 +33,7 @@
                   <div class="rs-sec-name">{{ manager ? 'All conferences' : TOUR_CONFERENCE }}</div>
                   <div class="rs-sec-sub">{{ manager ? '' : 'This event · ' }}{{ toReview.length }} {{ toReview.length === 1 ? 'lead' : 'leads' }}</div>
                 </div>
-                <q-btn v-if="readyN > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyN}`" class="rs-ready-btn" />
+                <q-btn v-if="readyN > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyN}`" class="rs-ready-btn" />
               </div>
               <ReviewLeadList
                 :leads="toReview"
@@ -117,7 +117,7 @@ const noBusy = new Set<string>();
 const tab = ref<ReviewStatus>('needs_review');
 const TAB_DEFS: { value: ReviewStatus; label: string }[] = [
   { value: 'needs_review', label: 'To review' },
-  { value: 'approved', label: 'Approved' },
+  { value: 'approved', label: 'Confirmed' },
   { value: 'rejected', label: 'Rejected' },
 ];
 const NO_OPTIONS = [{ label: 'All', value: null as string | null }];
@@ -126,7 +126,7 @@ const SOURCE_OPTIONS = sourceFilterOptions([]);
 const unassigned = tourUnassigned();
 
 const toReview = computed(() => props.leads.filter((l) => l.reviewStatus === 'needs_review'));
-// A first-time rep has approved nothing yet; a scene that stands for a manager's
+// A first-time rep has confirmed nothing yet; a scene that stands for a manager's
 // busier account passes approvedBase.
 const approvedCount = computed(() => (props.approvedBase ?? 0) + props.leads.filter((l) => l.reviewStatus === 'approved').length);
 const counts = computed(() => summaryCounts(toReview.value));
@@ -142,7 +142,7 @@ const position = computed(() => {
 .tsr-root, .tsr-scroll { height: 100%; overflow: hidden; }
 /* In the app the pane is sticky and the page scrolls under it; the tour's
    page doesn't scroll, so the pane is sized to end at the bottom of the
-   screen, where its Approve button can be seen. */
+   screen, where its Confirm button can be seen. */
 .tsr-pane { position: static; height: 508px; }
 .tsr-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); opacity: 0; transition: opacity 0.3s; z-index: 20; }
 .tsr-scrim.is-on { opacity: 1; }

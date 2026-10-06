@@ -50,7 +50,12 @@ import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { isUuid, LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
-import { type IntakeDestination, type IntakeLookups, resolveIntakeDestination } from "../_shared/intakeDestination.ts";
+import {
+  type IntakeDestination,
+  type IntakeLookups,
+  intakePathFor,
+  resolveIntakeDestination,
+} from "../_shared/intakeDestination.ts";
 
 // Generous on purpose: conference wifi is usually one NAT, so this has to
 // bound automation without policing a booth queue. See audit S2 and
@@ -194,8 +199,9 @@ Deno.serve(async (req) => {
   };
 
   let destination: IntakeDestination;
+  const intake = { repSlug, eventSlug, repIdParam };
   try {
-    destination = await resolveIntakeDestination(lookups, { repSlug, eventSlug, repIdParam });
+    destination = await resolveIntakeDestination(lookups, intake);
   } catch (err) {
     // A lookup that failed is a server problem, never "no conference": don't
     // queue something that may well have one.
@@ -228,6 +234,10 @@ Deno.serve(async (req) => {
 
   const fields = {
     qr_channel: qrChannel,
+    // Which door this came in by (Review's QR scan / Kiosk labels). Decided
+    // server-side from the request's shape, never from a client-supplied value:
+    // a public caller can't mislabel itself as the Kiosk.
+    intake_path: intakePathFor(intake, destination),
     first_name: firstName,
     last_name: lastName,
     email,

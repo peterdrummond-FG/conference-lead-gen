@@ -3,7 +3,7 @@
     <q-card-section>
       <div class="text-h5">Export to Zoho</div>
       <div class="text-body2 text-grey-8 q-mt-xs">
-        Downloads a CSV of every approved lead that hasn't been exported yet. A lead with no
+        Downloads a CSV of every confirmed lead that hasn't been exported yet. A lead with no
         Zoho account is included and flagged as a new account to create.
       </div>
     </q-card-section>
@@ -55,7 +55,7 @@
 
     <template v-else>
       <q-card-section v-if="summary && exportCount === 0" class="q-pt-none text-body2 text-grey-8">
-        Nothing to export yet. Approve leads in Review and they'll show up here.
+        Nothing to export yet. Confirm leads in Review and they'll show up here.
       </q-card-section>
       <q-card-actions align="right">
         <q-btn

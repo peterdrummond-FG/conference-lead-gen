@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
   // the DB before it.
   const effectiveMatchStatus = has(body, "matchStatus") ? body.matchStatus : contact.match_status;
   if (has(body, "reviewStatus") && body.reviewStatus === "approved" && effectiveMatchStatus === "pending") {
-    return errorResponse(req, 400, "Cannot approve a contact while MatchStatus is still pending.");
+    return errorResponse(req, 400, "Cannot confirm a contact while its match is still pending.");
   }
 
   const { data, error } = await supabase

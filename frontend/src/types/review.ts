@@ -15,6 +15,11 @@ export interface ContactListItem {
   title: string | null;
   source: string;
   qrChannel: 'booth' | 'session' | null;
+  // Which door a public form came in by; null on form leads from before it was
+  // recorded. See utils/reviewSmart.ts "Signup source".
+  intakePath: 'rep_qr' | 'event_qr' | 'kiosk' | null;
+  // For source 'note': 'sms' (texted in) or 'import' (pasted on Import).
+  noteOrigin: 'sms' | 'import' | null;
   repId: string | null;
   repName: string | null;
   eventId: string;

@@ -2,7 +2,7 @@
   <!-- One editor, two homes: the right-hand pane on a desktop and a bottom
        sheet on a phone (ReviewSmart decides). It fills whatever height its
        parent gives it — header and footer stay put, only the middle scrolls —
-       so Approve / Reject are always on screen however long the form is (the
+       so Confirm / Reject are always on screen however long the form is (the
        Classic card is ~900px tall on a phone and needed a sticky-footer patch
        to get there).
 
@@ -15,8 +15,10 @@
         <div class="le-head-id">
           <div class="le-name">{{ name }}</div>
           <div class="le-chips">
-            <LeadChip tone="grey">{{ sourceLabel(contact.source) }}</LeadChip>
-            <LeadChip v-if="contact.qrChannel" tone="blue">{{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}</LeadChip>
+            <LeadChip tone="grey">{{ sourceLabel(contact) }}</LeadChip>
+            <!-- The attendee's own "How did you hear about us?" answer. Said again only when the
+                 source chip doesn't already say it (QR Booth / QR Session do). -->
+            <LeadChip v-if="contact.qrChannel && !sourceNamesChannel" tone="blue">{{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}</LeadChip>
             <LeadChip v-if="!isSales" tone="grey">{{ contact.eventName }}</LeadChip>
             <LeadChip v-if="!isSales && contact.repName" tone="grey">{{ contact.repName }}</LeadChip>
             <!-- Reps get plain "New district / Existing school"; admin and
@@ -47,13 +49,13 @@
           @update:model-value="toggleFollowedUp"
         />
       </div>
-      <!-- What "ready to approve" means, line by line. Phone/email and school are
+      <!-- What "ready to confirm" means, line by line. Phone/email and school are
            always listed, ticked or crossed with the fix on that line; the Zoho and
            duplicate lines appear only when they are the problem (or, for Zoho,
            still processing). Replaces the old list of problems, which only ever
            named what was wrong and left the rep to guess what right looked like.
            Same rules as the chip and the button (readinessChecklist). -->
-      <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this lead needs before it can be approved">
+      <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this lead needs before it can be confirmed">
         <li v-for="item in shownChecklist" :key="item.key" class="le-check-item" :class="`is-${item.state}`">
           <q-icon :name="checkIcon(item.state)" size="18px" class="le-check-icon" />
           <span class="le-check-text">
@@ -110,7 +112,7 @@
             </q-item>
           </q-list>
         </template>
-        <div v-else class="text-caption text-grey-8">No close match found. Approving sends this as a new lead.</div>
+        <div v-else class="text-caption text-grey-8">No close match found. Confirming sends this as a new lead.</div>
       </div>
 
       <DuplicateResolutionDialog v-model="showDuplicateDialog" :contact-id="contact.id" @resolved="$emit('duplicatesResolved')" />
@@ -243,7 +245,7 @@
     </div>
 
     <div class="le-foot">
-      <!-- While the pipeline is still working the lead has nothing to approve or
+      <!-- While the pipeline is still working the lead has nothing to confirm or
            reject yet, so the two buttons are replaced by a notice rather than
            disabled (a disabled button tells a phone user nothing). The notice
            takes the buttons' place, so the footer doesn't change height when the
@@ -251,17 +253,17 @@
            state, which is what swaps the buttons back in. -->
       <div v-if="processing" class="le-proc" role="status">
         <ProcessingBar caption="" label="Processing this contact" />
-        <div class="le-proc-body">You can approve or reject once it finishes.</div>
+        <div class="le-proc-body">You can confirm or reject once it finishes.</div>
       </div>
       <div v-else-if="footNote" class="le-foot-note" role="status">{{ footNote }}</div>
       <div class="le-foot-row">
         <q-space />
         <q-btn v-if="isDirty" outline no-caps color="primary" label="Save changes" class="le-btn" :loading="busy" @click="save" />
         <q-btn v-if="contact.reviewStatus !== 'rejected' && !processing" flat no-caps color="negative" label="Reject" class="le-btn" :disable="busy" @click="rejectClick" />
-        <q-btn v-if="contact.reviewStatus === 'needs_review' && !processing && contact.matchStatus !== 'pending'" unelevated no-caps color="positive" label="Approve" class="le-btn le-approve" :loading="busy" @click="approveClick" />
+        <q-btn v-if="contact.reviewStatus === 'needs_review' && !processing && contact.matchStatus !== 'pending'" unelevated no-caps color="positive" label="Confirm" class="le-btn le-approve" :loading="busy" @click="approveClick" />
         <q-btn v-if="contact.reviewStatus === 'rejected'" outline no-caps color="primary" icon="undo" label="Restore to Needs Review" class="le-btn" :loading="busy" @click="$emit('restore', contact.id)" />
       </div>
-      <div v-if="showKeys && contact.reviewStatus === 'needs_review' && !processing" class="le-keys">J / K move · A approve · R reject</div>
+      <div v-if="showKeys && contact.reviewStatus === 'needs_review' && !processing" class="le-keys">J / K move · C confirm · R reject</div>
     </div>
   </div>
 </template>
@@ -280,7 +282,7 @@ import { US_STATES, filterStateOptions, type UsStateOption } from '@/constants/u
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { DisplayPatch } from '@/composables/useSmartReview';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
-import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist } from '@/utils/reviewSmart';
+import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist, sourceKey, sourceLabel } from '@/utils/reviewSmart';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -482,12 +484,12 @@ function toggleFollowedUp(value: boolean) {
   emit('update', { id: props.contact.id, payload: { followedUp: value } });
 }
 
-// Approve stays enabled while a match is pending and answers on tap instead
+// Confirm stays enabled while a match is pending and answers on tap instead
 // (a disabled button shows nothing on a phone). contacts-patch would refuse it
 // anyway; this just says why first. A possible duplicate interrupts with an
 // explicit choice rather than letting the tap through silently.
 function approveClick() {
-  // The A shortcut lands here too, with no button on screen to explain itself.
+  // The C shortcut lands here too, with no button on screen to explain itself.
   if (props.contact.matchStatus === 'pending') {
     Notify.create({ type: 'warning', message: isProcessing(props.contact) ? "We're still processing this contact. Try again in a few minutes." : 'The automatic match gave up. Retry it first.' });
     return;
@@ -495,9 +497,9 @@ function approveClick() {
   if (props.contact.localDuplicateOfContactName) {
     Dialog.create({
       title: 'Possible duplicate',
-      message: `Another contact named ${props.contact.localDuplicateOfContactName} looks like a match. Resolve it first, or approve anyway if you've already checked.`,
+      message: `Another contact named ${props.contact.localDuplicateOfContactName} looks like a match. Resolve it first, or confirm anyway if you've already checked.`,
       cancel: { label: 'Resolve first', flat: true },
-      ok: { label: 'Approve anyway', color: 'positive' },
+      ok: { label: 'Confirm anyway', color: 'positive' },
     }).onOk(approveNow).onCancel(() => { showDuplicateDialog.value = true; });
     return;
   }
@@ -535,9 +537,9 @@ function rejectClick() {
 const footNote = computed(() => {
   const c = props.contact;
   if (c.reviewStatus !== 'needs_review') return '';
-  if (c.matchStatus === 'pending') return 'The automatic match gave up, so this can\'t be approved yet. Use Retry match above.';
-  if (c.localDuplicateOfContactName) return "Possible duplicate. You'll be asked to confirm before approving.";
-  if (c.matchStatus === 'ambiguous') return 'No confirmed match. Approving sends this as a new lead.';
+  if (c.matchStatus === 'pending') return 'The automatic match gave up, so this can\'t be confirmed yet. Use Retry match above.';
+  if (c.localDuplicateOfContactName) return "Possible duplicate. You'll be asked to check before confirming.";
+  if (c.matchStatus === 'ambiguous') return 'No confirmed match. Confirming sends this as a new lead.';
   return '';
 });
 
@@ -551,17 +553,8 @@ const opportunityLine = computed(() => {
 
 const isPhotoSourced = computed(() => props.contact.source === 'card_photo' || props.contact.source === 'directory_photo');
 
-function sourceLabel(source: string) {
-  switch (source) {
-    case 'form': return 'Form';
-    case 'card_photo': return 'Card';
-    case 'directory_photo': return 'Directory';
-    case 'note': return 'Note';
-    case 'voice_memo': return 'Voice memo';
-    case 'qr_code': return 'QR code';
-    default: return capitalize(source);
-  }
-}
+// The chip is the same wording as Review's rows and Source filter (utils/reviewSmart.ts).
+const sourceNamesChannel = computed(() => ['qr_booth', 'qr_session'].includes(sourceKey(props.contact)));
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');

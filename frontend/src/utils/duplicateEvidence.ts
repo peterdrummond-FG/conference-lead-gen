@@ -21,7 +21,7 @@ export function sourceInfo(source: string): { label: string; icon: string } {
     case 'card_photo':
       return { label: 'Card scan', icon: 'badge' };
     case 'directory_photo':
-      return { label: 'Directory scan', icon: 'menu_book' };
+      return { label: 'List photo scan', icon: 'menu_book' };
     case 'note':
       return { label: 'Rep note', icon: 'sticky_note_2' };
     default:

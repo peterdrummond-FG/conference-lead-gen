@@ -34,7 +34,7 @@
                 <div class="rs-sec-name">{{ currentTitle }}</div>
                 <div class="rs-sec-sub">This event<template v-if="currentLeads.length"> · {{ currentLeads.length }} {{ currentLeads.length === 1 ? 'lead' : 'leads' }}</template></div>
               </div>
-              <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(currentLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
+              <q-btn v-if="tab === 'needs_review' && readyCount(currentLeads) > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyCount(currentLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(currentLeads, currentTitle)" />
               <div class="rs-sec-actions">
                 <!-- Linking lives here, with the event it changes, rather than
                      as a loose control in the page header. Hidden while an
@@ -75,7 +75,7 @@
                     <span class="rs-sec-sub">{{ g.leads.length }} {{ g.leads.length === 1 ? 'lead' : 'leads' }}</span>
                   </span>
                 </button>
-                <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(g.leads)}`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
+                <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyCount(g.leads)}`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
               </div>
               <ReviewLeadList
                 v-if="isPastOpen(g.eventId, i)"
@@ -96,7 +96,7 @@
         <template v-else>
           <div v-if="tabLeads.length" class="rs-list-head">
             <div class="rs-sec-sub">{{ tabLeads.length }} {{ tabLeads.length === 1 ? 'lead' : 'leads' }}</div>
-            <q-btn v-if="tab === 'needs_review' && readyCount(tabLeads) > 0" unelevated no-caps dense color="positive" :label="`Approve all ${readyCount(tabLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(tabLeads, 'All visible contacts')" />
+            <q-btn v-if="tab === 'needs_review' && readyCount(tabLeads) > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyCount(tabLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(tabLeads, 'All visible contacts')" />
           </div>
           <ReviewLeadList
             v-if="tabLeads.length"
@@ -207,7 +207,7 @@ const isDesktop = computed(() => $q.screen.gt.sm);
 
 const tabDefs: { value: ReviewStatus; label: string }[] = [
   { value: 'needs_review', label: 'To review' },
-  { value: 'approved', label: 'Approved' },
+  { value: 'approved', label: 'Confirmed' },
   { value: 'rejected', label: 'Rejected' },
 ];
 const tab = ref<ReviewStatus>('needs_review');
@@ -360,7 +360,7 @@ const currentTitle = computed(() => {
 const emptyForCurrent = computed(() => {
   if (!isLinked.value) return 'Not linked to a conference. Link one to start capturing leads.';
   if (tab.value === 'needs_review') return "You're all caught up for this event.";
-  return tab.value === 'approved' ? 'Nothing approved for this event yet.' : 'Nothing rejected for this event.';
+  return tab.value === 'approved' ? 'Nothing confirmed for this event yet.' : 'Nothing rejected for this event.';
 });
 
 async function setMyEvent(eventId: string | null) {
@@ -398,11 +398,11 @@ const emptyState = computed<{ icon: string; color: string; title: string; body: 
   if (tab.value === 'needs_review') {
     return {
       icon: 'task_alt', color: 'positive', title: "You're all caught up", body: 'Nothing is waiting for review.',
-      ...(counts.value.approved ? { action: { label: `See approved (${counts.value.approved})`, run: () => { tab.value = 'approved'; } } } : {}),
+      ...(counts.value.approved ? { action: { label: `See confirmed (${counts.value.approved})`, run: () => { tab.value = 'approved'; } } } : {}),
     };
   }
   if (tab.value === 'approved') {
-    return { icon: 'inbox', color: 'grey-6', title: 'Nothing approved yet', body: 'Approve leads in To review and they show up here for follow-up.' };
+    return { icon: 'inbox', color: 'grey-6', title: 'Nothing confirmed yet', body: 'Confirm leads in To review and they show up here for follow-up.' };
   }
   return { icon: 'inbox', color: 'grey-6', title: 'Nothing rejected', body: 'Rejected leads land here until you restore or delete them.' };
 });
@@ -437,7 +437,7 @@ function confirmDiscard(): Promise<boolean> {
   return new Promise((resolve) => {
     Dialog.create({
       title: 'Discard unsaved changes?',
-      message: "You edited this contact but haven't saved. Approve saves them; otherwise they'll be lost.",
+      message: "You edited this contact but haven't saved. Confirm saves them; otherwise they'll be lost.",
       persistent: true,
       cancel: { label: 'Keep editing', flat: true },
       ok: { label: 'Discard', color: 'negative', flat: true },
@@ -522,11 +522,11 @@ function confirmApproveReady(list: ContactListItem[], label: string) {
   const ids = readyIds(list);
   if (!ids.length) return;
   Dialog.create({
-    title: `Approve ${ids.length} contact${ids.length === 1 ? '' : 's'} that ${ids.length === 1 ? 'is' : 'are'} ready to approve?`,
+    title: `Confirm ${ids.length} contact${ids.length === 1 ? '' : 's'} that ${ids.length === 1 ? 'is' : 'are'} ready to confirm?`,
     message: `${label}: they'll be included in the next CSV export. Leads that still need something aren't included.`,
     cancel: true,
     persistent: true,
-    ok: { label: 'Approve', color: 'positive' },
+    ok: { label: 'Confirm', color: 'positive' },
   }).onOk(async () => {
     try {
       await bulkApprove(ids);
@@ -569,8 +569,8 @@ function confirmBulkDelete() {
 
 // ── Keyboard (desktop) ───────────────────────────────────────────────────
 
-// J / K move, A approves, R rejects — only when nothing is being typed into
-// and no dialog or menu is open, and A / R go through the same path as the
+// J / K move, C confirms, R rejects — only when nothing is being typed into
+// and no dialog or menu is open, and C / R go through the same path as the
 // buttons (pending / duplicate checks included).
 function onKeydown(e: KeyboardEvent) {
   if (!isDesktop.value || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -579,7 +579,7 @@ function onKeydown(e: KeyboardEvent) {
   const key = e.key.toLowerCase();
   if (key === 'j') void step(1);
   else if (key === 'k') void step(-1);
-  else if (key === 'a' && tab.value === 'needs_review') editorRef.value?.approveClick();
+  else if (key === 'c' && tab.value === 'needs_review') editorRef.value?.approveClick();
   else if (key === 'r' && tab.value === 'needs_review') editorRef.value?.rejectClick();
   else return;
   e.preventDefault();
@@ -634,7 +634,7 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
-// Leads still in the pipeline have no Approve / Reject until they finish, and
+// Leads still in the pipeline have no Confirm / Reject until they finish, and
 // nothing else would tell this page they had: the list is only fetched on load.
 // So while any lead is processing, look again every few seconds (quietly, no
 // spinner) so the buttons appear by themselves. Stops the moment none is, and
@@ -737,7 +737,7 @@ onBeforeUnmount(() => {
   .rs-page { padding: 10px 12px 28px; }
   .rs-sec-head > .rs-sec-title, .rs-sec-head > .rs-sec-toggle { flex-basis: 6rem; }
 
-  /* Section title, "Approve all N" and the menu share a line; the title wraps
+  /* Section title, "Confirm all N" and the menu share a line; the title wraps
      before the button does. */
   .rs-sec-head { row-gap: 4px; }
   .rs-ready-btn { min-height: 40px; }

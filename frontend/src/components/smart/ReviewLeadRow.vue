@@ -45,7 +45,7 @@
            left, the decision (or restore) on the right. It wraps
            rather than overflows if a phone is too narrow for all of it. The
            follow-up and note controls save straight away, so they stay on the
-           compact desktop rows too; Approve / Reject live in the pane there. -->
+           compact desktop rows too; Confirm / Reject live in the pane there. -->
       <div v-if="showBar" class="lr-bar">
         <div v-if="tab !== 'rejected'" class="lr-bar-left">
           <q-checkbox
@@ -80,10 +80,10 @@
                  buttons will be. The list reloads itself, which swaps them in. -->
             <ProcessingBar v-if="processing" class="lr-proc" />
             <!-- Phone: two round icons, no words. The ✓ is the same lead as the
-                 "Ready to approve" chip above it, so the chip explains the tick. -->
+                 "Ready to confirm" chip above it, so the chip explains the tick. -->
             <template v-else-if="phone && ready">
               <q-btn round outline color="negative" icon="close" aria-label="Reject" class="lr-icon-btn" :disable="busy" @click="$emit('reject')" />
-              <q-btn round unelevated color="positive" icon="check" aria-label="Approve" class="lr-icon-btn" :loading="busy" @click="$emit('approve')" />
+              <q-btn round unelevated color="positive" icon="check" aria-label="Confirm" title="Confirm" class="lr-icon-btn" :loading="busy" @click="$emit('approve')" />
             </template>
             <!-- Phone, not ready: no decision to make yet, so a cue for the fix. The card
                  (and this button, for keyboard and screen-reader users) opens the lead. -->
@@ -96,7 +96,7 @@
                 no-caps
                 color="positive"
                 icon="check"
-                label="Approve"
+                label="Confirm"
                 class="lr-btn lr-btn-main"
                 :loading="busy"
                 @click="$emit('approve')"
@@ -124,7 +124,7 @@ const props = defineProps<{
   contact: ContactListItem;
   tab: ReviewStatus;
   active?: boolean;
-  // Desktop split pane: the pane owns Approve / Reject, so the list row stays
+  // Desktop split pane: the pane owns Confirm / Reject, so the list row stays
   // a compact summary (Followed up still saves straight from here).
   compact?: boolean;
   showEvent?: boolean;
