@@ -5,6 +5,11 @@ export interface SceneCopy {
   title: string;
   // `**word**` renders bold and `{number}` becomes the text-in number (from
   // utils/smsNumber.ts, which Setup uses too). Nothing else is markup.
+  // Bold follows ONE rule (a test holds it): bold only the name of a tab or
+  // button the person taps in that sentence (Admin, Import, Setup, Kiosk, Export,
+  // Approve, Followed up, Yes, it downloaded), or SETUP as the word they text.
+  // Field labels, numbers and other mid-sentence phrases are plain; emphasis that
+  // isn't something to tap reads as random.
   body: string;
   note?: string;
 }
@@ -26,7 +31,7 @@ export const SCENE_COPY: SceneCopyEntry[] = [
   {
     id: 'setup',
     title: 'Text SETUP to start',
-    body: "From your phone, text **SETUP** to **{number}**, then reply with your conference's name and pick it from the list.",
+    body: "From your phone, text **SETUP** to {number}, then reply with your conference's name and pick it from the list.",
     note: "Already picked one in the app? We'll just confirm it. You can change it any time on **Setup**.",
     // No mobile number on the account: SETUP can't link the phone, so texted
     // leads wouldn't be credited to anyone. Who can fix it depends on the role:
@@ -76,7 +81,7 @@ export const SCENE_COPY: SceneCopyEntry[] = [
   {
     id: 'admin',
     title: 'Look after your team',
-    body: 'In **Admin**, activate and end conferences, add people, and choose which conference each rep is **Working at**.',
+    body: 'In **Admin**, activate and end conferences, add people, and choose which conference each rep is working at.',
     note: 'Scans that need a conference wait here for you to file.',
     managersOnly: true,
   },
