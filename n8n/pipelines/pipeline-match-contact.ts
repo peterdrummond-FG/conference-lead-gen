@@ -387,7 +387,8 @@ const finalizeParams = node({
   output: [{ p_contact_id: SAMPLE_ID, p_match_status: 'new_account' }]
 });
 
-// The auto-approve CASE guard stays atomic and server-side in the RPC.
+// The RPC writes the match atomically and only while the row is still pending. It never
+// approves the lead (no auto-confirm, 2026-10-06); a person always does.
 const finalizeMatch = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.5,

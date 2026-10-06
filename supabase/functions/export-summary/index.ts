@@ -32,9 +32,11 @@ Deno.serve(async (req) => {
       .eq("review_status", "needs_review"),
     supabase.from("contacts").select("*", { count: "exact", head: true })
       .eq("review_status", "approved").is("matched_zoho_account_id", null).is("synced_at", null),
-    // Audit A10. Auto-approval sends a lead to Zoho with no human ever seeing
-    // it, so how much of the pending export got there that way is worth
-    // showing rather than inferring.
+    // Audit A10. Auto-approval used to send a lead to Zoho with no human ever seeing
+    // it, so how much of the pending export got there that way was worth showing.
+    // Nothing auto-confirms any more (2026-10-06, and the database refuses
+    // auto_approved = true), so this is 0 and stays 0; kept so the response shape
+    // doesn't change under a client.
     supabase.from("contacts").select("*", { count: "exact", head: true })
       .eq("review_status", "approved").eq("auto_approved", true).is("synced_at", null),
   ]);

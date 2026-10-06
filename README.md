@@ -33,7 +33,8 @@ review → export.
 4. **Review** — a human confirms, edits or rejects on `/review` (flagged rows,
    ready / incomplete / processing filters, one-tap confirm, search, a desktop
    split pane; newest first, and saving never moves a lead).
-   High-confidence matches with a real matched account may auto-approve. A
+   Nothing is ever auto-confirmed: a match always leaves the lead for a person to
+   confirm (decision 2026-10-06; `scripts/check-no-auto-confirm.mjs` guards it). A
    rep's notes travel with the lead into the CSV's Description column.
 5. **Export** — `/export` produces a CSV. The server reserves the leads when the
    file is generated and marks them synced only after the person exporting

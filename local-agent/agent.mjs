@@ -9,7 +9,7 @@
 // processContact below is a near-verbatim port of the .NET
 // MatchingBackgroundService.ProcessAsync (removed 2026-09-14; git history at
 // ebd5bba), including its exact ResearchInput/ResearchOutput/MatchOutput field
-// contracts and its auto-approve rule.
+// contracts. (Its auto-approve rule was removed 2026-10-06: reps always confirm.)
 //
 // Stage 13 (SMS photo intake) added a second, independent poll loop below
 // — photoLoop — for card photos that arrived via Twilio MMS rather than
@@ -178,12 +178,12 @@ async function processContact(contact) {
     schema: MatchOutput,
   });
 
-  // Auto-approve rule from MatchingBackgroundService.cs, now evaluated
-  // atomically inside finalize_contact_match against the row's *current*
-  // review_status/local_duplicate_of_contact_id at write time — not the
-  // stale snapshot `contact` holds from claim time — so a reviewer's manual
-  // action landing mid-flight (research-contact/match-contact can each take
-  // minutes) is never clobbered by this update.
+  // finalize_contact_match writes the match atomically and only while the row is
+  // still 'pending', so a reviewer's manual action landing mid-flight
+  // (research-contact/match-contact can each take minutes) is never clobbered by
+  // this update. It never approves the lead: a match always leaves it in
+  // needs_review for a person (2026-10-06, Peter). extraction_ok is still sent
+  // because the function's signature is unchanged; it no longer decides anything.
   const extractionOk = contact.extraction_confidence == null || contact.extraction_confidence === 'high';
   const { error } = await supabase.rpc('finalize_contact_match', {
     p_contact_id: contact.id,

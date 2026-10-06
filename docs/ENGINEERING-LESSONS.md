@@ -43,8 +43,10 @@ widening inconsistency.
 **What happened.** A production run emitted a fabricated Zoho account id
 alongside a "high confidence" label. The fix was a regex on the two fields
 that were wrong. Fourteen other fields from the same untrusted source stayed
-unvalidated — including `matchConfidence`, which is what *auto-approves a lead
-for CRM export with no human review*.
+unvalidated — including `matchConfidence`, which then *auto-approved a lead
+for CRM export with no human review*. (Auto-approval itself was removed on
+2026-10-06: reps always confirm. The lesson stands: a fabricated "high" is
+still what a reviewer would trust.)
 
 The instinct was right. The scope was one instance of a general problem.
 
@@ -262,7 +264,7 @@ against raw attendee/OCR text. `%` and `_` in the right-hand side are
 wildcards, so a contact named `%` matched every contact in the table. The
 lookup was also unscoped across every event and every year, and collided on
 placeholder names (`"Illegible"`, blank surnames), chaining unrelated people
-into one duplicate group — which then suppressed auto-approval for all of them.
+into one duplicate group — which then blocked the Ready state for all of them.
 
 **The rule.** `ILIKE`/`LIKE` is pattern matching. If you want case-insensitive
 equality, write `lower(trim(a)) = lower(trim(b))`. If a caller supplies a

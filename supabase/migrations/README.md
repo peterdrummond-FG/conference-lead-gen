@@ -27,6 +27,8 @@ been replaced, the replacement is noted here instead of rewriting history.
   `..._export_two_phase_batches`. The old function is left in place but is no
   longer called by `export-csv`.
 
+- **`20260915060514_auto_approve_requires_matched_account.sql`**, **`20260923180000_finalize_contact_match_account_level_and_glance_summary.sql`** and **`20260925221637_finalize_contact_match_requires_pending.sql`** — describe and implement `finalize_contact_match` auto-approving a high-confidence match. Removed by `20261007110000_no_auto_confirm.sql` (Peter, 2026-10-06): a match result now always leaves the lead in `needs_review`. The old comments stay as history.
+
 - **`insert_contact_with_duplicate_check`** — recreated several times to thread
   new columns through (`qr_channel`, `rep_id`, `source_note_id`, and now
   `contact_intent` in `20260915120500`). Every version

@@ -78,6 +78,10 @@ jobs:
       # directly, and the webhook re-checks is_active for a bound phone.
       - name: Conference writers
         run: node scripts/check-conference-writers.mjs
+      # Nothing is auto-confirmed (Peter, 2026-10-06): only a person's Confirm writes
+      # review_status 'approved'. The test plants a violation and expects red.
+      - name: No auto-confirm
+        run: node scripts/check-no-auto-confirm.mjs && node --test scripts/check-no-auto-confirm.test.mjs
       - name: Check nothing signs an account out of every device
         run: node scripts/check-auth-signout.mjs
 
