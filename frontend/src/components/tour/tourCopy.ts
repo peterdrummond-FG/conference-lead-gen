@@ -98,9 +98,11 @@ export const ONBOARDING_COPY = {
     fine: 'You can watch the tour any time from the ? at the top of the app.',
   },
   quickText: {
-    title: 'Then text us your leads',
-    // Honest about the order: a first text from a phone that isn't linked yet
-    // gets "Text SETUP to link it", so linking comes first (next screen).
+    title: 'Text us your leads',
+    // This is the quick start's FIRST screen and "Link your phone" is the second,
+    // so it can't open with "Then". The body says the true order: a first text from
+    // a phone that isn't linked yet gets "Text SETUP to link it", so linking has to
+    // come before any of this works, and the next screen is where they do it.
     body: 'Once your phone is linked, snap a business card, conference ID or contact list, or send a voice memo. We turn it into a lead.',
     note: 'Typing it yourself? One person per text.',
   },
