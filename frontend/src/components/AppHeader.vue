@@ -17,7 +17,7 @@
     <q-separator v-if="!isPhone" vertical spaced />
 
     <!-- Admin only: a genuine "view as" switcher, backed by real accounts: picking
-         someone previews Review exactly as they'd see it, but every write still
+         someone previews Contacts exactly as they'd see it, but every write still
          lands under the admin's own account (see session-store's effectiveRole). -->
     <q-btn-dropdown v-if="role === 'admin'" flat dense no-caps icon="switch_account" color="primary" :label="isPhone ? undefined : viewingAsLabel" :aria-label="viewingAsLabel">
       <q-tooltip>View as</q-tooltip>
@@ -69,7 +69,7 @@ const props = defineProps<{
   role: Role;
   name: string;
   isPhone: boolean;
-  // Which page tabs this person gets; Kiosk and Review are for everyone.
+  // Which page tabs this person gets; Kiosk and Contacts are for everyone.
   canSeeSetup: boolean;
   canSeeExport: boolean;
   canSeeAdmin: boolean;
@@ -91,7 +91,7 @@ const tabComponent = computed(() => (props.active === undefined ? QRouteTab : QT
 const shownTabs = computed(() => [
   { name: 'setup', label: 'Setup', to: '/setup', show: props.canSeeSetup },
   { name: 'connect', label: 'Kiosk', to: '/connect', show: true },
-  { name: 'review', label: 'Review', to: '/review', show: true },
+  { name: 'contacts', label: 'Contacts', to: '/contacts', show: true },
   { name: 'export', label: 'Export', to: '/export', show: props.canSeeExport },
   { name: 'admin', label: 'Admin', to: '/admin', show: props.canSeeAdmin },
 ].filter((t) => t.show));

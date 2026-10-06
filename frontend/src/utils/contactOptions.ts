@@ -1,5 +1,5 @@
 // Shared mapping from a ContactListItem's state/district/school fields to
-// the QSelect option shape used by the intake form, /review, and the
+// the QSelect option shape used by the intake form, /contacts, and the
 // duplicate-merge dialog. A matched district/school shows its real name; a
 // typed value that never matched anything shows its raw text instead
 // (id: null) — never a new school_districts/schools row.

@@ -16,7 +16,7 @@ export interface ContactListItem {
   source: string;
   qrChannel: 'booth' | 'session' | null;
   // Which door a public form came in by; null on form leads from before it was
-  // recorded. See utils/reviewSmart.ts "Signup source".
+  // recorded. See utils/contactsList.ts "Signup source".
   intakePath: 'rep_qr' | 'event_qr' | 'kiosk' | null;
   // For source 'note': 'sms' (texted in) or 'import' (pasted on Import).
   noteOrigin: 'sms' | 'import' | null;
@@ -92,7 +92,7 @@ export interface UpdateContactPayload {
 }
 
 // The two "went missing" shapes surfaced by inbound-messages-unresolved-list
-// (2026-09-22 voice-memo audit) — Review previously had no visibility into
+// (2026-09-22 voice-memo audit) — Contacts previously had no visibility into
 // either, since it only ever lists contacts.
 export interface UnresolvedAudioMemo {
   id: string;

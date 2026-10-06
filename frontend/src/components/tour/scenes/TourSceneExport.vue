@@ -4,7 +4,7 @@
        the same leads out of the next file. -->
   <TourAppShell :manager="manager" :active="page" :menu-open="menuOpen">
     <TourExportScreen v-if="page === 'export'" :phase="phase" />
-    <TourReviewScreen v-else :manager="manager" :leads="leads" :approved-base="8" />
+    <TourContactsScreen v-else :manager="manager" :leads="leads" :approved-base="8" />
   </TourAppShell>
 </template>
 
@@ -12,9 +12,9 @@
 import { ref, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import TourAppShell from '../TourAppShell.vue';
-import TourReviewScreen from '../TourReviewScreen.vue';
+import TourContactsScreen from '../TourContactsScreen.vue';
 import TourExportScreen from '../screens/TourExportScreen.vue';
-import { reviewLeads } from '../tourSampleData';
+import { contactsLeads } from '../tourSampleData';
 import { goToPage } from '../tourNav';
 import type { TourRun } from '../useTourScript';
 
@@ -23,13 +23,13 @@ const emit = defineEmits<{ size: [s: { w: number; h: number }] }>();
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 
-const page = ref('review');
+const page = ref('contacts');
 const menuOpen = ref(false);
 const phase = ref<'ready' | 'pending' | 'done'>('ready');
-const leads = ref(reviewLeads());
+const leads = ref(contactsLeads());
 
 function reset() {
-  page.value = 'review';
+  page.value = 'contacts';
   menuOpen.value = false;
   phase.value = 'ready';
   emit('size', isPhone.value ? { w: 375, h: 600 } : { w: 1280, h: 800 });

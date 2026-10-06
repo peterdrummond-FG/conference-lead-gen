@@ -1,15 +1,15 @@
 <template>
-  <!-- Review's page as the rep sees it, for the tour: ReviewSmart's header
+  <!-- Contacts' page as the rep sees it, for the tour: ContactsPage's header
        (markup and styles copied; PROTOTYPE, for the build it becomes one
-       component both render) around the app's own ReviewLeadList and
-       ReviewLeadEditor. Everything it shows comes in as props; every tap goes
+       component both render) around the app's own ContactList and
+       ContactEditor. Everything it shows comes in as props; every tap goes
        out as an event for the scene to apply to its sample data. -->
   <div class="tsr-root">
     <div class="tsr-scroll">
       <div class="rs-page">
         <!-- The app's own header (tabs, ready / incomplete / processing, search, filters),
              with sample numbers and nothing wired to anything. -->
-        <ReviewHeader
+        <ContactsHeader
           v-model:tab="tab"
           :tab-defs="TAB_DEFS" :counts="{ needs_review: toReview.length, approved: approvedCount, rejected: 0 }"
           :summary="counts" :readiness-filter="null" :is-sales="!manager"
@@ -35,7 +35,7 @@
                 </div>
                 <q-btn v-if="readyN > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyN}`" class="rs-ready-btn" />
               </div>
-              <ReviewLeadList
+              <ContactList
                 :leads="toReview"
                 tab="needs_review"
                 :active-id="isPhone ? null : (activeId ?? null)"
@@ -49,7 +49,7 @@
             </section>
           </div>
           <aside v-if="!isPhone" class="rs-pane tsr-pane">
-            <ReviewLeadEditor
+            <ContactEditor
               v-if="active"
               :key="active.id"
               :contact="active"
@@ -66,7 +66,7 @@
     <template v-if="isPhone">
       <div class="tsr-scrim" :class="{ 'is-on': sheetOpen }" />
       <div class="tsr-sheet" :class="{ 'is-on': sheetOpen }">
-        <ReviewLeadEditor
+        <ContactEditor
           v-if="active"
           :key="active.id"
           :contact="active"
@@ -86,12 +86,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
-import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
-import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
+import ContactList from '@/components/contacts/ContactList.vue';
+import ContactEditor from '@/components/contacts/ContactEditor.vue';
 import UnassignedScansList from '@/components/UnassignedScansList.vue';
 import { TOUR_CONFERENCE, tourUnassigned } from './tourSampleData';
-import ReviewHeader from '@/components/ReviewHeader.vue';
-import { DEFAULT_SORT, SORT_OPTIONS, sourceFilterOptions, summaryCounts, type ReviewStatus } from '@/utils/reviewSmart';
+import ContactsHeader from '@/components/ContactsHeader.vue';
+import { DEFAULT_SORT, SORT_OPTIONS, sourceFilterOptions, summaryCounts, type ReviewStatus } from '@/utils/contactsList';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 
 const props = defineProps<{
@@ -155,7 +155,7 @@ const position = computed(() => {
 .tsr-sheet.is-on { transform: none; }
 .tsr-sheet > * { flex: 1; min-height: 0; }
 
-/* From ReviewSmart.vue (scoped there, so copied for the prototype). */
+/* From ContactsPage.vue (scoped there, so copied for the prototype). */
 .rs-page { padding: 12px 16px 32px; max-width: 1480px; margin: 0 auto; }
 .rs-split { display: block; }
 .rs-split.is-split { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 16px; align-items: start; }

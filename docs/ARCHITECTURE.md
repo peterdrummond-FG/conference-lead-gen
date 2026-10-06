@@ -111,7 +111,7 @@ texted. Don't add it back to a response for a UI.
 
 `contacts-create` used to answer 404/409 and keep nothing when a valid attendee
 couldn't be placed, so their details were lost. `contacts.event_id` is NOT NULL
-and that rule runs through Review, duplicate checks, matching and export, so it
+and that rule runs through Contacts, duplicate checks, matching and export, so it
 is not loosened. Instead the submission waits in `unassigned_submissions` and the
 attendee sees the normal "Thanks".
 
@@ -141,7 +141,7 @@ attendee sees the normal "Thanks".
   refused. This replaces the claim/work/confirm shape used elsewhere because
   everything it touches is in one database.
 - **Who sees it:** `unassigned-list/-assign/-discard` are admin and Solutions
-  Success only, checked server-side. Review shows an amber "N scans need a
+  Success only, checked server-side. Contacts shows an amber "N scans need a
   conference" banner (`UnassignedScansBanner.vue`) to those roles only, never to a
   rep or while previewing one. No email or text goes out; the banner is the signal.
 - **Retention:** rows (any status) are deleted after 90 days by a daily pg_cron job
@@ -196,7 +196,7 @@ return visits are all checks and the rep taps the one to change; the second sect
 resources, with no numbers, so the page doesn't read as finished before the rep has done
 anything. It used to be five or six separate cards plus a "You're ready to capture leads"
 card, which was overwhelming and repeated what the Connected badge already says; that
-card is gone (the tabs still reach Review and Kiosk).
+card is gone (the tabs still reach Contacts and Kiosk).
 
 Phone and laptop are laid out differently and each keeps only its own controls. On a
 laptop-sized window the two sections sit side by side; below that they stack in one
@@ -227,7 +227,7 @@ work on. Keep it that way:
 ### One conference everywhere
 
 A rep has two pointers to "the conference I'm at": `profiles.current_event_id`
-(the app, QR scans, Review) and `phone_event_bindings.event_id` (where texted
+(the app, QR scans, Contacts) and `phone_event_bindings.event_id` (where texted
 photos, voice memos and notes are filed). They used to be written by different
 code and drifted: a rep who only texted SETUP had a linked phone and an app that
 said "choose a conference" (their QR answered 409), and a manager moving a rep in
@@ -260,7 +260,7 @@ The switcher in the header (admin only) shows the app as another person sees
 it. Every request still carries the admin's own token, so **a write made while
 previewing lands on the admin's account**, never the previewed person's.
 
-- **Review** reads that person's leads (`contacts-list?viewAsRepId=`,
+- **Contacts** reads that person's leads (`contacts-list?viewAsRepId=`,
   `inbound-messages-unresolved-list?viewAsRepId=`). Confirm / Reject still work
   and are done as the admin.
 - **Setup, Kiosk and Notes** show that person's own conference, phone and PIN
@@ -296,13 +296,13 @@ Things to preserve:
 
 - **The tour draws the app's own components, not copies.** Each page's markup was split
   into a presentational part that both the page and the tour render: `AppHeader` and
-  `AppMenu` (MainLayout), `ReviewHeader`, `NotesBody`, `ExportCard`,
+  `AppMenu` (MainLayout), `ContactsHeader`, `NotesBody`, `ExportCard`,
   `AdminConferencesCard` / `AdminTeamCard`, `IntakeFormFields` (with the fold-up),
   `RepQrContent` and `UnassignedScansList`. The page keeps its data, requests and
   dialogs; the tour passes sample data and no handlers. The app's components carry no
   tour hooks (scripts find things by their own labels), and a test fails if a tour
   screen stops rendering the same component as its page. What the tour still draws
-  itself: the phone's texting app (it isn't ours), Review's list/pane layout around the
+  itself: the phone's texting app (it isn't ours), Contacts' list/pane layout around the
   real header and rows, and the intake page's title.
 - **"Seen it" is the account's, not the device's, and each way in records differently.**
   `me` returns `onboarding { seen, path, endedAt, resumeFrom, reminderShown }`.
@@ -322,7 +322,7 @@ Things to preserve:
 - **The rules are pure and tested** (`onboardingFlow.test.mjs`): the splash conditions,
   the resume points for a skip at each scene, the one-hour gate and one-time use, the
   quick-start remainder (`send-import` is the Import half of "Send us leads", then QR,
-  Review, Export and Admin for managers), and the reminder's words generated from what is
+  Contacts, Export and Admin for managers), and the reminder's words generated from what is
   actually left and from how they left (`me.onboarding.path`). A quick-start person is
   *offered* the tour ("Want a quick tour? You went straight to texting earlier. In about
   40 seconds, see what else you can do: …"); anyone else is asked to finish it ("Finish the
@@ -343,7 +343,7 @@ Things to preserve:
   match…`), Confirmed and Rejected start at 0, and the people are one story across scenes
   (`tourSampleData.ts`). With no mobile number on the account (`me.hasPhone`), scene 1's
   note says who can add it, by role; once the phone is linked (`me.phoneConnected`),
-  "Your turn" says "You're all set" and goes to Review instead of Setup.
+  "Your turn" says "You're all set" and goes to Contacts instead of Setup.
 - **The pictures quote the real thing, and tests hold them to it** (`onboardingCopy.test.mjs`):
   every reply our number sends is checked against `twilio-webhook`'s source; the form is
   `IntakeFormFields`; the number comes from `utils/smsNumber.ts`; the scene ids match the
@@ -356,7 +356,7 @@ Things to preserve:
   offers a QR code that opens a text with SETUP filled in.
 - **Say what the app does, not what it sounds like.** Export *downloads a file* that
   someone imports into Zoho; nothing is sent to Zoho. Only Sales accounts have a QR, and a
-  scan from a rep with no conference waits in Review for Solutions Success to file
+  scan from a rep with no conference waits in Contacts for Solutions Success to file
   (see "Scans that need a conference"), so the tour says so.
 - **The wording is for a rep at a booth.** A test fails if technical vocabulary
   (`BANNED_WORDS`) appears in anything the tour shows, including the generated reminder.
@@ -381,7 +381,7 @@ Things to preserve:
   hence the allowance. Re-measure with `TOUR_LENGTHS_PRINT=1`. CI used to run only the
   frontend typecheck, not `npm test`, so none of these tests (Smart view, tour copy)
   gated anything; both CI files now run it.
-- **The copy makes promises about Setup and Review.** If Smart's Ready rule, Setup's flow,
+- **The copy makes promises about Setup and Contacts.** If Smart's Ready rule, Setup's flow,
   the text-in replies or the intake form change, update the tour's copy in the same change.
 
 ### State, District and School (the pickers)
@@ -468,9 +468,9 @@ person says yes. **Download again** re-saves the held file without touching the
 server — needed because a fresh export inside the 30-minute window would find
 the reserved leads unavailable. Leave the page without confirming and the batch
 simply releases itself. The summary card's "Still needs review" count links to
-Review, since those are the leads that won't be in the file.
+Contacts, since those are the leads that won't be in the file.
 
-The Description column leads with the rep's notes (`Notes: …`); see "Review".
+The Description column leads with the rep's notes (`Notes: …`); see "Contacts".
 
 ### Starting a conference
 
@@ -570,7 +570,7 @@ the memo" fallbacks were worse than the problem they tried to solve.
 `claim_unlinked_audio_messages` retries a memo up to `LINK_MAX_ATTEMPTS`
 times against whatever candidates exist *at attempt time* — it can never
 close a memo out on its own, because "nobody yet" and "nobody ever" look
-identical from inside the loop. Review's unresolved-intake panel
+identical from inside the loop. Contacts' unresolved-intake panel
 (`inbound-messages-unresolved-list`) surfaces exactly those two closing
 moves to a human instead:
 
@@ -634,7 +634,7 @@ now create several. The memo stays `linked`, with the new contacts' ids added to
 distinct from `linked` (attached to an *existing* candidate) — deliberately
 left out of `inbound-messages-unresolved-list`'s and `inbound-messages-delete`'s
 `link_status IN (...)` allowlists above, since a `contact_created` memo
-already has a real contact record backing it and surfaces through Review the
+already has a real contact record backing it and surfaces through Contacts the
 same way any other new contact does. See
 `20260928120000_voice_memo_fallback_contact_creation.sql` for the schema
 change and `local-agent/agent.mjs`'s `linkTranscriptToContacts` for the full
@@ -648,7 +648,7 @@ decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
 plain reviewer-set boolean, unrelated to `review_status` and never touched by
 any skill or auto-classification — a rep toggles it directly via
 `contacts-patch`, and it saves as they tap. It's on every To review and Confirmed
-row and at the top of the editor (see "Review" below). The
+row and at the top of the editor (see "Contacts" below). The
 Confirmed tab's follow-up filter is the only place it drives behavior beyond
 display — the All / To follow up /
 Followed up toggle plus a default "Follow up first" sort — and it's a
@@ -676,9 +676,12 @@ cleared rows, so the button asks first. On a phone the sheet is full screen with
 the header and both buttons pinned; only the middle scrolls. It used to scroll as
 one card, which put Merge ~1800px down.
 
-### Review
+### Contacts
 
-`/review` is `ReviewSmart.vue` + `components/smart/`. (There used to be a second
+`/contacts` is `ContactsPage.vue` + `components/contacts/`. It was called Review until
+2026-10-06 (Peter's rename): `/review` still redirects here with its query. Only the page's
+own names changed; the database's words did not (`review_status`, `'needs_review'`,
+`ReviewStatus`, the `contacts-*` functions, `types/review.ts`). (There used to be a second
 "Classic" card-grid view behind a ⋮ switch; it was retired 2026-10-01, and the
 switch did nothing on phones anyway. A browser that still has `ckh.review.view`
 saved just ignores it.) It is a list of compact rows
@@ -694,7 +697,7 @@ Header, top to bottom: underline tabs (To review / Confirmed / Rejected, with
 counts); **one row** of ready / incomplete / processing filters plus **Import**
 (each cell stacks number over word so four fit at 320px); then search, sort and,
 for a rep, the this-event / past-events icon. There is no title row (the nav bar
-says Review). The account bar carries a **QR** button (`RepQrDialog.vue`, the
+says Contacts). The account bar carries a **QR** button (`RepQrDialog.vue`, the
 same phone-screen artwork Setup saves, drawn on screen as a `blob:` image because the CSP forbids `data:`) for anyone with a
 `repSlug`, or the previewed rep's.
 
@@ -702,7 +705,7 @@ Rules worth knowing before changing Smart:
 
 - **"Approve" is "Confirm" in every word a person reads** (2026-10-06). Only the words changed: the stored status is still `approved`, and `contacts-bulk-approve`, `reviewStatus: 'approved'`, `approveClick` and the like keep their names. The keyboard shortcut moved from A to C. `utils/confirmWording.test.mjs` fails if a screen says Approve again. The editor's separate **Confirm match** button (confirms the Zoho match) is unchanged. Reject / Rejected are unchanged.
 - **Nothing is ever auto-confirmed** (Peter, 2026-10-06). A match result always leaves a lead in `needs_review`; `finalize_contact_match` no longer touches `review_status`. The only writers of `approved` are a person: a lead's Confirm (`contacts-patch`), "Confirm all N" (`contacts-bulk-approve`) and Undo/restore. `scripts/check-no-auto-confirm.mjs` (CI) fails if server code, the agents, the n8n pipelines or workflow nodes, or a migration from this decision on writes `approved` or `auto_approved = true`, and the database refuses `auto_approved = true` (`contacts_never_auto_approved`). `contacts.auto_approved` stays as history. A queue scan that Solutions Success files (`assign_unassigned_submission`) arrives as `needs_review` like any new lead.
-- **Ready to confirm** (`READY_LABEL`; `utils/reviewSmart.ts`, `isReady`) means: match finished, no
+- **Ready to confirm** (`READY_LABEL`; `utils/contactsList.ts`, `isReady`) means: match finished, no
   possible duplicate, has an email or phone, and has a school or district.
   Bulk confirm only ever sends ready ids; the server still skips any pending
   ones and the response is read and reported.
@@ -738,7 +741,7 @@ Rules worth knowing before changing Smart:
 - **Processing** (`isProcessing`): a lead whose match is still `pending` and not
   yet given up on has no Confirm and no Reject, in the editor or on the row. A
   notice ("We're still processing this contact…") takes the buttons' place, and
-  `ReviewSmart` re-fetches quietly every 8 seconds while any lead is processing,
+  `ContactsPage` re-fetches quietly every 8 seconds while any lead is processing,
   which is what brings the buttons back. A *stuck* match (attempts exhausted) is
   not processing: it keeps Reject, loses Confirm, and points at Retry match.
 - Smart loads all three statuses at once (six requests for a rep: current and
@@ -755,7 +758,7 @@ Rules worth knowing before changing Smart:
 - Reps get "New / Existing school / district" and the contact-already-in-Zoho
   banner and candidate picker; the match score, opportunity line and full
   "Account: ..." wording are Admin / Solutions Success only (`isSales` in
-  `ReviewLeadEditor.vue`, i.e. the effective role). Neither view has the old
+  `ContactEditor.vue`, i.e. the effective role). Neither view has the old
   "Zoho Account Id (once created)" / "Account name" fields or the "Show match
   reasoning" link any more: linking a new account is the import step's job, and
   the boxed "AI guess, unverified" summary made the reasoning link redundant.
@@ -767,7 +770,7 @@ Rules worth knowing before changing Smart:
   appends a dated line and saves at once). `export-csv` puts it first in the
   Zoho **Description** column as `Notes: ...`, ahead of the confidence lines and
   the AI match reasoning (`contacts.notes`). Before 2026-09-29 it was not
-  exported at all. The Review tooltips promise this, so change both together,
+  exported at all. The Contacts tooltips promise this, so change both together,
   and redeploy `export-csv` when the export changes.
 - Followed up sits at the top of the editor (not the footer) and saves as you
   tap, while the text fields still need Save (or Confirm, which carries pending
@@ -775,7 +778,7 @@ Rules worth knowing before changing Smart:
 - **Heat is retired (2026-10-05); Source replaced it.** The hot/warm/cold control,
   chip and "Hot first" sort, the classifier skill, its n8n pipeline and local-agent
   loop, and the DB trigger that fired it are gone. `contacts.contact_intent*` stays
-  as inert history (~17 rows). Review's **Source** select (everyone, To review and
+  as inert history (~17 rows). Contacts' **Source** select (everyone, To review and
   Confirmed; admin/Solutions Success also on Rejected) filters by how a lead was
   captured, and "Source" is a sort. The labels (2026-10-06): **QR scan** (a rep's own
   reusable QR), **QR Booth / QR Session** (the older per-event QR with a channel),
@@ -792,7 +795,7 @@ Rules worth knowing before changing Smart:
   time rather than stored again, so it can't drift, and the phone number never leaves
   the server). None of it reaches Zoho: export-csv's "Lead Source" column is the
   conference name and "Capture Channel" still reads only `qr_channel`. All in
-  `reviewSmart.ts` (`sourceKey`, `SOURCE_OPTIONS`). Tests read the latest
+  `contactsList.ts` (`sourceKey`, `SOURCE_OPTIONS`). Tests read the latest
   `contacts_source_check` and `intake_path` migrations and fail if the DB allows a
   source or door the UI has no option for. Source never changes after capture, so unlike a
   field an edit can change it needs no frozen order.

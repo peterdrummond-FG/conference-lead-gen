@@ -1,11 +1,11 @@
 <template>
   <!-- "Send us leads": everything a rep can text in (a card photo, a voice
-       memo, one person typed out), then the other way in: Review's Import
+       memo, one person typed out), then the other way in: Contacts' Import
        button, a pasted note, one lead per person. Whatever just arrived is
-       still being matched against Zoho, so Review shows it processing. -->
+       still being matched against Zoho, so Contacts shows it processing. -->
   <TourMessages v-if="part === 'text'" :messages="messages" :draft="draft" />
-  <TourAppShell v-else :manager="manager" :active="part === 'review' ? 'review' : ''">
-    <TourReviewScreen v-if="part === 'review'" :manager="manager" :leads="leads" />
+  <TourAppShell v-else :manager="manager" :active="part === 'contacts' ? 'contacts' : ''">
+    <TourContactsScreen v-if="part === 'contacts'" :manager="manager" :leads="leads" />
     <TourNotesScreen v-else :text="noteText" :phase="notePhase" :contacts="noteContacts" />
   </TourAppShell>
 </template>
@@ -16,12 +16,12 @@ import { useQuasar } from 'quasar';
 import TourMessages from '../screens/TourMessages.vue';
 import TourNotesScreen from '../screens/TourNotesScreen.vue';
 import TourAppShell from '../TourAppShell.vue';
-import TourReviewScreen from '../TourReviewScreen.vue';
+import TourContactsScreen from '../TourContactsScreen.vue';
 import { tourLeads, SAMPLE_CARD, SMS_REPLIES, type TourText } from '../tourSampleData';
 import type { TourRun } from '../useTourScript';
 
 // importOnly: a quick-start rep has already seen the texting half, so their
-// reminder plays this scene starting at Review's Import button.
+// reminder plays this scene starting at Contacts' Import button.
 const props = defineProps<{ manager: boolean; importOnly?: boolean }>();
 const emit = defineEmits<{ size: [s: { w: number; h: number }] }>();
 const $q = useQuasar();
@@ -35,10 +35,10 @@ const NOTE_RESULTS = [
   { name: 'Ana Cruz', line: 'Assistant Principal · Westlake Middle School', notes: 'Met at the keynote.' },
 ];
 
-const part = ref<'text' | 'review' | 'notes'>(props.importOnly ? 'review' : 'text');
+const part = ref<'text' | 'contacts' | 'notes'>(props.importOnly ? 'contacts' : 'text');
 const messages = ref<TourText[]>([]);
 const draft = ref('');
-// What is in Review at each point: Dana and Sam have just been texted in, so they
+// What is in Contacts at each point: Dana and Sam have just been texted in, so they
 // are still being matched (it takes minutes), not Ready.
 const textedLeads = () => (props.importOnly ? [] : tourLeads(['dana', 'sam'], { processing: ['dana', 'sam'] }));
 const allSentLeads = () => {
@@ -54,7 +54,7 @@ const phoneSize = { w: 375, h: 600 };
 function appSize() { return $q.screen.lt.sm ? phoneSize : { w: 1280, h: 800 }; }
 
 function reset() {
-  part.value = props.importOnly ? 'review' : 'text';
+  part.value = props.importOnly ? 'contacts' : 'text';
   messages.value = [];
   draft.value = '';
   leads.value = textedLeads();
@@ -99,8 +99,8 @@ async function run(t: TourRun) {
     await t.wait(600);
   }
 
-  // The other way in: typed notes, from Review's Import button.
-  part.value = 'review';
+  // The other way in: typed notes, from Contacts' Import button.
+  part.value = 'contacts';
   emit('size', appSize());
   await nextTick();
   await t.wait(900);
@@ -128,10 +128,10 @@ async function run(t: TourRun) {
   await t.wait(400);
   await t.ring(t.find('.notes-column .q-card').parentElement ?? t.find('.notes-column .q-card'), 2200);
 
-  // They land in Review, and are still being matched: that takes a few minutes.
-  await t.tap(t.findText('Open Review'), { press: true });
+  // They land in Contacts, and are still being matched: that takes a few minutes.
+  await t.tap(t.findText('Open Contacts'), { press: true });
   leads.value = allSentLeads();
-  part.value = 'review';
+  part.value = 'contacts';
   await nextTick();
   await t.wait(700);
   t.hideFinger();

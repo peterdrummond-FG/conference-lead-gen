@@ -3,7 +3,7 @@ import { Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useSessionStore } from '@/stores/session-store';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
-import { REVIEW_STATUSES, fullName, type ReviewStatus } from '@/utils/reviewSmart';
+import { REVIEW_STATUSES, fullName, type ReviewStatus } from '@/utils/contactsList';
 
 // Display-only fields the list item carries next to the ids the PATCH writes
 // (schoolDistrictId → districtName). A save only sends the ids, so without
@@ -19,7 +19,7 @@ const UNDO_MS = 6000;
 // Undo a plain PATCH back. A rep's contacts are a few hundred rows of JSON at
 // most — the card photos are separate requests, and only the open lead's is
 // ever fetched.
-export function useSmartReview() {
+export function useContacts() {
   const sessionStore = useSessionStore();
 
   const buckets = reactive<Record<ReviewStatus, ContactListItem[]>>({
@@ -179,7 +179,7 @@ export function useSmartReview() {
   };
   const restore = (id: string) => {
     const c = find(id);
-    return setStatus(id, 'needs_review', { message: c ? `${fullName(c)} moved back to Needs Review` : 'Moved back' });
+    return setStatus(id, 'needs_review', { message: c ? `${fullName(c)} moved back to Contacts` : 'Moved back' });
   };
 
   // Followed-up saves the instant it changes; text fields wait for
@@ -229,7 +229,7 @@ export function useSmartReview() {
     Notify.create({
       type: 'warning',
       timeout: 8000,
-      message: `Confirmed ${n}, skipped ${skippedCount} (${parts.join(', ')}). Skipped contacts stay in Needs Review.`,
+      message: `Confirmed ${n}, skipped ${skippedCount} (${parts.join(', ')}). Skipped contacts stay unconfirmed.`,
     });
   }
 

@@ -1,10 +1,10 @@
 <template>
   <!-- Managers: where Admin is, and its three jobs (activate a conference, end
-       one, and say which conference each rep is working at), then Review's
+       one, and say which conference each rep is working at), then Contacts'
        amber banner for scans that couldn't be placed under a conference. -->
   <TourAppShell :manager="manager" :active="page" :menu-open="menuOpen">
     <TourAdminScreen v-if="page === 'admin'" />
-    <TourReviewScreen v-else :manager="manager" :leads="leads" :scans-waiting="manager" :scans-expanded="scansOpen" @toggle-scans="scansOpen = !scansOpen" />
+    <TourContactsScreen v-else :manager="manager" :leads="leads" :scans-waiting="manager" :scans-expanded="scansOpen" @toggle-scans="scansOpen = !scansOpen" />
   </TourAppShell>
 </template>
 
@@ -12,9 +12,9 @@
 import { ref, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import TourAppShell from '../TourAppShell.vue';
-import TourReviewScreen from '../TourReviewScreen.vue';
+import TourContactsScreen from '../TourContactsScreen.vue';
 import TourAdminScreen from '../screens/TourAdminScreen.vue';
-import { reviewLeads } from '../tourSampleData';
+import { contactsLeads } from '../tourSampleData';
 import { goToPage } from '../tourNav';
 import type { TourRun } from '../useTourScript';
 
@@ -23,13 +23,13 @@ const emit = defineEmits<{ size: [s: { w: number; h: number }] }>();
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 
-const page = ref('review');
+const page = ref('contacts');
 const menuOpen = ref(false);
 const scansOpen = ref(false);
-const leads = ref(reviewLeads());
+const leads = ref(contactsLeads());
 
 function reset() {
-  page.value = 'review';
+  page.value = 'contacts';
   menuOpen.value = false;
   scansOpen.value = false;
   emit('size', isPhone.value ? { w: 375, h: 600 } : { w: 1280, h: 800 });
@@ -47,7 +47,7 @@ async function run(t: TourRun) {
   await t.ring(t.field('Working at').closest<HTMLElement>('.q-field') ?? t.field('Working at'), 2200);
 
   // Where scans that couldn't be placed under a conference wait for a manager.
-  await goToPage(t, { phone: isPhone.value, page: 'review', setMenu: (v) => (menuOpen.value = v), setPage: (p) => (page.value = p) });
+  await goToPage(t, { phone: isPhone.value, page: 'contacts', setMenu: (v) => (menuOpen.value = v), setPage: (p) => (page.value = p) });
   await t.wait(500);
   await t.ring(t.find('.usb'), 1800);
   await t.tap(t.findText('Show', '.usb *'));

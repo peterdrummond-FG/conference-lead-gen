@@ -3,7 +3,7 @@
     <div class="row items-center q-mb-xs">
       <div class="text-h5">Contacts from a note</div>
       <q-space />
-      <q-btn flat dense no-caps color="primary" label="Back to Review" to="/review" />
+      <q-btn flat dense no-caps color="primary" label="Back to Contacts" to="/contacts" />
     </div>
 
     <div class="text-body2 text-grey-8 q-mb-md">
@@ -19,7 +19,7 @@
 
     <q-banner v-if="!targetEventName" dense class="bg-orange-1 text-orange-9 q-mb-md rounded-borders">
       You're not linked to an event yet, so there's nowhere to file these.
-      Link yourself to one on the Review page first.
+      Choose one in Setup first.
     </q-banner>
     <div v-else class="text-caption text-grey-8 q-mb-md">
       Filing under <span class="text-weight-medium">{{ targetEventName }}</span>
@@ -41,7 +41,7 @@
     />
 
     <!-- Once a note is sent, the phone shows just the results: the tab bar
-         already leads to Review, and the two buttons only pushed them down the
+         already leads to Contacts, and the two buttons only pushed them down the
          screen. They stay on a laptop, where there is room (gt-xs hides the row
          below 600px; while idle the row holds Send and always shows). -->
     <div class="row items-center q-gutter-sm q-mt-md" :class="{ 'gt-xs': phase !== 'idle' }">
@@ -59,7 +59,7 @@
       />
       <template v-else>
         <q-btn color="primary" no-caps unelevated label="Paste another note" icon="add" class="notes-btn" @click="$emit('reset')" />
-        <q-btn flat no-caps color="primary" label="Open Review" to="/review" class="notes-btn" />
+        <q-btn flat no-caps color="primary" label="Open Contacts" to="/contacts" class="notes-btn" />
       </template>
     </div>
 
@@ -68,12 +68,12 @@
       <q-spinner size="22px" color="primary" />
       <div class="text-body2">
         Reading your note — this usually takes under a minute. You can leave
-        this page; the contacts land in Review either way.
+        this page; the contacts land in Contacts either way.
       </div>
     </div>
 
     <q-banner v-if="timedOut" dense class="bg-blue-1 text-blue-9 q-mt-md rounded-borders">
-      Still working on it. Nothing is lost — check Review in a few minutes.
+      Still working on it. Nothing is lost — check Contacts in a few minutes.
       If it never shows up, the extraction agent may not be running.
     </q-banner>
 
@@ -133,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-// The page "Contacts from a note" (reached from Review's Import button), as pure
+// The page "Contacts from a note" (reached from Contacts' Import button), as pure
 // display: the words, the box, the buttons and the results. NotesPage owns the
 // request, the polling and the numbers; the onboarding tour draws this same body
 // with sample contacts. The text is a v-model so the box still writes straight

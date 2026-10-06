@@ -13,7 +13,7 @@ import { api } from '@/boot/axios';
 // authenticated axios instance and exposes it as a short-lived blob: URL —
 // the standard SPA pattern for an authenticated image. Revokes the
 // previous object URL on every refetch and on unmount so this doesn't leak
-// memory across a long /review session.
+// memory across a long /contacts session.
 // Returns { url, error } rather than a bare url ref: a failed fetch used to
 // just clear url to null, indistinguishable from "this contact has no
 // photo" — <q-img>'s own #error slot never fires for that case since a

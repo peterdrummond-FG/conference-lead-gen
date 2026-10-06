@@ -4,7 +4,7 @@ import type { Role } from '@/types/review';
 // Routes with no `roles` (Intake, its aliases, and Login) are public — no
 // session required. Everything else is a staff route: index.ts's guard
 // redirects an unauthenticated visitor to /login, and a logged-in visitor
-// whose role isn't listed to /review.
+// whose role isn't listed to /contacts.
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -14,7 +14,7 @@ const routes: RouteRecordRaw[] = [
       // Intake form — attendees only ever land on Intake via a QR code
       // (/#/booth, /#/session), never by typing the plain root URL.
       // index.ts's guard already sends an already-logged-in visitor here
-      // straight on to /review.
+      // straight on to /contacts.
       { path: '', redirect: '/login' },
       { path: 'login', component: () => import('@/pages/LoginPage.vue') },
       // Where the emailed password-reset link lands (LoginPage passes it as
@@ -67,8 +67,11 @@ const routes: RouteRecordRaw[] = [
       // same as a bare /connect visit).
       { path: 'booth', redirect: { path: '/connect', query: { channel: 'booth' } } },
       { path: 'session', redirect: { path: '/connect', query: { channel: 'session' } } },
-      { path: 'review', component: () => import('@/pages/ReviewSmart.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
-      // Reached from Review's "Import" button rather than the
+      // /review is the page's old name (renamed Contacts 2026-10-06). It stays as a
+      // redirect, query kept, because bookmarks and texted/emailed links point at it.
+      { path: 'review', redirect: (to) => ({ path: '/contacts', query: to.query, hash: to.hash }) },
+      { path: 'contacts', component: () => import('@/pages/ContactsPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },
+      // Reached from Contacts' "Import" button rather than the
       // header nav — it's a capture action a rep takes from where they're
       // already working, not a fifth top-level section.
       { path: 'notes', component: () => import('@/pages/NotesPage.vue'), meta: { roles: ['admin', 'solutionsSuccess', 'sales'] as Role[] } },

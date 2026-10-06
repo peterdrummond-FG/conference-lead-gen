@@ -2,8 +2,8 @@
   <!-- "Check it, then confirm it", a while after the leads came in (so the Zoho
        match has finished): open Priya, whose pasted note had no phone, see it has
        already been checked against Zoho, tick Followed up, add her phone, confirm. -->
-  <TourAppShell :manager="manager" active="review">
-    <TourReviewScreen
+  <TourAppShell :manager="manager" active="contacts">
+    <TourContactsScreen
       :manager="manager"
       :leads="leads"
       :active-id="activeId"
@@ -20,8 +20,8 @@
 import { ref, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import TourAppShell from '../TourAppShell.vue';
-import TourReviewScreen from '../TourReviewScreen.vue';
-import { reviewLeads, patchLead } from '../tourSampleData';
+import TourContactsScreen from '../TourContactsScreen.vue';
+import { contactsLeads, patchLead } from '../tourSampleData';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 import type { TourRun } from '../useTourScript';
 
@@ -30,7 +30,7 @@ defineProps<{ manager: boolean }>();
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 
-const leads = ref<ContactListItem[]>(reviewLeads());
+const leads = ref<ContactListItem[]>(contactsLeads());
 const activeId = ref<string | null>(null);
 const sheetOpen = ref(false);
 
@@ -51,7 +51,7 @@ function onApprove(p: { id: string; edits?: UpdateContactPayload | undefined }) 
 }
 
 function reset() {
-  leads.value = reviewLeads();
+  leads.value = contactsLeads();
   sheetOpen.value = false;
   activeId.value = isPhone.value ? null : 'tour-grace';
 }

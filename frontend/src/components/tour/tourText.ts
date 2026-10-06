@@ -23,7 +23,7 @@ export const SMS_REPLIES = {
   alreadySetUp: (conference: string) =>
     `You're already set up for ${conference}. Text photo(s) of business cards, conference tags, etc. (and an optional voice memo right after) whenever you're ready. Not the right conference? Reply CHANGE.`,
   received: (n: number) => `Got it — ${n} item(s) received.`,
-  noteLogged: "Got it — that contact's logged and will show up in Review in a few minutes.",
+  noteLogged: "Got it — that contact's logged and will show up in Contacts in a few minutes.",
 };
 
 // What a brand-new rep types and is shown while setting up from scratch.

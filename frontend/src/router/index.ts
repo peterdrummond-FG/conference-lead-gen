@@ -53,7 +53,7 @@ export default defineRouter((/* { store, ssrContext } */) => {
 
   // Intake and its /booth, /session aliases carry no `meta.roles` — they're
   // the public attendee-facing QR form and stay reachable regardless of
-  // auth state. Every other route requires a real login (Review is the
+  // auth state. Every other route requires a real login (Contacts is the
   // default landing page once logged in, not Setup or Intake).
   Router.beforeEach(async (to) => {
     // This device being locked into kiosk mode overrides everything else,
@@ -68,14 +68,14 @@ export default defineRouter((/* { store, ssrContext } */) => {
     const isLoggedIn = !!sessionStore.user;
 
     if (to.path === '/login') {
-      return isLoggedIn ? '/review' : true;
+      return isLoggedIn ? '/contacts' : true;
     }
 
     const allowedRoles = to.meta.roles as Role[] | undefined;
     if (!allowedRoles) return true;
 
     if (!isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } };
-    if (!allowedRoles.includes(sessionStore.user!.role)) return '/review';
+    if (!allowedRoles.includes(sessionStore.user!.role)) return '/contacts';
 
     return true;
   });

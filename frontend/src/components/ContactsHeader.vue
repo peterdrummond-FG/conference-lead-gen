@@ -1,11 +1,11 @@
 <template>
   <header class="rs-head">
-    <h1 class="sr-only">Review</h1>
+    <h1 class="sr-only">Contacts</h1>
 
     <!-- Underline tabs: the status control used to be a 52px grey tray, which
          with the title row above it pushed the first lead off a phone screen.
-         The nav bar already says "Review", so the page has no title row. -->
-    <div class="rs-tabs" role="tablist" aria-label="Review status">
+         The nav bar already says "Contacts", so the page has no title row. -->
+    <div class="rs-tabs" role="tablist" aria-label="Contacts status">
       <button
         v-for="t in tabDefs"
         :key="t.value"
@@ -131,10 +131,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { LeadBucket, ReviewStatus, SortKey, SourceKey } from '@/utils/reviewSmart';
+import type { LeadBucket, ReviewStatus, SortKey, SourceKey } from '@/utils/contactsList';
 
-// Review's header (status tabs, the ready / incomplete / processing pills with
-// Import, search and sort, the filters) as pure display. ReviewSmart owns the data
+// Contacts' header (status tabs, the ready / incomplete / processing pills with
+// Import, search and sort, the filters) as pure display. ContactsPage owns the data
 // and every filter's state and hands them in; the onboarding tour renders this same
 // component with sample counts. The filters are v-models so each one still writes
 // straight into the page's own ref, as before this was split out.
@@ -178,7 +178,7 @@ const sortLabel = computed(() => props.sortOptions[tab.value]?.find((o) => o.val
 .rs-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-/* Underline tabs with live counts. The nav bar already says "Review", so the
+/* Underline tabs with live counts. The nav bar already says "Contacts", so the
    page has no title row; the tray this used to sit in is gone too. 44px tall. */
 .rs-tabs { display: flex; border-bottom: 1px solid rgba(0, 0, 0, 0.12); margin: 0 -4px; }
 .rs-tab {

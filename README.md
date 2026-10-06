@@ -30,7 +30,7 @@ review → export.
 3. **Match** — `match-contact` classifies against live Zoho data:
    `existing_contact` / `new_contact_existing_account` / `new_account` /
    `ambiguous`. Read-only; it never creates a Zoho record.
-4. **Review** — a human confirms, edits or rejects on `/review` (flagged rows,
+4. **Contacts** — a human confirms, edits or rejects on `/contacts` (flagged rows,
    ready / incomplete / processing filters, one-tap confirm, search, a desktop
    split pane; newest first, and saving never moves a lead).
    Nothing is ever auto-confirmed: a match always leaves the lead for a person to
@@ -45,7 +45,7 @@ Voice memos are transcribed locally (Whisper CLI) and attributed to the right
 contact(s) — a memo can cover more than one person. Attribution and OCR both retry automatically against a
 persisted attempt/cooldown state (not a fixed time window) until the person
 they're about actually exists as a contact; a memo or photo that never
-resolves surfaces in `/review` instead of silently disappearing or
+resolves surfaces in `/contacts` instead of silently disappearing or
 attaching to the wrong person. See `docs/ARCHITECTURE.md`'s "Claim-based
 retry" convention.
 

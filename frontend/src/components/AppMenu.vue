@@ -1,7 +1,7 @@
 <template>
   <!-- The phone's page menu: the pages for this person, then who they are and log
        out. MainLayout's drawer content as pure display (the tour draws it too).
-       Review is first because it is the page everyone lives in. Same role checks as
+       Contacts is first because it is the page everyone lives in. Same role checks as
        the laptop tabs. `active` is set only by the tour, which swaps the router links
        for plain rows. -->
   <div class="menu-drawer">
@@ -47,7 +47,7 @@ defineEmits<{ go: [page: string]; logout: [] }>();
 
 const groups = computed(() => {
   const main = [
-    { name: 'review', label: 'Review', to: '/review', icon: 'checklist' },
+    { name: 'contacts', label: 'Contacts', to: '/contacts', icon: 'checklist' },
     { name: 'connect', label: 'Kiosk', to: '/connect', icon: 'tablet_mac' },
     ...(props.canSeeSetup ? [{ name: 'setup', label: 'Setup', to: '/setup', icon: 'tune' }] : []),
   ];

@@ -21,10 +21,10 @@
       </div>
       <div class="ex-row">
         <span>
-          Still needs review
+          Not confirmed yet
           <!-- These are exactly the leads that will NOT be in the file, so the
                way to change that is one tap away instead of a nav-tab hunt. -->
-          <router-link v-if="summary.needsReview > 0" to="/review" class="ex-link">Review them</router-link>
+          <router-link v-if="summary.needsReview > 0" to="/contacts" class="ex-link">See them</router-link>
         </span>
         <q-badge color="warning" :label="summary.needsReview" />
       </div>
@@ -55,7 +55,7 @@
 
     <template v-else>
       <q-card-section v-if="summary && exportCount === 0" class="q-pt-none text-body2 text-grey-8">
-        Nothing to export yet. Confirm leads in Review and they'll show up here.
+        Nothing to export yet. Confirm leads in Contacts and they'll show up here.
       </q-card-section>
       <q-card-actions align="right">
         <q-btn

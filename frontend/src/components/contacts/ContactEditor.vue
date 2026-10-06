@@ -1,6 +1,6 @@
 <template>
   <!-- One editor, two homes: the right-hand pane on a desktop and a bottom
-       sheet on a phone (ReviewSmart decides). It fills whatever height its
+       sheet on a phone (ContactsPage decides). It fills whatever height its
        parent gives it — header and footer stay put, only the middle scrolls —
        so Confirm / Reject are always on screen however long the form is (the
        Classic card is ~900px tall on a phone and needed a sticky-footer patch
@@ -209,7 +209,7 @@
            reject yet, so the two buttons are replaced by a notice rather than
            disabled (a disabled button tells a phone user nothing). The notice
            takes the buttons' place, so the footer doesn't change height when the
-           match lands. ReviewSmart reloads on its own while any lead is in this
+           match lands. ContactsPage reloads on its own while any lead is in this
            state, which is what swaps the buttons back in. -->
       <div v-if="processing" class="le-proc" role="status">
         <ProcessingBar caption="" label="Processing this contact" />
@@ -221,7 +221,7 @@
         <q-btn v-if="isDirty" outline no-caps color="primary" label="Save changes" class="le-btn" :loading="busy" @click="save" />
         <q-btn v-if="contact.reviewStatus !== 'rejected' && !processing" flat no-caps color="negative" label="Reject" class="le-btn" :disable="busy" @click="rejectClick" />
         <q-btn v-if="contact.reviewStatus === 'needs_review' && !processing && contact.matchStatus !== 'pending'" unelevated no-caps color="positive" label="Confirm" class="le-btn le-approve" :loading="busy" @click="approveClick" />
-        <q-btn v-if="contact.reviewStatus === 'rejected'" outline no-caps color="primary" icon="undo" label="Restore to Needs Review" class="le-btn" :loading="busy" @click="$emit('restore', contact.id)" />
+        <q-btn v-if="contact.reviewStatus === 'rejected'" outline no-caps color="primary" icon="undo" label="Restore to Contacts" class="le-btn" :loading="busy" @click="$emit('restore', contact.id)" />
       </div>
       <div v-if="showKeys && contact.reviewStatus === 'needs_review' && !processing" class="le-keys">J / K move · C confirm · R reject</div>
     </div>
@@ -232,17 +232,17 @@
 import { reactive, computed, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
-import LeadChip from '@/components/smart/LeadChip.vue';
-import ProcessingBar from '@/components/smart/ProcessingBar.vue';
-import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
+import LeadChip from '@/components/contacts/LeadChip.vue';
+import ProcessingBar from '@/components/contacts/ProcessingBar.vue';
+import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
 import DuplicateResolutionDialog from '@/components/DuplicateResolutionDialog.vue';
 import InstitutionFields from '@/components/InstitutionFields.vue';
 import { useContactPhoto } from '@/composables/useContactPhoto';
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
-import type { DisplayPatch } from '@/composables/useSmartReview';
+import type { DisplayPatch } from '@/composables/useContacts';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
 import { lookupLineVisible, lookupSource as buildLookupSource } from '@/utils/institutionPicker';
-import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist, sourceKey, sourceLabel } from '@/utils/reviewSmart';
+import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist, sourceKey, sourceLabel } from '@/utils/contactsList';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -396,7 +396,7 @@ function notAMatch() {
   Notify.create({
     type: 'info',
     message: payload.matchStatus === 'ambiguous'
-      ? 'Match cleared. This contact now needs review.'
+      ? 'Match cleared. This contact needs another look.'
       : 'Match cleared. Kept the matched account, no specific contact.',
   });
 }
@@ -474,7 +474,7 @@ const opportunityLine = computed(() => {
 
 const isPhotoSourced = computed(() => props.contact.source === 'card_photo' || props.contact.source === 'directory_photo');
 
-// The chip is the same wording as Review's rows and Source filter (utils/reviewSmart.ts).
+// The chip is the same wording as Contacts' rows and Source filter (utils/contactsList.ts).
 const sourceNamesChannel = computed(() => ['qr_booth', 'qr_session'].includes(sourceKey(props.contact)));
 
 function capitalize(s: string) {

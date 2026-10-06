@@ -134,6 +134,6 @@ function reset() {
 onUnmounted(stopPolling);
 
 // Needed for targetEventName when this page is opened directly (a bookmark
-// or a reload) rather than navigated to from Review.
+// or a reload) rather than navigated to from Contacts.
 if (!eventStore.loaded) void eventStore.fetchActive();
 </script>

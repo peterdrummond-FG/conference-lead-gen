@@ -1,6 +1,6 @@
 <template>
   <!-- Nothing to show is the common case — render nothing rather than an
-       empty banner every time Review loads clean. -->
+       empty banner every time Contacts loads clean. -->
   <q-banner v-if="audio.length || failedIntake.length" dense class="bg-grey-2 q-mb-md unresolved-banner">
     <div class="row items-center q-gutter-sm">
       <q-icon name="warning" color="orange-8" size="20px" />
@@ -113,7 +113,7 @@ import { date, Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import type { UnresolvedAudioMemo, FailedIntakeMessage, LinkCandidateContact } from '@/types/review';
 
-// Optional — mirrors ReviewPage's own admin "view as" preview so this panel
+// Optional — mirrors ContactsPage's own admin "view as" preview so this panel
 // shows exactly what the previewed rep would see, same as the contacts
 // grid already does.
 const props = defineProps<{ viewAsRepId?: string | null }>();

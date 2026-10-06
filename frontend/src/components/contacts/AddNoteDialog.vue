@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { MAX_NEW_NOTE_LENGTH } from '@/utils/reviewSmart';
+import { MAX_NEW_NOTE_LENGTH } from '@/utils/contactsList';
 
 defineProps<{ modelValue: boolean; name?: string }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; save: [text: string] }>();

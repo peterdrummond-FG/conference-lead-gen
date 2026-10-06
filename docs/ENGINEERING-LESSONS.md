@@ -172,7 +172,7 @@ problem:
   in production would be an outage that looks like anything but config.
 - `events-active` falls back to the most recently activated conference when a
   user has none linked. Fine for display; but Setup treated "a conference is
-  shown" as "you're at it", while the rep's QR only reached their Review once
+  shown" as "you're at it", while the rep's QR only reached their Contacts once
   they were actually linked (an unlinked rep's scan now waits for Solutions
   Success instead of failing). A default that *displays* a value must not be read as the
   user having *chosen* it.
@@ -346,7 +346,7 @@ saying so.
 **The rule.** When a pipeline step can't confidently resolve its output,
 leave the row in an explicit pending/unresolved state and make that state
 *visible* (a queue, a banner, a chip — see `inbound-messages-unresolved-list`
-+ Review's unresolved-intake panel), rather than forcing a plausible-looking
++ Contacts' unresolved-intake panel), rather than forcing a plausible-looking
 answer. A human can act correctly on "we don't know yet." A human cannot tell
 a confident-looking wrong answer from a right one without redoing the work
 themselves — which defeats the point of automating it.
@@ -360,7 +360,7 @@ result," that's the finding.
 
 ## 15. A promise in the UI has to be true in the pipeline behind it
 
-**What happened.** While adding an "Add note" button to Review, the plan was a
+**What happened.** While adding an "Add note" button to Contacts, the plan was a
 tooltip: "this note will end up in Zoho." Before writing it, we read
 `export-csv`. Its Description column was built from `contacts.notes` — the AI's
 match reasoning — and never read `interaction_notes`, the field reps type into
@@ -420,7 +420,7 @@ per-person refresh-resume in `tour-store`).
 
 **What happened.** A rep added a district to the contact they had just entered
 and hit Save. It "disappeared". The save had worked: the row was in the database,
-unchanged but for the district. Review's default sort was *Needs attention first*,
+unchanged but for the district. Contacts' default sort was *Needs attention first*,
 which ranks on the same readiness flags the edit had just satisfied, so the save
 moved the lead from row 1 to row 41 of a 41-row list, and the reload they tried
 selected the first lead instead. Nothing was lost, and nothing on screen said so:
@@ -435,7 +435,7 @@ and say the save landed. Two corollaries from the same fix: a background refresh
 must yield to any write in flight (it was a snapshot from before the write), and
 when someone reports data "vanished", check the database before assuming it was
 lost: it was a display problem here, and the logs showed it in one query.
-Tests: `reviewSmart.test.mjs` ("Order").
+Tests: `contactsList.test.mjs` ("Order").
 
 ---
 

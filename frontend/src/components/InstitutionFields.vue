@@ -1,7 +1,7 @@
 <template>
   <!-- State, District and School: the one place these three fields live. The attendee form
        (IntakeFormFields, which the Kiosk tab and the onboarding tour draw too), the lead
-       editor (ReviewLeadEditor) and the merge dialog (DuplicateResolutionDialog) all render
+       editor (ContactEditor) and the merge dialog (DuplicateResolutionDialog) all render
        this, so a rule fixed here is fixed everywhere. What the fields do is in
        useInstitutionPicker (lists loaded once, filtered on the device) and
        utils/institutionPicker.ts (the matching rules, with tests). Look is the host's:

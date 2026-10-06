@@ -1,12 +1,12 @@
 <template>
   <!-- "Or let them add themselves". A rep: the QR icon in the top bar shows
        their code, an attendee scans it and fills in the form, and the lead
-       lands in the rep's Review. A manager has no code of their own: they save
+       lands in the rep's Contacts. A manager has no code of their own: they save
        a rep's from Admin, under Team. -->
   <TourIntakeScreen v-if="part === 'attendee'" :form="form" :folded="folded" :submitted="submitted" />
   <TourAppShell v-else :manager="manager" :active="page" :menu-open="menuOpen">
     <TourAdminScreen v-if="page === 'admin'" />
-    <TourReviewScreen v-else :manager="manager" :leads="leads" />
+    <TourContactsScreen v-else :manager="manager" :leads="leads" />
     <template #overlay>
       <TourQrOverlay v-if="!manager" :open="qrOpen" />
     </template>
@@ -17,7 +17,7 @@
 import { ref, reactive, computed, nextTick } from 'vue';
 import { useQuasar } from 'quasar';
 import TourAppShell from '../TourAppShell.vue';
-import TourReviewScreen from '../TourReviewScreen.vue';
+import TourContactsScreen from '../TourContactsScreen.vue';
 import TourAdminScreen from '../screens/TourAdminScreen.vue';
 import TourIntakeScreen from '../screens/TourIntakeScreen.vue';
 import type { IntakeFormModel } from '@/components/IntakeFormFields.vue';
@@ -32,7 +32,7 @@ const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
 
 const part = ref<'app' | 'attendee'>('app');
-const page = ref('review');
+const page = ref('contacts');
 const menuOpen = ref(false);
 const qrOpen = ref(false);
 // The leads from earlier in the story are matched by now; Grace's is the new one.
@@ -48,7 +48,7 @@ function appSize() { return isPhone.value ? phoneSize : { w: 1280, h: 800 }; }
 
 function reset() {
   part.value = 'app';
-  page.value = 'review';
+  page.value = 'contacts';
   menuOpen.value = false;
   qrOpen.value = false;
   leads.value = earlierLeads();
@@ -113,7 +113,7 @@ async function runRep(t: TourRun) {
   t.hideFinger();
   await t.wait(1600);
 
-  // And it's in the rep's Review, credited to them. It has only just arrived, so
+  // And it's in the rep's Contacts, credited to them. It has only just arrived, so
   // it is still being matched against Zoho: the real "Checking match…" state.
   part.value = 'app';
   qrOpen.value = false;

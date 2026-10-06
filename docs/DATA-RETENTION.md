@@ -47,7 +47,7 @@ crop, and any voice memo reached through `source_message_id`.
   for a missing object.
 - `contacts-bulk-delete` — removes photos, crops and audio before deleting rows.
 - `inbound-messages-delete` — same shape for a voice memo that never linked to
-  any contact (Review's "Delete" action on the unresolved-intake list):
+  any contact (Contacts' "Delete" action on the unresolved-intake list):
   removes the audio from the `voice-memos` bucket, then deletes the
   `inbound_messages` row — transcript included, since nothing else points at
   it once the row is gone.

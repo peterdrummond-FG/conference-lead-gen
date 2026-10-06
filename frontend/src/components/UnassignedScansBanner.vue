@@ -41,7 +41,7 @@
             dense
             class="q-mt-sm"
             label="Rep to credit"
-            hint="Optional. The lead shows up in this rep's Review."
+            hint="Optional. The lead shows up in this rep's Contacts."
             :loading="optionsLoading"
           />
           <div class="text-caption text-grey-8 q-mt-sm">It gets checked against Zoho like any other lead.</div>

@@ -779,11 +779,11 @@ Deno.serve(async (req) => {
         });
         if (logError) {
           if (logError.code !== "23505") console.error("insert inbound_messages failed", logError);
-          return twiml("Got it — that contact's logged and will show up in Review in a few minutes.");
+          return twiml("Got it — that contact's logged and will show up in Contacts in a few minutes.");
         }
 
         await supabase.from("note_submissions").insert({ event_id: binding.event_id, from_phone: from, body });
-        return twiml("Got it — that contact's logged and will show up in Review in a few minutes.");
+        return twiml("Got it — that contact's logged and will show up in Contacts in a few minutes.");
       }
 
       background("audit row", () =>

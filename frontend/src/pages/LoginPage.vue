@@ -94,7 +94,7 @@ async function onSubmit() {
   loading.value = true;
   try {
     await sessionStore.login(email.value, password.value);
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/review';
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/contacts';
     await router.push(redirect);
   } catch {
     Notify.create({ type: 'negative', message: 'Incorrect email or password.' });

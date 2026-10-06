@@ -56,7 +56,7 @@ export const useSessionStore = defineStore('session', {
     user: null as SessionUser | null,
     initialized: false,
     // Admin-only "view as" preview (see MainLayout's user switcher) — only
-    // ever changes what is read and shown (Review's scoping params, and the
+    // ever changes what is read and shown (Contacts' scoping params, and the
     // `preview` facts Setup and Kiosk display); every request
     // still carries the real admin's own JWT, so writes always land under
     // the admin's own account, never the previewed user's.
@@ -68,7 +68,7 @@ export const useSessionStore = defineStore('session', {
     preview: null as PreviewUser | null,
   }),
   getters: {
-    // What Review should actually scope its reads to, whether that's the
+    // What Contacts should actually scope its reads to, whether that's the
     // real logged-in user or (admin only) whoever they're previewing.
     effectiveRole: (state): Role | null => state.viewingAs?.role ?? state.user?.role ?? null,
     effectiveRepId: (state): string | null =>

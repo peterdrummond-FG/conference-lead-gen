@@ -26,7 +26,7 @@ const read = (r) => readFileSync(join(SRC, r), 'utf8');
 // copy again.
 const RENDERERS = [
   'components/IntakeFormFields.vue', // the attendee form: /connect/<repSlug>, the Kiosk tab, and the tour's phone
-  'components/smart/ReviewLeadEditor.vue', // the lead editor: Review's pane and sheet
+  'components/contacts/ContactEditor.vue', // the lead editor: Contacts' pane and sheet
   'components/DuplicateResolutionDialog.vue', // the merge dialog
 ];
 
@@ -54,7 +54,7 @@ test('only the composable talks to the district and school lists', () => {
 });
 
 test('the pages that used to keep their own picker logic no longer do', () => {
-  for (const r of ['pages/IntakePage.vue', 'components/smart/ReviewLeadEditor.vue', 'components/DuplicateResolutionDialog.vue']) {
+  for (const r of ['pages/IntakePage.vue', 'components/contacts/ContactEditor.vue', 'components/DuplicateResolutionDialog.vue']) {
     const s = read(r);
     assert.ok(!/useTypeahead|resolveTypedOption|filterStateOptions/.test(s), `${r} still has its own picker logic`);
   }
