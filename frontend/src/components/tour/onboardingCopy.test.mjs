@@ -126,6 +126,18 @@ test('nothing a rep reads uses developer words', () => {
   }
 });
 
+// The bold rule (see SceneCopy in tourCopy.ts): bold is only the name of a tab or
+// button the person taps, or SETUP as the word they text. Anything else bold reads
+// as random emphasis (a field label, a phone number), which is what this replaced.
+const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Review', 'Import', 'Export', 'Admin', 'Approve', 'Followed up', 'Yes, it downloaded', '?'];
+test('bold is only a tab or button the person taps, or the word SETUP', () => {
+  for (const text of allCopy()) {
+    for (const [, word] of text.matchAll(/\*\*(.+?)\*\*/g)) {
+      assert.ok(BOLD_ALLOWED.includes(word), `"${word}" is bold but isn't a tab, a button or SETUP, in: ${text}`);
+    }
+  }
+});
+
 test('the no-phone note names who can fix it, by role', () => {
   const setup = SCENE_COPY.find((s) => s.id === 'setup');
   assert.match(setup.noPhoneNote.sales, /Solutions Success rep/);
