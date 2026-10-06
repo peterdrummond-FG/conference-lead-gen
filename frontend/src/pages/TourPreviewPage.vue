@@ -32,13 +32,13 @@
         </div>
       </div>
 
-      <TourReminder v-if="reminder" :steps="remainder" @watch="watchRemainder" @later="record('reminder-shown'); reminder = false" />
+      <TourReminder v-if="reminder" :steps="remainder" :path="endedPath" @watch="watchRemainder" @later="record('reminder-shown'); reminder = false" />
       <OnboardingFlow
         v-else-if="!ended && !startScene"
         :key="flowKey" :role="role" :has-phone="hasPhone" :phone-connected="phoneConnected"
         :mode="flowMode" :start="startPhase" :resume-from="flowResume"
         @seen="record('seen')"
-        @ended="(e) => { record(`ended path=${e.path} resumeFrom=${e.resumeFrom}`); resumeFrom = e.resumeFrom }"
+        @ended="(e) => { record(`ended path=${e.path} resumeFrom=${e.resumeFrom}`); resumeFrom = e.resumeFrom; endedPath = e.path }"
         @complete="record('complete'); resumeFrom = null"
         @close="finishedWith('Closed. The app carries on where it was.')"
         @finish="(go) => finishedWith(`Goes to ${go === 'setup' ? 'Setup' : 'Review'}.`)"
@@ -73,6 +73,8 @@ const flowKey = ref(0);
 const ended = ref<string | null>(null);
 const reminder = ref(false);
 const resumeFrom = ref<string | null>(null);
+// How they left, which decides the reminder's wording (what `me.onboarding.path` holds).
+const endedPath = ref<'quick' | 'tour' | null>(null);
 const log = ref<string[]>([]);
 
 const startOptions = computed(() => [
@@ -92,7 +94,7 @@ const remainder = computed(() => remainderSteps(manager.value, resumeFrom.value 
 
 watch([role, start, hasPhone, phoneConnected], () => {
   restart();
-  if (start.value === 'reminder-quick') { resumeFrom.value = 'send-import'; ended.value = 'The reminder an hour after the quick start.'; reminder.value = true; }
+  if (start.value === 'reminder-quick') { resumeFrom.value = 'send-import'; endedPath.value = 'quick'; ended.value = 'The reminder an hour after the quick start.'; reminder.value = true; }
 });
 
 function restart() {
@@ -100,6 +102,7 @@ function restart() {
   reminder.value = false;
   log.value = [];
   resumeFrom.value = null;
+  endedPath.value = null;
   flowKey.value++;
 }
 function record(what: string) { log.value = [...log.value, `records: ${what}`]; }

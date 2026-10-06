@@ -127,5 +127,5 @@ export const ONBOARDING_COPY = {
     },
   },
   skipped: 'No problem. Tap ? at the top any time to watch the tour.',
-  reminder: { watch: 'Watch now', later: 'Not now' },
+  reminder: { watch: 'Watch now', later: 'Not now', fine: 'Skip it and you can still watch any time from the ? at the top of the app.' },
 };

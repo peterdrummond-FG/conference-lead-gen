@@ -106,18 +106,41 @@ test('a rep never gets a manager scene, even if the id was recorded for one', ()
   assert.equal(remainderSteps(false, 'admin').length, 4);
 });
 
-// ── the reminder's words come from what is left ──
-test('the words for a quick-start rep', () => {
-  assert.deepEqual(reminderCopy(remainderSteps(false, 'send-import')), {
-    title: 'Got a minute?',
-    body: 'See the rest: importing a typed note, your QR code and reviewing your leads. About 40 seconds.',
+// ── the reminder's words come from what is left, and from how they left ──
+test('a quick-start rep is offered the tour, not told they left one', () => {
+  assert.deepEqual(reminderCopy(remainderSteps(false, 'send-import'), 'quick'), {
+    title: 'Want a quick tour?',
+    body: 'You went straight to texting earlier. In about 40 seconds, see what else you can do: adding a typed note, your QR code and reviewing your leads.',
   });
 });
-test('one scene left, and a long remainder', () => {
-  assert.match(reminderCopy(remainderSteps(false, 'review')).body, /^See the rest: reviewing your leads\. About 20 seconds\.$/);
-  const long = reminderCopy(remainderSteps(true, 'setup'));
-  assert.equal(long.title, 'Got a few minutes?');
+test('someone who left the tour partway is asked to finish it', () => {
+  assert.deepEqual(reminderCopy(remainderSteps(false, 'qr'), 'tour'), {
+    title: 'Finish the tour?',
+    body: 'You left the tour partway through. Still to see: your QR code and reviewing your leads. About 30 seconds.',
+  });
+  assert.match(reminderCopy(remainderSteps(false, 'review'), 'tour').body, /Still to see: reviewing your leads\. About 20 seconds\.$/);
+  const long = reminderCopy(remainderSteps(true, 'setup'), 'tour');
   assert.match(long.body, /About 2 minutes\.$/);
+});
+test('an unknown path gets the finish-the-tour wording, which is true of anyone with a resume point', () => {
+  assert.equal(reminderCopy(remainderSteps(false, 'qr'), null).title, 'Finish the tour?');
+  assert.equal(reminderCopy(remainderSteps(false, 'qr')).title, 'Finish the tour?');
+});
+test('the title never depends on the length, so it cannot contradict the body', () => {
+  // 70 seconds used to flip the title to "Got a few minutes?" over "About 70 seconds."
+  for (const path of ['quick', 'tour']) {
+    const titles = new Set();
+    for (const manager of [false, true]) for (const id of RESUME_IDS) titles.add(reminderCopy(remainderSteps(manager, id), path).title);
+    assert.equal(titles.size, 1, `${path}: ${[...titles]}`);
+  }
+});
+test('reminder copy never says the reminder promise it cannot keep', () => {
+  for (const manager of [false, true]) for (const id of RESUME_IDS) {
+    for (const path of ['quick', 'tour']) {
+      const { title, body } = reminderCopy(remainderSteps(manager, id), path);
+      assert.ok(!/few minutes|See the rest|skipped/.test(`${title} ${body}`), body);
+    }
+  }
 });
 
 // ── the bar counts only what is played ──
