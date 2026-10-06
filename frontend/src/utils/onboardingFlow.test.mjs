@@ -80,7 +80,7 @@ test('the full tour: a rep gets four scenes, a manager gets six', () => {
   assert.deepEqual(fullSteps(false).map((s) => s.id), ['setup', 'send', 'qr', 'review']);
   assert.deepEqual(fullSteps(true).map((s) => s.id), ['setup', 'send', 'qr', 'review', 'export', 'admin']);
 });
-test('a quick-start rep sees the import half, then QR and Review', () => {
+test('a quick-start rep sees the import half, then QR and Contacts', () => {
   const r = remainderSteps(false, 'send-import');
   assert.deepEqual(r.map((s) => s.id), ['send-import', 'qr', 'review']);
   assert.equal(r[0].importOnly, true);

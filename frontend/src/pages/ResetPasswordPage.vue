@@ -138,7 +138,7 @@ async function onSubmit() {
     }
     if (!sessionStore.user) await sessionStore.fetchMe();
     Notify.create({ type: 'positive', message: 'Password updated. You\'re signed in.' });
-    await router.push('/review');
+    await router.push('/contacts');
   } catch {
     Notify.create({ type: 'negative', message: 'Couldn\'t save your password. Try again.' });
   } finally {

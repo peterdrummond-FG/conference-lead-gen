@@ -9,7 +9,7 @@ import { SCENE_COPY, ONBOARDING_COPY, type SceneCopy } from './tourCopy';
 import TourSceneSetup from './scenes/TourSceneSetup.vue';
 import TourSceneSend from './scenes/TourSceneSend.vue';
 import TourSceneQr from './scenes/TourSceneQr.vue';
-import TourSceneReview from './scenes/TourSceneReview.vue';
+import TourSceneContacts from './scenes/TourSceneContacts.vue';
 import TourSceneExport from './scenes/TourSceneExport.vue';
 import TourSceneAdmin from './scenes/TourSceneAdmin.vue';
 
@@ -19,7 +19,7 @@ const COMPONENTS: Record<string, Component> = {
   setup: TourSceneSetup,
   send: TourSceneSend,
   qr: TourSceneQr,
-  review: TourSceneReview,
+  review: TourSceneContacts,
   export: TourSceneExport,
   admin: TourSceneAdmin,
 };

@@ -1,6 +1,6 @@
 <template>
   <q-page class="rs-page">
-    <ReviewHeader
+    <ContactsHeader
       v-model:tab="tab" v-model:search="search" v-model:follow-filter="followFilter" v-model:event-filter="eventFilter"
       v-model:rep-filter="repFilter" v-model:synced-filter="syncedFilter" v-model:source-filter="sourceFilter" v-model:scope-view="scopeView"
       :tab-defs="tabDefs" :counts="counts" :summary="summary" :readiness-filter="readinessFilter" :is-sales="isSales"
@@ -50,7 +50,7 @@
               </div>
             </div>
 
-            <ReviewLeadList
+            <ContactList
               v-if="currentLeads.length"
               :leads="currentLeads"
               :tab="tab"
@@ -77,7 +77,7 @@
                 </button>
                 <q-btn v-if="tab === 'needs_review' && readyCount(g.leads) > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyCount(g.leads)}`" class="rs-ready-btn" @click="confirmApproveReady(g.leads, g.eventName)" />
               </div>
-              <ReviewLeadList
+              <ContactList
                 v-if="isPastOpen(g.eventId, i)"
                 :leads="g.leads"
                 :tab="tab"
@@ -98,7 +98,7 @@
             <div class="rs-sec-sub">{{ tabLeads.length }} {{ tabLeads.length === 1 ? 'lead' : 'leads' }}</div>
             <q-btn v-if="tab === 'needs_review' && readyCount(tabLeads) > 0" unelevated no-caps dense color="positive" :label="`Confirm all ${readyCount(tabLeads)}`" class="rs-ready-btn" @click="confirmApproveReady(tabLeads, 'All visible contacts')" />
           </div>
-          <ReviewLeadList
+          <ContactList
             v-if="tabLeads.length"
             :leads="tabLeads"
             :tab="tab"
@@ -125,7 +125,7 @@
       </div>
 
       <aside v-if="isDesktop" class="rs-pane" aria-label="Lead details">
-        <ReviewLeadEditor
+        <ContactEditor
           v-if="activeLead"
           ref="editorRef"
           :key="activeLead.id"
@@ -143,7 +143,7 @@
           @prev="step(-1)"
           @next="step(1)"
         />
-        <div v-else class="rs-pane-empty">Select a lead to review.</div>
+        <div v-else class="rs-pane-empty">Select a contact.</div>
       </aside>
     </div>
 
@@ -152,7 +152,7 @@
     <!-- Phone / tablet: the same editor as a bottom sheet. -->
     <q-dialog v-if="!isDesktop" :model-value="sheetOpen" position="bottom" persistent full-width @escape-key="closeSheet">
       <q-card v-if="activeLead" class="rs-sheet">
-        <ReviewLeadEditor
+        <ContactEditor
           ref="editorRef"
           :key="activeLead.id"
           :contact="activeLead"
@@ -181,23 +181,23 @@ import { useQuasar, Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import UnassignedScansBanner from '@/components/UnassignedScansBanner.vue';
-import ReviewHeader from '@/components/ReviewHeader.vue';
-import ReviewLeadList from '@/components/smart/ReviewLeadList.vue';
-import ReviewLeadEditor from '@/components/smart/ReviewLeadEditor.vue';
-import AddNoteDialog from '@/components/smart/AddNoteDialog.vue';
-import { useSmartReview, type DisplayPatch } from '@/composables/useSmartReview';
+import ContactsHeader from '@/components/ContactsHeader.vue';
+import ContactList from '@/components/contacts/ContactList.vue';
+import ContactEditor from '@/components/contacts/ContactEditor.vue';
+import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
+import { useContacts, type DisplayPatch } from '@/composables/useContacts';
 import { useSessionStore } from '@/stores/session-store';
 import { useEventStore } from '@/stores/event-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
   DEFAULT_SORT, REVIEW_STATUSES, SORT_OPTIONS, appendNote, buildRank, eventRecency, fullName, groupByEvent, filterBySource, isProcessing, leadBucket, orderByRank, readyIds, searchLeads, sourceFilterOptions, summaryCounts,
   type LeadBucket, type LeadRank, type ReviewStatus, type SortKey, type SourceKey,
-} from '@/utils/reviewSmart';
+} from '@/utils/contactsList';
 
 const $q = useQuasar();
 const sessionStore = useSessionStore();
 const eventStore = useEventStore();
-const { buckets, currentIds, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useSmartReview();
+const { buckets, currentIds, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useContacts();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');
 const canSeeUnassigned = computed(() => !sessionStore.viewingAs && ['admin', 'solutionsSuccess'].includes(sessionStore.user?.role ?? ''));
@@ -241,7 +241,7 @@ const sheetId = ref<string | null>(null); // phone
 
 // The order the lists are shown in, fixed when it is computed rather than
 // recomputed from each lead's current flags (see "Frozen order" in
-// reviewSmart.ts): saving a lead must not send it to the bottom of the list.
+// contactsList.ts): saving a lead must not send it to the bottom of the list.
 // It is rebuilt on a (re)load, and when the rep changes the sort; a quiet
 // background refresh keeps it, so leads don't reshuffle under someone typing.
 const rank = shallowRef<LeadRank>(new Map());
@@ -409,7 +409,7 @@ const emptyState = computed<{ icon: string; color: string; title: string; body: 
 
 // ── The open lead (desktop pane / phone sheet) ───────────────────────────
 
-const editorRef = ref<InstanceType<typeof ReviewLeadEditor> | null>(null);
+const editorRef = ref<InstanceType<typeof ContactEditor> | null>(null);
 
 const activeLead = computed<ContactListItem | null>(() => {
   if (!isDesktop.value) return sheetId.value ? find(sheetId.value) ?? null : null;
@@ -627,7 +627,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
   const jobs: Promise<unknown>[] = [load()];
   if (!isSales.value) jobs.push(api.get<Profile[]>('/profiles-list').then(({ data }) => { profiles.value = data; }));
-  // The Link button needs the active event, and a fresh load of /review
+  // The Link button needs the active event, and a fresh load of /contacts
   // hasn't fetched it.
   if (!eventStore.loaded) jobs.push(eventStore.fetchActive().catch(() => undefined));
   await Promise.all(jobs);

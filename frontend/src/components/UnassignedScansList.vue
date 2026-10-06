@@ -1,7 +1,7 @@
 <template>
   <!-- The amber "N scans need a conference" banner, as pure display: what the rows
        say and the buttons they offer, with every action handed back to whoever
-       renders it. UnassignedScansBanner (Review) loads the real queue and files or
+       renders it. UnassignedScansBanner (Contacts) loads the real queue and files or
        discards; the onboarding tour renders the same thing with sample rows and no
        requests. Warning colour and a count on purpose: there is no email or text
        about these, so this banner is the only thing that says a real person's

@@ -11,7 +11,7 @@
 
       <!-- Previewing someone: say so on every page, in words, with the way back.
            On a phone the switcher above is an icon with no label, so before this
-           an admin could be looking at a rep's Review (or confirming their leads)
+           an admin could be looking at a rep's Contacts (or confirming their leads)
            with nothing on screen saying whose view it was. -->
       <div v-if="sessionStore.viewingAs" ref="previewBarEl" class="preview-bar" role="status">
         <q-icon name="visibility" size="18px" class="q-mr-sm" />
@@ -23,7 +23,7 @@
       </div>
     </q-header>
 
-    <!-- Phones only; Review is first because it is the page everyone lives in.
+    <!-- Phones only; Contacts is first because it is the page everyone lives in.
          Same role checks as the desktop tabs. -->
     <q-drawer
       v-if="isPhone && sessionStore.user && !kioskModeStore.locked"
@@ -143,7 +143,7 @@ const canSeeAdmin = computed(() => (
   sessionStore.effectiveRole === 'admin' || sessionStore.effectiveRole === 'solutionsSuccess'
 ));
 
-// The preview bar makes the header taller, and Review's sticky lead pane sits
+// The preview bar makes the header taller, and Contacts' sticky lead pane sits
 // a fixed distance below the header, so it would slide under the bar. Its
 // height (it wraps on a phone) is published as --preview-bar-h for that pane.
 const previewBarEl = ref<HTMLElement | null>(null);

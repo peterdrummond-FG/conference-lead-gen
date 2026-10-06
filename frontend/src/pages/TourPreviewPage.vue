@@ -41,7 +41,7 @@
         @ended="(e) => { record(`ended path=${e.path} resumeFrom=${e.resumeFrom}`); resumeFrom = e.resumeFrom; endedPath = e.path }"
         @complete="record('complete'); resumeFrom = null"
         @close="finishedWith('Closed. The app carries on where it was.')"
-        @finish="(go) => finishedWith(`Goes to ${go === 'setup' ? 'Setup' : 'Review'}.`)"
+        @finish="(go) => finishedWith(`Goes to ${go === 'setup' ? 'Setup' : 'Contacts'}.`)"
       />
       <TourPlayer
         v-else-if="!ended && startScene"

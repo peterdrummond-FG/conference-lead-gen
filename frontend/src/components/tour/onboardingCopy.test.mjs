@@ -9,10 +9,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ONBOARDING_COPY, SCENE_COPY } from './tourCopy.ts';
 import { SETUP_CANDIDATES, SMS_REPLIES, TOUR_CONFERENCE } from './tourText.ts';
-import { reviewLeads, tourLeads } from './tourSampleData.ts';
+import { contactsLeads, tourLeads } from './tourSampleData.ts';
 import { SCENES, IMPORT_ONLY, fullSteps, remainderSteps, reminderCopy } from '../../utils/onboardingFlow.ts';
 import { TWILIO_NUMBER_DISPLAY } from '../../utils/smsNumber.ts';
-import { isProcessing, isReady, leadFlags } from '../../utils/reviewSmart.ts';
+import { isProcessing, isReady, leadFlags } from '../../utils/contactsList.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', '..');
@@ -138,7 +138,7 @@ test('nothing a rep reads uses developer words', () => {
 // The bold rule (see SceneCopy in tourCopy.ts): bold is only the name of a tab or
 // button the person taps, or SETUP as the word they text. Anything else bold reads
 // as random emphasis (a field label, a phone number), which is what this replaced.
-const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Review', 'Import', 'Export', 'Admin', 'Confirm', 'Followed up', 'Yes, it downloaded', '?'];
+const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Contacts', 'Import', 'Export', 'Admin', 'Confirm', 'Followed up', 'Yes, it downloaded', '?'];
 test('bold is only a tab or button the person taps, or the word SETUP', () => {
   for (const text of allCopy()) {
     for (const [, word] of text.matchAll(/\*\*(.+?)\*\*/g)) {
@@ -172,8 +172,8 @@ test('managers get Export and Admin and reps do not', () => {
 });
 
 // ── the sample people ──
-test('the tour\'s leads are made up, and look like a new rep\'s Review', () => {
-  const all = reviewLeads();
+test('the tour\'s leads are made up, and look like a new rep\'s Contacts', () => {
+  const all = contactsLeads();
   assert.equal(all.length, 6);
   assert.ok(all.every((l) => l.id.startsWith('tour-')), 'sample lead ids must never look real');
   assert.ok(all.every((l) => l.reviewStatus === 'needs_review'), 'a new rep has confirmed nothing');
@@ -207,8 +207,8 @@ test('the tour never talks to the server, apart from the host that records the o
 const SHARED = [
   ['TourAppBar.vue', 'AppHeader', 'layouts/MainLayout.vue'],
   ['TourAppBar.vue', 'AppMenu', 'layouts/MainLayout.vue'],
-  ['TourReviewScreen.vue', 'ReviewHeader', 'pages/ReviewSmart.vue'],
-  ['TourReviewScreen.vue', 'UnassignedScansList', 'components/UnassignedScansBanner.vue'],
+  ['TourContactsScreen.vue', 'ContactsHeader', 'pages/ContactsPage.vue'],
+  ['TourContactsScreen.vue', 'UnassignedScansList', 'components/UnassignedScansBanner.vue'],
   ['screens/TourNotesScreen.vue', 'NotesBody', 'pages/NotesPage.vue'],
   ['screens/TourExportScreen.vue', 'ExportCard', 'pages/ExportPage.vue'],
   ['screens/TourAdminScreen.vue', 'AdminConferencesCard', 'pages/AdminPage.vue'],
@@ -224,7 +224,7 @@ test('every tour screen renders the same component its page renders', () => {
 });
 
 test('the app\'s components carry no tour hooks', () => {
-  for (const f of ['AppHeader', 'AppMenu', 'ReviewHeader', 'NotesBody', 'ExportCard', 'AdminConferencesCard', 'AdminTeamCard', 'IntakeFormFields', 'RepQrContent', 'UnassignedScansList']) {
+  for (const f of ['AppHeader', 'AppMenu', 'ContactsHeader', 'NotesBody', 'ExportCard', 'AdminConferencesCard', 'AdminTeamCard', 'IntakeFormFields', 'RepQrContent', 'UnassignedScansList']) {
     assert.ok(!/data-tt|data-tour/.test(read(SRC, `components/${f}.vue`)), `${f} has a tour hook`);
   }
 });

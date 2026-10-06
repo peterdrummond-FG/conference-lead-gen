@@ -47,12 +47,12 @@ export const SCENE_COPY: SceneCopyEntry[] = [
     id: 'send',
     title: 'Send us leads',
     body: 'Text a photo of a business card, conference ID or contact list, or a voice memo. Typing it out? One person per text.',
-    note: 'Jotted down a few names? Tap **Import** in Review and paste them. We make one lead per person.',
+    note: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one lead per person.',
     // The quick start already showed the texting half, so a quick-start rep's
     // reminder plays this scene starting at the Import button.
     importOnly: {
       title: 'Send us leads',
-      body: 'Jotted down a few names? Tap **Import** in Review and paste them. We make one lead per person.',
+      body: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one lead per person.',
       note: 'You can also text photos, a voice memo, or one person at a time.',
     },
   },
@@ -123,7 +123,7 @@ export const ONBOARDING_COPY = {
     connected: {
       title: "You're all set",
       body: "Your phone is linked, so text your leads in whenever you're ready.",
-      go: 'Go to Review',
+      go: 'Go to Contacts',
     },
   },
   skipped: 'No problem. Tap ? at the top any time to watch the tour.',

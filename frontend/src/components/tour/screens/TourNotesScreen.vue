@@ -1,5 +1,5 @@
 <template>
-  <!-- The page "Contacts from a note" (Review's Import button) inside the tour: the
+  <!-- The page "Contacts from a note" (Contacts' Import button) inside the tour: the
        app's own NotesBody with a sample note and sample results. Nothing is sent. -->
   <div class="q-pa-md tns">
     <NotesBody

@@ -1,11 +1,15 @@
-// Pure list logic for Review's "Smart" view — readiness flags, the plain-language
+// Pure list logic for the Contacts page — readiness flags, the plain-language
 // account badge, sorting, search and past-event grouping. Kept free of Vue and
-// Quasar so it can be exercised directly (see reviewSmart.test.mjs).
+// Quasar so it can be exercised directly (see contactsList.test.mjs).
 //
-// (There used to be a second, "Classic" Review view with its own copies of these
+// (There used to be a second, "Classic" Contacts view with its own copies of these
 // rules; it was retired, so this is the only place they live.)
 import type { ContactListItem } from '@/types/review';
 
+// These keep their "review" names on purpose: they are the database's own words
+// (contacts.review_status, the 'needs_review' value, contacts-* function params).
+// The page was renamed Review -> Contacts on 2026-10-06; renaming the stored status
+// would be a migration and a redeploy of every function for no change a person sees.
 export type ReviewStatus = 'needs_review' | 'approved' | 'rejected';
 export const REVIEW_STATUSES: ReviewStatus[] = ['needs_review', 'approved', 'rejected'];
 
@@ -213,7 +217,7 @@ export function accountDetailLabel(c: ContactListItem): string {
 // ── Signup source ────────────────────────────────────────────────────────
 //
 // How a lead got into the system. contacts.source says the broad kind; two more
-// facts say which kind of "form" or "note" it was, because Review's labels tell
+// facts say which kind of "form" or "note" it was, because Contacts' labels tell
 // them apart (2026-10-06):
 //
 //   * intakePath: which door the public form came in by (contacts.intake_path,

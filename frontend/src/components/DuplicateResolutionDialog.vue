@@ -22,7 +22,7 @@
       <div class="dup-scroll">
         <div v-if="loading" class="text-center q-pa-lg"><q-spinner size="32px" /></div>
 
-        <div v-else-if="group.length < 2" class="dup-note">This lead has no other duplicates any more. Close this and refresh Review.</div>
+        <div v-else-if="group.length < 2" class="dup-note">This lead has no other duplicates any more. Close this and refresh Contacts.</div>
 
         <template v-else>
           <div class="dup-hint">Pick the record that looks right. It becomes the lead, and the others are rejected as duplicates.</div>
@@ -128,7 +128,7 @@
         <q-card class="dup-sheet">
           <div class="dup-sheet-title">Keep these as separate leads?</div>
           <p class="dup-sheet-body">
-            All {{ group.length }} stay in Review as their own leads and no longer show as possible duplicates. Use this when they're different people who share a name.
+            All {{ group.length }} stay in Contacts as their own leads and no longer show as possible duplicates. Use this when they're different people who share a name.
           </p>
           <q-btn unelevated no-caps color="primary" class="full-width dup-foot-btn" label="Keep separate" :loading="separating" @click="keepSeparate" />
           <q-btn flat no-caps class="full-width dup-foot-btn q-mt-xs" label="Cancel" :disable="separating" @click="confirmSeparate = false" />

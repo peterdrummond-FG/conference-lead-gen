@@ -58,10 +58,10 @@ function onLater() {
 }
 
 // The last button goes to the page that matches where they are: Setup to text
-// SETUP, or Review once the phone is linked.
-function onFinish(go: 'setup' | 'review') {
+// SETUP, or Contacts once the phone is linked.
+function onFinish(go: 'setup' | 'contacts') {
   tour.reset();
-  void router.push(go === 'setup' ? '/setup' : '/review');
+  void router.push(go === 'setup' ? '/setup' : '/contacts');
 }
 </script>
 

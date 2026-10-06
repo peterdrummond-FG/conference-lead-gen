@@ -79,7 +79,7 @@
     <template #actions>
       <q-btn flat no-caps color="primary" :label="C.finish.again" @click="watchAgain" />
       <q-space />
-      <q-btn unelevated no-caps color="primary" :label="finish.go" class="ob-next" @click="$emit('finish', phoneConnected ? 'review' : 'setup')" />
+      <q-btn unelevated no-caps color="primary" :label="finish.go" class="ob-next" @click="$emit('finish', phoneConnected ? 'contacts' : 'setup')" />
     </template>
   </OnboardingFrame>
 </template>
@@ -127,7 +127,7 @@ const emit = defineEmits<{
   // Leave without recording anything (a replay or a remainder skipped).
   close: [];
   // The last button: go to the page that matches where they are.
-  finish: [go: 'setup' | 'review'];
+  finish: [go: 'setup' | 'contacts'];
   progress: [p: { phase: FlowPhase; index: number }];
 }>();
 

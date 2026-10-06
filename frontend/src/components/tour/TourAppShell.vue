@@ -2,7 +2,7 @@
   <!-- The app as it looks around any page: MainLayout's top bar, its phone
        menu, and the page underneath. Scenes put a page in the slot and switch
        it when the finger "navigates". Anything a page draws over the whole app
-       (Review's edit panel, the QR code) goes in the overlay slot, so it covers
+       (Contacts' edit panel, the QR code) goes in the overlay slot, so it covers
        the top bar the way the real dialogs do. -->
   <div class="tas">
     <TourAppBar :manager="manager" :active="active" :menu-open="menuOpen" @menu="$emit('menu')" @go="(p) => $emit('go', p)" />

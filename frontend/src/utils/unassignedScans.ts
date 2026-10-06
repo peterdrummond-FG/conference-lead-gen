@@ -1,4 +1,4 @@
-// The words for the "scans need a conference" queue in Review. Plain data and
+// The words for the "scans need a conference" queue in Contacts. Plain data and
 // functions, like onboardingTour.ts, so the wording is testable and reviewable
 // without opening a component. Written for Solutions Success reading a list, not
 // a developer: no "409", no "slug", and each line says who or what the scan was

@@ -8,7 +8,7 @@
       :role="role" :name="name" :is-phone="isPhone"
       :can-see-setup="true" :can-see-export="manager" :can-see-admin="manager"
       :has-qr="!manager" viewing-as-label="Myself (Admin)" :profiles="[]"
-      :active="active || 'review'" @menu="$emit('menu')"
+      :active="active || 'contacts'" @menu="$emit('menu')"
     />
   </div>
 

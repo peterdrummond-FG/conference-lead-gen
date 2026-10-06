@@ -1,7 +1,7 @@
 <template>
   <div class="ll" role="list">
     <div v-for="c in leads" :key="c.id" role="listitem">
-      <ReviewLeadRow
+      <ContactRow
         :contact="c"
         :tab="tab"
         :active="c.id === activeId"
@@ -24,9 +24,9 @@
 </template>
 
 <script setup lang="ts">
-import ReviewLeadRow from '@/components/smart/ReviewLeadRow.vue';
+import ContactRow from '@/components/contacts/ContactRow.vue';
 import type { ContactListItem } from '@/types/review';
-import type { ReviewStatus } from '@/utils/reviewSmart';
+import type { ReviewStatus } from '@/utils/contactsList';
 
 defineProps<{
   leads: ContactListItem[];
@@ -62,7 +62,7 @@ defineEmits<{
 }
 .ll > div:last-child :deep(.lr) { border-bottom: 0; }
 
-/* Phone: the rows are cards of their own (see ReviewLeadRow), so the shared
+/* Phone: the rows are cards of their own (see ContactRow), so the shared
    white box around them goes, leaving a gap between cards instead. */
 @media (max-width: 599px) {
   .ll { background: transparent; border: 0; border-radius: 0; overflow: visible; }

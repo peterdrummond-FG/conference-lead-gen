@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import {
   accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, summaryCounts,
   filterBySource, sourceFilterOptions, sourceKey, sourceLabel, sourceTone, SOURCE_OPTIONS,
-} from './reviewSmart.ts';
+} from './contactsList.ts';
 
 function lead(over = {}) {
   return {
@@ -214,7 +214,7 @@ test('the checklist is all ticks exactly when the lead is ready to confirm', () 
 // row 41; the rep reloaded twice and never found it. To review is now plain
 // arrival order, and the sorts that still read editable fields are frozen.
 
-import { buildRank, leadBucket, orderByRank, SORT_OPTIONS, DEFAULT_SORT } from './reviewSmart.ts';
+import { buildRank, leadBucket, orderByRank, SORT_OPTIONS, DEFAULT_SORT } from './contactsList.ts';
 
 const SORTS = { needs_review: 'newest', approved: 'followup', rejected: 'newest' };
 

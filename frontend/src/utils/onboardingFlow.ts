@@ -53,7 +53,7 @@ export const SCENES: SceneMeta[] = [
   { id: 'admin', short: 'looking after your team', seconds: 20, managersOnly: true },
 ];
 
-// The second half of "Send us leads": Review's Import button and a pasted note.
+// The second half of "Send us leads": Contacts' Import button and a pasted note.
 // A quick-start rep has already seen the texting half, so their remainder starts
 // here, in a scene that skips the texting.
 export const IMPORT_ONLY: SceneMeta = { id: 'send-import', short: 'adding a typed note', seconds: 10 };

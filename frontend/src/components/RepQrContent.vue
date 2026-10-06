@@ -20,7 +20,7 @@
     <!-- Says where a scan goes right now, and is honest when nothing is chosen: with
          no conference the scan is held (unassigned_submissions) for Solutions
          Success to file, so the attendee still gets "Thanks" and nothing is lost,
-         but it won't reach this rep's Review until someone files it. -->
+         but it won't reach this rep's Contacts until someone files it. -->
     <div class="rq-foot" :class="{ 'is-warn': !shownEventName }" role="status">
       <template v-if="shownEventName">Scans go to <strong>{{ shownEventName }}</strong></template>
       <template v-else>You're not at a conference, so scans wait for Solutions Success to file them.</template>

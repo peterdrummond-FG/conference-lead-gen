@@ -84,7 +84,7 @@ function inertElement() {
 const loaded = new Map();
 async function sceneComponent(sceneId) {
   if (!loaded.has(sceneId)) {
-    const file = sceneId === 'quick-text' ? 'TourSceneQuickText' : { setup: 'TourSceneSetup', send: 'TourSceneSend', qr: 'TourSceneQr', review: 'TourSceneReview', export: 'TourSceneExport', admin: 'TourSceneAdmin' }[sceneId];
+    const file = sceneId === 'quick-text' ? 'TourSceneQuickText' : { setup: 'TourSceneSetup', send: 'TourSceneSend', qr: 'TourSceneQr', review: 'TourSceneContacts', export: 'TourSceneExport', admin: 'TourSceneAdmin' }[sceneId];
     loaded.set(sceneId, (await import(asFile(join(HERE, 'scenes', `${file}.vue`)))).default);
   }
   return loaded.get(sceneId);

@@ -1,6 +1,6 @@
 // Made-up people for the animated tour. They are only ever handed to
 // components rendered inside a TourDevice; none of them is ever added to a real
-// Review list, count or bulk selection ("Confirm all N" acts on lead ids, and
+// Contacts list, count or bulk selection ("Confirm all N" acts on lead ids, and
 // these ids don't exist). Each scene asks for a fresh copy so a loop always
 // starts from the same state.
 import type { ContactListItem, UnassignedSubmission, UpdateContactPayload } from '@/types/review';
@@ -10,7 +10,7 @@ export { TOUR_CONFERENCE };
 
 // The blank every sample lead starts from (tourSampleData.ts overrides what makes
 // each person different). The tour's leads are only ever handed to components
-// drawn inside a TourDevice and must never be added to a real list: Review's
+// drawn inside a TourDevice and must never be added to a real list: Contacts'
 // "Confirm all N" acts on ids, and these don't exist.
 const BASE_LEAD: ContactListItem = {
   id: 'tour-sample-lead',
@@ -152,7 +152,7 @@ const MATCHED: Record<TourPerson, ContactListItem> = {
     id: 'tour-priya', firstName: 'Priya', lastName: 'Shah', title: 'Superintendent', email: null, phone: null,
     schoolDistrictId: 'tour-cedar', districtName: 'Cedar ISD',
     matchStatus: 'new_contact_existing_account', matchedZohoAccountName: 'Cedar ISD', matchedZohoAccountLevel: 'district',
-    // Priya, Tom and Ana come in on Review's Import button, so "Imported note".
+    // Priya, Tom and Ana come in on Contacts' Import button, so "Imported note".
     source: 'note', noteOrigin: 'import', interactionNotes: 'Wants a call about spring PD.', createdAt: '2026-01-01T14:21:00Z',
   }),
   tom: lead({
@@ -179,7 +179,7 @@ const NEWEST_FIRST: TourPerson[] = ['grace', 'ana', 'tom', 'priya', 'sam', 'dana
 
 // A lead that has just arrived: matching takes minutes, so for a while it is
 // the real "Checking match…" chip and counts under "processing", not Ready. The
-// "already checked against Zoho" part belongs to the Review scene, after matching.
+// "already checked against Zoho" part belongs to the Contacts scene, after matching.
 function processing(l: ContactListItem): ContactListItem {
   return {
     ...l,
@@ -191,18 +191,18 @@ function processing(l: ContactListItem): ContactListItem {
   };
 }
 
-// Review's "To review" list for a scene: the people who exist at that point in
+// Contacts' "To review" list for a scene: the people who exist at that point in
 // the story, newest first. `processing` are the ones whose match hasn't finished.
 export function tourLeads(who: TourPerson[], opts: { processing?: TourPerson[] } = {}): ContactListItem[] {
   return NEWEST_FIRST.filter((k) => who.includes(k)).map((k) => (opts.processing?.includes(k) ? processing(MATCHED[k]) : MATCHED[k]));
 }
 
-// Everyone, matched: the Review and manager scenes, a while after the leads came in.
-export function reviewLeads(): ContactListItem[] {
+// Everyone, matched: the Contacts and manager scenes, a while after the leads came in.
+export function contactsLeads(): ContactListItem[] {
   return tourLeads(['dana', 'sam', 'priya', 'tom', 'ana', 'grace']);
 }
 
-// What Review's amber banner lists for a manager in the tour: scans nobody could
+// What Contacts' amber banner lists for a manager in the tour: scans nobody could
 // place under a conference. Made-up people (not the ones in the rep's story).
 const HOUR = 3_600_000;
 export function tourUnassigned(): UnassignedSubmission[] {

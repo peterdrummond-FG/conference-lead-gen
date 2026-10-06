@@ -16,7 +16,7 @@ body {
 
 // Soft, bordered cards with a large radius read as "modern SaaS dashboard"
 // instead of Material's sharp-cornered, heavily-shadowed default — applied
-// once here so every q-card across Setup/Export/Review picks it up.
+// once here so every q-card across Setup/Export/Contacts picks it up.
 .q-card {
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);

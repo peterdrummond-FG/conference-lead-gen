@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (activeError) return errorResponse(req, 500, activeError.message);
     if (!activeEvent) {
-      return errorResponse(req, 409, "You're not linked to an event and there's no active event — link yourself to one on the Review page first.");
+      return errorResponse(req, 409, "You're not linked to an event and there's no active event — choose one in Setup first.");
     }
     eventId = activeEvent.id;
   }
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     .eq("id", eventId)
     .maybeSingle();
   if (eventError) return errorResponse(req, 500, eventError.message);
-  if (!event) return errorResponse(req, 409, "The event you're linked to no longer exists — re-link yourself on the Review page.");
+  if (!event) return errorResponse(req, 409, "The event you're linked to no longer exists — choose a new one in Setup.");
 
   const windowStart = new Date(Date.now() - IN_FLIGHT_WINDOW_MINUTES * 60_000).toISOString();
   const { data: recent, error: recentError } = await supabase

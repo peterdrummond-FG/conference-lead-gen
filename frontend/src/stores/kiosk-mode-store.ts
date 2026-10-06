@@ -6,7 +6,7 @@ const STORAGE_KEY = 'clg-kiosk-locked';
 // real login: a rep sets up a shared iPad/laptop showing the public Intake
 // form for attendees to self-serve, then "locks" this device into
 // intake-only navigation so a stranger filling out the form can't wander
-// into Setup/Review and see other reps' leads. Locking does NOT sign
+// into Setup/Contacts and see other reps' leads. Locking does NOT sign
 // anyone out — the rep's own session stays live underneath, so unlocking
 // just re-confirms their own account password (see MainLayout.vue) rather
 // than requiring a fresh login. Persisted to localStorage (not sessionStore

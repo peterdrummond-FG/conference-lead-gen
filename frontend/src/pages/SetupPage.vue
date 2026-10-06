@@ -182,7 +182,7 @@
                   <span class="text-weight-bold">{{ cleanConferenceName(joinedEvent.name) }}</span>.
                 </div>
                 <div v-else class="text-body2 text-orange-10">
-                  You're not at a conference, so scans wait for Solutions Success to file them. Choose one and they go straight to your Review.
+                  You're not at a conference, so scans wait for Solutions Success to file them. Choose one and they go straight to your Contacts.
                 </div>
                 <qr-save-buttons
                   :rep="{ name: subject.name, repSlug: subject.repSlug }" dense

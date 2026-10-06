@@ -2,7 +2,7 @@ import type { TourRun } from './useTourScript';
 
 // The words on the app's own tabs and menu rows (AppHeader, AppMenu), which is how the
 // finger finds them: the app's components carry no tour hooks.
-const PAGE_LABEL: Record<string, string> = { setup: 'Setup', connect: 'Kiosk', review: 'Review', export: 'Export', admin: 'Admin' };
+const PAGE_LABEL: Record<string, string> = { setup: 'Setup', connect: 'Kiosk', contacts: 'Contacts', export: 'Export', admin: 'Admin' };
 
 // How a person gets to another page, shown the way their own device does it:
 // on a phone the ☰ menu at the top right and then the page, on a laptop the

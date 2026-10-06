@@ -101,7 +101,7 @@
                 :loading="busy"
                 @click="$emit('approve')"
               />
-              <q-btn v-else outline no-caps color="primary" label="Review" class="lr-btn lr-btn-main" @click="$emit('open')" />
+              <q-btn v-else outline no-caps color="primary" label="Open" class="lr-btn lr-btn-main" @click="$emit('open')" />
             </template>
           </template>
 
@@ -115,10 +115,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useQuasar } from 'quasar';
-import LeadChip from '@/components/smart/LeadChip.vue';
-import ProcessingBar from '@/components/smart/ProcessingBar.vue';
+import LeadChip from '@/components/contacts/LeadChip.vue';
+import ProcessingBar from '@/components/contacts/ProcessingBar.vue';
 import type { ContactListItem } from '@/types/review';
-import { accountBadge, fullName, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, sourceLabel, sourceTone, type ReviewStatus } from '@/utils/reviewSmart';
+import { accountBadge, fullName, isProcessing, isReady, leadCue, leadFlags, orgLine, READY_LABEL, sourceLabel, sourceTone, type ReviewStatus } from '@/utils/contactsList';
 
 const props = defineProps<{
   contact: ContactListItem;
@@ -164,7 +164,7 @@ function onCardClick(e: MouseEvent) {
 const name = computed(() => fullName(props.contact));
 const flags = computed(() => leadFlags(props.contact));
 const ready = computed(() => isReady(props.contact));
-// Mid-pipeline: no Reject here (the editor explains why), only Review to open it.
+// Mid-pipeline: no Reject here (the editor explains why), only the Open button.
 const processing = computed(() => isProcessing(props.contact));
 const cue = computed(() => leadCue(props.contact) ?? 'Open');
 // "Pick a Zoho match" is already the account badge — don't say it twice.
