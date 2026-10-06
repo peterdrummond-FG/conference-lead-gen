@@ -112,8 +112,10 @@ function allCopy() {
   out.push(...strings(ONBOARDING_COPY));
   for (const manager of [false, true]) {
     for (const id of [null, 'send-import', 'qr', 'review', 'admin']) {
-      const c = reminderCopy(remainderSteps(manager, id));
-      out.push(c.title, c.body);
+      for (const path of ['quick', 'tour', null]) {
+        const c = reminderCopy(remainderSteps(manager, id), path);
+        out.push(c.title, c.body);
+      }
     }
   }
   return out.filter(Boolean);

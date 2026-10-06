@@ -6,7 +6,7 @@
        the Next button would leave someone unable to move on. -->
   <teleport to="body">
     <div v-if="tour.phase !== 'idle' && user" class="oh-root">
-      <TourReminder v-if="tour.phase === 'reminder'" :steps="remainder" @watch="onWatch" @later="onLater" />
+      <TourReminder v-if="tour.phase === 'reminder'" :steps="remainder" :path="user.onboarding?.path ?? null" @watch="onWatch" @later="onLater" />
       <OnboardingFlow
         v-else
         :key="tour.runKey"

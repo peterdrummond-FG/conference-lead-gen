@@ -323,7 +323,13 @@ Things to preserve:
   the resume points for a skip at each scene, the one-hour gate and one-time use, the
   quick-start remainder (`send-import` is the Import half of "Send us leads", then QR,
   Review, Export and Admin for managers), and the reminder's words generated from what is
-  actually left ("See the rest: …. About 40 seconds.").
+  actually left and from how they left (`me.onboarding.path`). A quick-start person is
+  *offered* the tour ("Want a quick tour? You went straight to texting earlier. In about
+  40 seconds, see what else you can do: …"); anyone else is asked to finish it ("Finish the
+  tour? You left the tour partway through. Still to see: …. About 40 seconds."). The title
+  is fixed per path, never derived from the length (it once said "Got a few minutes?" above
+  "About 70 seconds."), and the card says the ? in the top bar replays the tour, because
+  "Not now" uses the reminder up. A new scene needs a `short` phrase in `SCENES`.
 - **Never for attendees or a locked kiosk, and never outlives its user.** The host only
   mounts for a signed-in user on an unlocked device and never starts while an admin is
   previewing someone ("View as"). `flowStartAction` decides splash / reminder / reset /

@@ -37,7 +37,7 @@ export const REMINDER_DELAY_MS = 60 * 60 * 1000;
 // keeps the two lists, and the Edge Function's allow-list, the same).
 export interface SceneMeta {
   id: string;
-  // A phrase that finishes "See the rest: …".
+  // A phrase that finishes "Still to see: …".
   short: string;
   // A rough length, for "About 40 seconds". Measured off the scripts, not exact.
   seconds: number;
@@ -56,7 +56,7 @@ export const SCENES: SceneMeta[] = [
 // The second half of "Send us leads": Review's Import button and a pasted note.
 // A quick-start rep has already seen the texting half, so their remainder starts
 // here, in a scene that skips the texting.
-export const IMPORT_ONLY: SceneMeta = { id: 'send-import', short: 'importing a typed note', seconds: 10 };
+export const IMPORT_ONLY: SceneMeta = { id: 'send-import', short: 'adding a typed note', seconds: 10 };
 
 export const RESUME_IDS = [...SCENES.map((s) => s.id), IMPORT_ONLY.id];
 
@@ -151,17 +151,35 @@ function joinPhrases(parts: string[]): string {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
-function aboutHowLong(seconds: number): string {
-  if (seconds < 90) return `About ${Math.max(10, Math.round(seconds / 10) * 10)} seconds.`;
+function howLong(seconds: number): string {
+  if (seconds < 90) return `${Math.max(10, Math.round(seconds / 10) * 10)} seconds`;
   const m = Math.round(seconds / 60);
-  return `About ${m} minute${m === 1 ? '' : 's'}.`;
+  return `${m} minute${m === 1 ? '' : 's'}`;
 }
 
-export function reminderCopy(steps: Step[]): { title: string; body: string } {
-  const seconds = steps.reduce((n, s) => n + s.seconds, 0);
+// What the reminder says depends on how they left, because the two people are in
+// different spots and one sentence can't be true for both. "You skipped part of the
+// tour" was false for someone who chose "Just get me texting" (path 'quick'): they
+// never started the tour, so for them it is an offer, not a nudge to finish. An
+// unknown path (an older record) gets the finish-the-tour wording, which is true
+// for anyone who has a resume point at all.
+//
+// The title is fixed per path, not derived from the length. It used to switch
+// between "Got a minute?" and "Got a few minutes?" at 60s, so a 70-second remainder
+// read "Got a few minutes?" above "About 70 seconds." (live 2026-10-06), and "See
+// the rest:" never said the rest of what.
+export function reminderCopy(steps: Step[], path: OnboardingState['path'] = null): { title: string; body: string } {
+  const list = joinPhrases(steps.map((s) => s.short));
+  const length = howLong(steps.reduce((n, s) => n + s.seconds, 0));
+  if (path === 'quick') {
+    return {
+      title: 'Want a quick tour?',
+      body: `You went straight to texting earlier. In about ${length}, see what else you can do: ${list}.`,
+    };
+  }
   return {
-    title: seconds <= 60 ? 'Got a minute?' : 'Got a few minutes?',
-    body: `See the rest: ${joinPhrases(steps.map((s) => s.short))}. ${aboutHowLong(seconds)}`,
+    title: 'Finish the tour?',
+    body: `You left the tour partway through. Still to see: ${list}. About ${length}.`,
   };
 }
 
