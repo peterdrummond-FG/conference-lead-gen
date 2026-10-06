@@ -153,7 +153,9 @@ invoked headlessly with no one watching for an exception.
 
 5. **Never overwrite `firstName`/`lastName`/`districtName`/`schoolName` —
    always pass them through byte-for-byte exactly as given, even when you're
-   highly confident about a correction.** This is not a confidence-based
+   highly confident about a correction.** (A district the person gave is never
+   replaced by anything you find. The one thing you may report about a district is
+   step 5b's `resolvedDistrict`, and only when none was given at all.) This is not a confidence-based
    judgment call: `match-contact` uses whether a match came from the original
    field itself vs. an alternate-names entry as its own signal for how much
    to trust the match — that signal is meaningless if this skill sometimes
@@ -167,6 +169,39 @@ invoked headlessly with no one watching for an exception.
    access, is the one that determines that for the district; there is no
    Zoho-side equivalent for the person's name, so `alternateNameSpellings`
    being non-empty is itself the signal a reviewer needs.
+
+5b. **Fill in a missing district, only when none was given.** If the input has a
+   `schoolName` and **no** `districtName` (null or empty), find the school
+   district that actually operates that school in `eventState` and report it as
+   `resolvedDistrict`. This is the only case: a rep or attendee who typed a
+   district is never second-guessed here (that is step 5's `alternateDistrictNames`).
+   - Search `"<schoolName> <eventState> school district"` (step 2's query), and
+     retry once with the school's city or common expansions if that finds nothing.
+   - `resolvedDistrict` is `{ "name", "evidenceUrl", "confidence" }`:
+     - `name` is the district's official name as the source gives it, for the
+       district that operates THIS school in THIS state. A school with the same
+       name in another state, a charter network that is not a district, a private
+       school's diocese or a county that merely contains the school is not an
+       answer: report `null` rather than the nearest-sounding thing.
+     - `evidenceUrl` is the address of a page in your search results that names
+       the school and its district together (a district's own school directory,
+       a state education department listing, the school's own site). It must be a
+       real URL that appeared in a search result, `https://` or `http://`, never
+       one you composed or remembered.
+     - `confidence` is `high` when an authoritative source names the district
+       for that school, `medium` when a reasonable source does but you saw only
+       one, and nothing lower: if you are less sure than `medium`, the answer is
+       `null`.
+   - **Never invent one.** `null` when the school wasn't found, when the results
+     disagree, when more than one district could be meant, when the school could
+     be in several states and `eventState` doesn't settle it, or when the name
+     is too generic to pin down ("Central Elementary"). A wrong district filed on
+     a lead is worse than none: a person confirms every lead and will rely on it.
+   - Also put the district's name first in `alternateDistrictNames` (step 5's
+     rule: your best guess first), so `match-contact` searches Zoho with it. It
+     is a finding, not a replacement: `districtName` stays exactly as given (null).
+   - In every other case `resolvedDistrict` is `null`, including when you found a
+     district name for a contact whose district was given.
 
 6. **Determine `institutionLevel`**: whether this person sits at the
    district's central office or at a specific campus within it.
@@ -281,6 +316,7 @@ JSON):
       "source": "card_photo",
       "extractionConfidence": "medium",
       "alternateDistrictNames": ["Sunflower County School District"],
+      "resolvedDistrict": null,
       "alternateNameSpellings": [],
       "nameCorrectionConfidence": null,
       "institutionLevel": "central_office",
@@ -293,6 +329,19 @@ JSON):
       "researchConfidence": "medium",
       "personVerified": false,
       "researchNotes": "Web search indicates Indianola, MS is served by Sunflower County School District, not a district named 'Indianola School District' — no Zoho lookup performed, this is a web-only finding. No independent corroboration found for Latoya Pruitt specifically, so no name-variant retry was warranted; treated as central office since no specific campus surfaced anywhere."
+    }
+
+A school-only contact (no `districtName` was given), whose district was found:
+
+    {
+      "...": "same pass-through fields as above, with districtName: null and schoolName: \"Ruleville Central Elementary\"",
+      "alternateDistrictNames": ["Sunflower County School District"],
+      "resolvedDistrict": {
+        "name": "Sunflower County School District",
+        "evidenceUrl": "https://www.sunflower.k12.ms.us/schools",
+        "confidence": "high"
+      },
+      "researchNotes": "No district was given, so I searched 'Ruleville Central Elementary Mississippi school district': the district's own school directory lists Ruleville Central Elementary under Sunflower County School District. Reporting it as resolvedDistrict; districtName is left empty as given."
     }
 
 A case where the name itself needed a variant retry:
@@ -325,6 +374,7 @@ this skill's output, in full.
 | Field | Type | Notes |
 |---|---|---|
 | `alternateDistrictNames` | `string[]` | Unchanged from before. Best guess first; empty = none found/needed. |
+| `resolvedDistrict` | `{name, evidenceUrl, confidence}\|null` | New. Only when the input had a school and no district; `null` otherwise, and `null` rather than a guess. `evidenceUrl` is a search-result URL naming the school with its district; `confidence` is `high` or `medium`. The caller (not this skill) decides whether to store it, and only if the lead still has no district. |
 | `alternateNameSpellings` | `string[]` | New. Best guess first; empty = none found/needed. Only populated after a step-4 retry found a stronger hit than the original spelling. |
 | `nameCorrectionConfidence` | `"high"\|"medium"\|"low"\|null` | New. `null` when `alternateNameSpellings` is empty — there's nothing to rate. |
 | `institutionLevel` | `"central_office"\|"specific_campus"\|"unknown"` | New. |

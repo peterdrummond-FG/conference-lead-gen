@@ -23,6 +23,7 @@ const BASE_LEAD: ContactListItem = {
   qrChannel: null,
   intakePath: null,
   noteOrigin: null,
+  districtLookup: null,
   repId: null,
   repName: null,
   eventId: 'tour-sample-event',

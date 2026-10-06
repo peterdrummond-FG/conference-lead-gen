@@ -20,6 +20,7 @@ import {
   CardVisionOutput,
   MatchOutput,
   NoteExtractionOutput,
+  ResearchOutput,
 } from './schemas.mjs';
 import { extractJson } from './extractJson.mjs';
 
@@ -210,4 +211,98 @@ test('extractJson handles fences, nesting and braces inside strings', () => {
 
 test('extractJson throws when there is no object at all', () => {
   assert.throws(() => extractJson('no json here'), /No JSON object found/);
+});
+
+// ── ResearchOutput.resolvedDistrict (2026-10-06, research-contact step 5b) ───
+// A district the skill found for a contact who gave a school and no district. Model
+// output that lands on a lead a person confirms, so the whole contract is checked.
+const baseResearch = { firstName: 'Latoya', lastName: 'Pruitt', researchConfidence: 'high', personVerified: false };
+const goodDistrict = { name: 'Sunflower County School District', evidenceUrl: 'https://www.sunflower.k12.ms.us/schools', confidence: 'high' };
+const research = (resolvedDistrict) => ({ ...baseResearch, resolvedDistrict });
+
+test('ResearchOutput: a well-formed resolvedDistrict is kept, trimmed', () => {
+  const r = ResearchOutput.safeParse(research({ ...goodDistrict, name: '  Sunflower County School District ', confidence: 'medium' }));
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data.resolvedDistrict, { ...goodDistrict, confidence: 'medium' });
+});
+
+test('ResearchOutput: resolvedDistrict is null when the skill returns null or leaves it out', () => {
+  assert.equal(ResearchOutput.safeParse(research(null)).data.resolvedDistrict, null);
+  assert.equal(ResearchOutput.safeParse(baseResearch).data.resolvedDistrict, null);
+});
+
+// Each of these must be REJECTED (a validation failure leaves the row pending for a
+// human, CLAUDE.md rule 3), never coerced into something half-written.
+const MALFORMED_DISTRICTS = {
+  'a low-confidence guess (less sure than medium is null)': { ...goodDistrict, confidence: 'low' },
+  'no evidence address': { name: goodDistrict.name, confidence: 'high' },
+  'evidence that is not a web address': { ...goodDistrict, evidenceUrl: 'sunflower.k12.ms.us' },
+  'evidence with another scheme': { ...goodDistrict, evidenceUrl: 'javascript:alert(1)' },
+  'evidence with whitespace in it': { ...goodDistrict, evidenceUrl: 'https://x.example/a b' },
+  'evidence over 500 characters': { ...goodDistrict, evidenceUrl: 'https://x.example/' + 'a'.repeat(500) },
+  'a blank name': { ...goodDistrict, name: '   ' },
+  'a one-character name': { ...goodDistrict, name: 'A' },
+  'a name over 200 characters': { ...goodDistrict, name: 'D'.repeat(201) },
+  'a name with a control character (it is copied into notes and the CSV)': { ...goodDistrict, name: 'Sunflower\nCounty' },
+  'an unknown extra key': { ...goodDistrict, zohoAccountId: '3001271000007193584' },
+  'a string instead of an object': 'Sunflower County School District',
+  'an array': [goodDistrict],
+};
+for (const [label, value] of Object.entries(MALFORMED_DISTRICTS)) {
+  test(`ResearchOutput rejects resolvedDistrict with ${label}`, () => {
+    assert.equal(ResearchOutput.safeParse(research(value)).success, false);
+  });
+}
+
+test('ResearchOutput still passes every input field through (match-contact reads them unchanged)', () => {
+  const r = ResearchOutput.safeParse({ ...research(goodDistrict), districtName: null, schoolName: 'Ruleville Central Elementary', eventState: 'Mississippi' });
+  assert.equal(r.data.schoolName, 'Ruleville Central Elementary');
+  assert.equal(r.data.districtName, null);
+});
+
+// ── the JSON Schema (what n8n's parser enforces) says the same as the Zod copies ──
+import { readFileSync } from 'node:fs';
+import { ResearchOutput as LocalAgentResearchOutput } from '../../local-agent/schemas.mjs';
+
+const researchJson = JSON.parse(readFileSync(new URL('./research.schema.json', import.meta.url), 'utf8'));
+const rdDef = researchJson.properties.resolvedDistrict;
+const rdObject = rdDef.anyOf.find((s) => s.type === 'object');
+
+// A small reading of the JSON Schema for this one field (no validator library is a
+// dependency here): the same rules, from the file n8n actually embeds.
+function jsonSchemaAccepts(value) {
+  if (value === null) return rdDef.anyOf.some((s) => s.type === 'null');
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  const p = rdObject.properties;
+  const keys = Object.keys(value);
+  if (!rdObject.required.every((k) => k in value)) return false;
+  if (rdObject.additionalProperties === false && keys.some((k) => !(k in p))) return false;
+  const str = (v, s) => typeof v === 'string' && v.length >= (s.minLength ?? 0) && v.length <= (s.maxLength ?? Infinity) && (!s.pattern || new RegExp(s.pattern).test(v));
+  return str(value.name, p.name) && str(value.evidenceUrl, p.evidenceUrl) && p.confidence.enum.includes(value.confidence);
+}
+
+test('research.schema.json: resolvedDistrict is nullable, defaults to null and is not required', () => {
+  assert.equal(rdDef.default, null);
+  assert.ok(!researchJson.required.includes('resolvedDistrict'));
+});
+
+test('research.schema.json agrees with the Zod copy on every resolvedDistrict case', () => {
+  const cases = [null, goodDistrict, { ...goodDistrict, confidence: 'medium' }, ...Object.values(MALFORMED_DISTRICTS)];
+  for (const c of cases) {
+    // The Zod copy trims before checking (a blank name has no JSON Schema equivalent for
+    // trimming); compare on values that are already trimmed, which is what the parser gets.
+    assert.equal(jsonSchemaAccepts(c), ResearchOutput.safeParse(research(c)).success, JSON.stringify(c));
+  }
+});
+
+// Two copies of the contract (local-agent for the old loops, n8n for the live pipeline)
+// have to say the same thing; this is what stops one drifting.
+test('the local-agent and n8n ResearchOutput schemas agree on every case', () => {
+  const cases = [null, goodDistrict, { ...goodDistrict, confidence: 'medium' }, ...Object.values(MALFORMED_DISTRICTS)];
+  for (const c of cases) {
+    const a = ResearchOutput.safeParse(research(c));
+    const b = LocalAgentResearchOutput.safeParse(research(c));
+    assert.equal(a.success, b.success, JSON.stringify(c));
+    if (a.success) assert.deepEqual(a.data, b.data);
+  }
 });

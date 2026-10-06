@@ -20,6 +20,8 @@ export interface ContactListItem {
   intakePath: 'rep_qr' | 'event_qr' | 'kiosk' | null;
   // For source 'note': 'sms' (texted in) or 'import' (pasted on Import).
   noteOrigin: 'sms' | 'import' | null;
+  // Present when research filled the district in from the school (nothing was given).
+  districtLookup: { name: string; evidenceUrl: string; confidence: string; mappedToOurList: boolean } | null;
   repId: string | null;
   repName: string | null;
   eventId: string;
