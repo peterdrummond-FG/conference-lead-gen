@@ -103,11 +103,43 @@ export const MatchOutput = z.object({
     message: 'matchConfidence=high requires a matched account — refusing to auto-approve an unmatched contact',
   });
 
+// A school district the research step found for a contact who gave a school and NO
+// district (2026-10-06; research-contact SKILL.md step 5b). It is the one thing the
+// skill may report about a district, and it never replaces one that was given: the
+// caller writes it only if the lead still has no district at write time, and only
+// into OUR school_districts when the name matches one (finalize_contact_match).
+// Untrusted model output that ends up on a lead a person then confirms, so the whole
+// contract is checked, not one field: a real http(s) address as evidence (a page the
+// search returned, not something composed), a name with no control characters (it is
+// copied into notes and the Zoho CSV), and confidence high or medium only -- "less sure
+// than medium" is null, not a low-confidence guess a rep might trust.
+const NO_CONTROL_CHARS = /^[^\u0000-\u001f\u007f]+$/;
+const ResolvedDistrict = z
+  .object({
+    name: z.string().trim().min(2).max(200).regex(NO_CONTROL_CHARS, 'must not contain control characters'),
+    evidenceUrl: z
+      .string()
+      .trim()
+      .max(500)
+      .regex(/^\S+$/, 'must not contain whitespace')
+      .refine((u) => {
+        try {
+          const p = new URL(u);
+          return p.protocol === 'https:' || p.protocol === 'http:';
+        } catch {
+          return false;
+        }
+      }, 'must be an http(s) address'),
+    confidence: z.enum(['high', 'medium']),
+  })
+  .strict();
+
 export const ResearchOutput = z
   .object({
     firstName: z.string(),
     lastName: z.string(),
     alternateDistrictNames: z.array(z.string().max(300)).max(20).default([]),
+    resolvedDistrict: ResolvedDistrict.nullable().default(null),
     alternateNameSpellings: z.array(z.string().max(200)).max(20).default([]),
     nameCorrectionConfidence: confidence.nullable().default(null),
     institutionLevel: z.enum(['central_office', 'specific_campus', 'unknown']).default('unknown'),

@@ -12,6 +12,7 @@ import {
   CardExtractionOutput,
   MatchOutput,
   NoteExtractionOutput,
+  ResearchOutput,
 } from './schemas.mjs';
 import { extractJson } from './skill-runner.mjs';
 import { profileFor, SKILL_PROFILES } from './skill-profiles.mjs';
@@ -220,4 +221,51 @@ test('only match-contact may reach Zoho, and only read verbs', () => {
 
 test('an undeclared skill throws rather than running unsandboxed', () => {
   assert.throws(() => profileFor('some-new-skill'), /No tool profile declared/);
+});
+
+// ── ResearchOutput.resolvedDistrict (2026-10-06, research-contact step 5b) ───
+// A district the skill found for a contact who gave a school and no district. Model
+// output that lands on a lead a person confirms, so the whole contract is checked.
+const baseResearch = { firstName: 'Latoya', lastName: 'Pruitt', researchConfidence: 'high', personVerified: false };
+const goodDistrict = { name: 'Sunflower County School District', evidenceUrl: 'https://www.sunflower.k12.ms.us/schools', confidence: 'high' };
+const research = (resolvedDistrict) => ({ ...baseResearch, resolvedDistrict });
+
+test('ResearchOutput: a well-formed resolvedDistrict is kept, trimmed', () => {
+  const r = ResearchOutput.safeParse(research({ ...goodDistrict, name: '  Sunflower County School District ', confidence: 'medium' }));
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data.resolvedDistrict, { ...goodDistrict, confidence: 'medium' });
+});
+
+test('ResearchOutput: resolvedDistrict is null when the skill returns null or leaves it out', () => {
+  assert.equal(ResearchOutput.safeParse(research(null)).data.resolvedDistrict, null);
+  assert.equal(ResearchOutput.safeParse(baseResearch).data.resolvedDistrict, null);
+});
+
+// Each of these must be REJECTED (a validation failure leaves the row pending for a
+// human, CLAUDE.md rule 3), never coerced into something half-written.
+const MALFORMED_DISTRICTS = {
+  'a low-confidence guess (less sure than medium is null)': { ...goodDistrict, confidence: 'low' },
+  'no evidence address': { name: goodDistrict.name, confidence: 'high' },
+  'evidence that is not a web address': { ...goodDistrict, evidenceUrl: 'sunflower.k12.ms.us' },
+  'evidence with another scheme': { ...goodDistrict, evidenceUrl: 'javascript:alert(1)' },
+  'evidence with whitespace in it': { ...goodDistrict, evidenceUrl: 'https://x.example/a b' },
+  'evidence over 500 characters': { ...goodDistrict, evidenceUrl: 'https://x.example/' + 'a'.repeat(500) },
+  'a blank name': { ...goodDistrict, name: '   ' },
+  'a one-character name': { ...goodDistrict, name: 'A' },
+  'a name over 200 characters': { ...goodDistrict, name: 'D'.repeat(201) },
+  'a name with a control character (it is copied into notes and the CSV)': { ...goodDistrict, name: 'Sunflower\nCounty' },
+  'an unknown extra key': { ...goodDistrict, zohoAccountId: '3001271000007193584' },
+  'a string instead of an object': 'Sunflower County School District',
+  'an array': [goodDistrict],
+};
+for (const [label, value] of Object.entries(MALFORMED_DISTRICTS)) {
+  test(`ResearchOutput rejects resolvedDistrict with ${label}`, () => {
+    assert.equal(ResearchOutput.safeParse(research(value)).success, false);
+  });
+}
+
+test('ResearchOutput still passes every input field through (match-contact reads them unchanged)', () => {
+  const r = ResearchOutput.safeParse({ ...research(goodDistrict), districtName: null, schoolName: 'Ruleville Central Elementary', eventState: 'Mississippi' });
+  assert.equal(r.data.schoolName, 'Ruleville Central Elementary');
+  assert.equal(r.data.districtName, null);
 });

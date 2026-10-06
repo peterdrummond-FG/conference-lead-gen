@@ -79,6 +79,9 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
       : null,
     reviewStatus: c.review_status,
     notes: c.notes,
+    // Set when research filled the district in from the school (finalize_contact_match):
+    // where it came from, so the editor can say so. Never present for a district a person gave.
+    districtLookup: districtLookupOf(c),
     glanceSummary: c.glance_summary ?? null,
     interactionNotes: c.interaction_notes ?? null,
     followedUp: c.followed_up,
@@ -88,6 +91,18 @@ export function toListItem(c: any, duplicateNames?: Record<string, DuplicateCont
     lastMatchAttemptAt: c.last_match_attempt_at,
     syncedAt: c.synced_at ?? null,
     createdAt: c.created_at,
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+function districtLookupOf(c: any): { name: string; evidenceUrl: string; confidence: string; mappedToOurList: boolean } | null {
+  const l = c.district_lookup;
+  if (!l || typeof l.name !== "string" || typeof l.evidenceUrl !== "string") return null;
+  return {
+    name: l.name,
+    evidenceUrl: l.evidenceUrl,
+    confidence: String(l.confidence ?? ""),
+    mappedToOurList: l.mappedToOurList === true,
   };
 }
 

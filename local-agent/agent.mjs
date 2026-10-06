@@ -156,8 +156,11 @@ async function processContact(contact) {
     email: contact.email,
     phone: contact.phone,
     title: contact.title,
-    districtName: contact.school_district?.name ?? null,
-    schoolName: contact.school?.name ?? null,
+    // A typed district or school that matched nothing in our tables is still what the person
+    // gave, so it reaches research as such (the n8n pipeline does the same). Without the school,
+    // a school-only contact would look like an empty one and never get its district looked up.
+    districtName: contact.school_district?.name ?? contact.school_district_name_raw ?? null,
+    schoolName: contact.school?.name ?? contact.school_name_raw ?? null,
     eventState: contact.event?.state ?? null,
     source: contact.source,
     extractionConfidence: contact.extraction_confidence ?? null,
@@ -205,6 +208,12 @@ async function processContact(contact) {
     p_research_confidence: researchOutput.researchConfidence ?? null,
     p_person_verified: researchOutput.personVerified ?? null,
     p_extraction_ok: extractionOk,
+    // A district research found for a school-only contact (SKILL.md step 5b). Passed along
+    // only: finalize_contact_match decides whether it applies and writes it only if the
+    // lead still has no district at write time. Same three values the n8n pipeline sends.
+    p_resolved_district_name: researchOutput.resolvedDistrict?.name ?? null,
+    p_resolved_district_evidence_url: researchOutput.resolvedDistrict?.evidenceUrl ?? null,
+    p_resolved_district_confidence: researchOutput.resolvedDistrict?.confidence ?? null,
   });
   if (error) throw error;
 }
