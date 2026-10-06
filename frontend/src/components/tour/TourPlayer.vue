@@ -2,22 +2,33 @@
   <!-- The tour: one scene per screen, each playing in the WATCH stage, the words
        underneath, and only Back, Next and Skip to press. What it plays is `steps`:
        the whole tour, or just the rest for the reminder. The progress bar counts
-       only those. -->
+       only those, and its current segment fills as the scene plays. -->
   <OnboardingFrame
     tall
     :steps="items.length"
     :current="index"
+    :fill="fill"
     skip="Skip"
     :title="item.title"
     :body="item.body"
     :note="item.note"
     @skip="$emit('skip', item.step)"
   >
-    <TourStage :key="item.step.id" :scene="item.component" :manager="manager" :role="role" :import-only="item.step.importOnly" />
+    <TourStage
+      :key="item.step.id"
+      :scene="item.component"
+      :scene-id="item.step.sceneId"
+      :manager="manager"
+      :role="role"
+      :import-only="item.step.importOnly"
+      @restart="restart"
+      @progress="(f: number) => (fill = f)"
+      @played="ready = true"
+    />
     <template #actions>
       <q-btn v-if="index > 0" flat no-caps color="primary" label="Back" @click="go(index - 1)" />
       <q-space />
-      <q-btn unelevated no-caps color="primary" label="Next" class="tp-next" @click="next" />
+      <q-btn unelevated no-caps color="primary" label="Next" class="tp-next" :class="{ 'of-pulse': ready }" @click="next" />
     </template>
   </OnboardingFrame>
 </template>
@@ -38,7 +49,18 @@ const items = computed(() => playlist(props.role, props.hasPhone ?? true, props.
 const index = ref(Math.min(props.start ?? 0, items.value.length - 1));
 const item = computed(() => items.value[Math.min(index.value, items.value.length - 1)]!);
 
+// The bar fills as this scene plays; once it has played through, Next pulses once.
+// Moving to another scene (Back or Next) or a restart starts both over. Next works at
+// any time: the bar only shows whether you are leaving early.
+const fill = ref(0);
+const ready = ref(false);
+function restart() {
+  fill.value = 0;
+  ready.value = false;
+}
+
 function go(i: number) {
+  restart();
   index.value = i;
   emit('step', i);
 }

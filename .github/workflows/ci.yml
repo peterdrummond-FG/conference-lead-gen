@@ -35,6 +35,11 @@ jobs:
         run: cd frontend && npm ci
       - name: Typecheck frontend
         run: cd frontend && npm run typecheck
+      # Review's Smart view rules and the onboarding tour's copy and scene lengths.
+      # Without this step they only ran on a developer's machine, so editing a tour
+      # scene without updating tourLengths.ts would have passed CI.
+      - name: Frontend unit tests
+        run: cd frontend && npm test
 
       - name: Check local-agent parses
         run: |
