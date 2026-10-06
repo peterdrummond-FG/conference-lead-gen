@@ -164,6 +164,12 @@
             state-label="State" district-label="District" school-label="School / campus"
             state-class="le-s2" district-class="le-s4" school-class="le-s6"
           />
+          <!-- Only on a lead whose district research filled in from the school (the attendee gave
+               none), and only while the district is still that one. -->
+          <div v-if="lookupSource && showLookupLine" class="le-s6 le-lookup">
+            <b>District looked up from the school</b> (none was given). Source:
+            <a :href="lookupSource.href" target="_blank" rel="noopener noreferrer">{{ lookupSource.host }}</a>
+          </div>
           <div v-if="isPhotoSourced" class="le-s6 text-caption text-grey le-suggest">
             State and district are suggested from the conference. Confirm or change.
           </div>
@@ -235,6 +241,7 @@ import { useContactPhoto } from '@/composables/useContactPhoto';
 import { stateOptionFor, districtOptionFor, schoolOptionFor } from '@/utils/contactOptions';
 import type { DisplayPatch } from '@/composables/useSmartReview';
 import type { CandidateMatch, ContactListItem, UpdateContactPayload } from '@/types/review';
+import { lookupLineVisible, lookupSource as buildLookupSource } from '@/utils/institutionPicker';
 import { accountBadge, accountDetailLabel, appendNote as appendNoteText, fullName, isProcessing, isReady, READY_LABEL, readinessChecklist, sourceKey, sourceLabel } from '@/utils/reviewSmart';
 
 const props = defineProps<{
@@ -295,6 +302,9 @@ const draft = reactive({
   school: schoolOptionFor(props.contact),
   interactionNotes: props.contact.interactionNotes ?? '',
 });
+
+const lookupSource = computed(() => buildLookupSource(props.contact.districtLookup));
+const showLookupLine = computed(() => lookupLineVisible(props.contact.districtLookup, districtOptionFor(props.contact), draft.district));
 
 const isDirty = computed(() => {
   const currentDistrict = districtOptionFor(props.contact);
@@ -566,6 +576,8 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-s4 { grid-column: span 4; }
 .le-s6 { grid-column: span 6; }
 .le-suggest { margin-top: -6px; }
+.le-lookup { margin-top: -4px; font-size: 12px; line-height: 1.4; color: #4A555F; }
+.le-lookup a { color: var(--q-primary); overflow-wrap: anywhere; }
 .le-notes-cap { margin-top: -6px; font-size: 12px; line-height: 1.4; color: #6B7680; }
 .le-notes-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .le-note-btn { min-height: 36px; }

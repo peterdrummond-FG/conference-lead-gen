@@ -148,3 +148,35 @@ export function changeDistrict<S extends { name: string }>(model: InstitutionAns
 export function changeSchool<S extends { name: string }>(model: InstitutionAnswers<S>, next: TypeaheadOption | null): void {
   model.school = plain(next);
 }
+
+// ── "District looked up from the school" (the editor's one extra line) ───────
+//
+// A lead whose district research filled in carries districtLookup (where it came from). The
+// editor says so, with the source, so a rep can tell it from something the attendee said.
+// Shown only while the district is still the one the lookup produced: once the rep changes
+// it, it is theirs and the line goes away.
+export interface DistrictLookup {
+  name: string;
+  evidenceUrl: string;
+  confidence: string;
+  mappedToOurList: boolean;
+}
+
+// The address host to show ("example.org"), or null when the address isn't a plain
+// http(s) link. The link is only ever rendered when this is non-null, so a value that isn't
+// a web address can't become an href.
+export function lookupSource(lookup: DistrictLookup | null): { host: string; href: string } | null {
+  if (!lookup) return null;
+  try {
+    const u = new URL(lookup.evidenceUrl);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return { host: u.hostname.replace(/^www\./, ''), href: u.href };
+  } catch {
+    return null;
+  }
+}
+
+export function lookupLineVisible(lookup: DistrictLookup | null, saved: TypeaheadOption | null, draft: TypeaheadOption | null): boolean {
+  if (!lookup || !saved || !draft) return false;
+  return (draft.id ?? null) === (saved.id ?? null) && draft.name === saved.name;
+}

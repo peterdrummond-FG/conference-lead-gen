@@ -189,3 +189,24 @@ test('a school can be set with no district (the quiet fallback) and cleared', ()
   changeSchool(m, null);
   assert.equal(m.school, null);
 });
+
+// ── the lookup line ──
+import { lookupSource, lookupLineVisible } from './institutionPicker.ts';
+
+const LOOKUP = { name: 'Sunflower County Consolidated School District', evidenceUrl: 'https://www.autocaldata.com/calendars/x', confidence: 'medium', mappedToOurList: true };
+
+test('the lookup source is the address host, and only for a real web address', () => {
+  assert.deepEqual(lookupSource(LOOKUP), { host: 'autocaldata.com', href: 'https://www.autocaldata.com/calendars/x' });
+  assert.equal(lookupSource(null), null);
+  assert.equal(lookupSource({ ...LOOKUP, evidenceUrl: 'javascript:alert(1)' }), null);
+  assert.equal(lookupSource({ ...LOOKUP, evidenceUrl: 'not a url' }), null);
+});
+
+test('the lookup line shows only while the district is still the one the lookup produced', () => {
+  const saved = { id: 'd1', name: 'Sunflower County Consolidated School District' };
+  assert.equal(lookupLineVisible(LOOKUP, saved, { ...saved }), true);
+  assert.equal(lookupLineVisible(LOOKUP, saved, { id: 'd2', name: 'Other' }), false);
+  assert.equal(lookupLineVisible(LOOKUP, saved, { id: null, name: 'Typed over it' }), false);
+  assert.equal(lookupLineVisible(null, saved, saved), false);
+  assert.equal(lookupLineVisible(LOOKUP, null, null), false);
+});
