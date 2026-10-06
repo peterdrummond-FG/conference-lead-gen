@@ -1,11 +1,15 @@
 <template>
   <q-page :class="[$q.screen.lt.sm ? 'q-pa-sm' : 'q-pa-lg', 'flex', 'flex-center']">
-    <div style="width: 640px; max-width: 100%" class="q-gutter-md">
+    <!-- Two sections, because there are two jobs: the rep sending leads in
+         themselves (conference + phone), and other people adding themselves
+         (QR code + Kiosk). On a laptop they sit side by side; on a phone they stack
+         in one column. The controls that only make sense on one kind of device stay on
+         that device (the Text SETUP button opens Messages, so it is phone-only; a QR to
+         scan with a camera is laptop-only; both are TextSetupAction's, by device). -->
+    <div :style="{ width: twoColumns ? '960px' : '640px', maxWidth: '100%' }" class="q-gutter-md">
       <div>
-        <div class="text-h5">Get ready for your conference</div>
-        <div class="text-body2 text-grey-8 q-mt-xs">
-          Pick your conference, connect your phone, and you're ready to collect leads.
-        </div>
+        <div class="text-h5">Set up your leads</div>
+        <div class="text-body2 text-grey-8 q-mt-xs">How leads reach you, from you and from other people.</div>
       </div>
 
       <!-- Previewing someone (admin "View as"): the cards below show THEIR Setup,
@@ -23,242 +27,179 @@
 
       <div v-if="previewing && !subject" class="text-caption text-grey-8">Loading…</div>
 
-      <template v-else>
-        <!-- Step 1: conference. A step is its own card with a number that turns into
-             a green check when it's done, so a rep can see what's left and, coming
-             back later, which one to tap to change. -->
-        <q-card>
-          <q-card-section>
-            <div class="row items-center no-wrap">
-              <q-avatar size="26px" :color="joinedEvent ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
-                <q-icon v-if="joinedEvent" name="check" size="18px" />
-                <template v-else>1</template>
-              </q-avatar>
-              <div class="col text-subtitle1 text-weight-medium">
-                {{ joinedEvent ? 'Your conference' : 'Choose your conference' }}
-              </div>
-              <!-- Always offered once joined: this is now the only way to switch or to
-                   activate one that isn't live yet (the separate "Start a new
-                   conference" button is gone), and the dialog lists both. -->
-              <q-btn v-if="joinedEvent" flat no-caps color="primary" label="Change" :disable="previewing" @click="picking = true" />
-            </div>
-          </q-card-section>
+      <div v-else :class="twoColumns ? 'row q-col-gutter-lg items-start' : 'column q-gutter-y-lg'">
+        <!-- 1. The rep sends leads in. A row's circle is a number until it's done, then a
+             green check, so a rep can see what's left and, coming back later, which row
+             to tap to change. -->
+        <section :class="twoColumns ? 'col-6' : ''">
+          <div class="text-subtitle1 text-weight-medium">You send leads in</div>
+          <div class="text-caption text-grey-8 q-mb-sm">Text photos, voice memos or notes from your phone.</div>
 
-          <q-card-section class="q-pt-none">
-            <div v-if="!eventsLoaded" class="text-caption text-grey-8">Loading…</div>
-
-            <div v-else-if="joinedEvent">
-              <div class="text-subtitle1">{{ cleanConferenceName(joinedEvent.name) }}</div>
-              <div class="row items-center q-gutter-x-sm text-caption text-grey-8">
-                <span>{{ conferenceWhen(joinedEvent) }}</span>
-                <!-- The check stays: they're still connected, and leads sent for a
-                     conference that ended two days ago still arrive. The chip is only
-                     there so someone who's at the wrong conference notices. -->
-                <q-badge class="text-no-wrap" v-if="endedLabel" color="orange-10" :label="endedLabel" />
-              </div>
-            </div>
-
-            <!-- Joining is a real write, not a display choice: a rep's QR resolves its
-                 conference from their own current_event_id (contacts-create), and
-                 rejects the attendee's submission if that's empty. Seeing a
-                 conference here (events-active falls back to the most recent one for
-                 staff with none linked) is not the same as being linked to it, so
-                 this always asks. -->
-            <div v-else>
-              <div class="text-body2 q-mb-sm">Pick the one you're at, so every lead lands in the right place.</div>
-              <q-btn unelevated no-caps color="primary" label="Choose conference" :disable="previewing" @click="picking = true" />
-            </div>
-          </q-card-section>
-        </q-card>
-
-        <!-- Step 2: phone. Texting SETUP is self-contained (twilio-webhook finds or
-             starts the conference by name and binds the phone itself), so none of the
-             instructions or the disclosure depend on having joined a conference
-             here. Only the status does (smsBound is per conference). -->
-        <q-card>
-          <q-card-section>
-            <div class="row items-center no-wrap">
-              <q-avatar size="26px" :color="smsStatus === 'connected' ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
-                <q-icon v-if="smsStatus === 'connected'" name="check" size="18px" />
-                <template v-else>2</template>
-              </q-avatar>
-              <div class="col text-subtitle1 text-weight-medium">Set up your phone</div>
-              <!-- role=status so a screen reader hears it when Check connection (or
-                   coming back from Messages) flips it, without moving focus. -->
-              <span role="status" aria-atomic="true">
-                <q-badge class="text-no-wrap" v-if="smsStatus === 'connected'" color="positive" label="Connected" />
-                <q-badge class="text-no-wrap" v-else-if="smsStatus === 'pending'" color="orange-10" label="Not connected" />
-                <q-badge class="text-no-wrap" v-else-if="smsStatus === 'no-phone'" color="grey-7" label="Phone number needed" />
-              </span>
-            </div>
-          </q-card-section>
-
-          <q-card-section class="q-pt-none">
-            <!-- Three groups split by hairlines (who you are, what you can send, where
-                 to send it), so the card reads as a sequence instead of one block of
-                 text. The numbers sit on their own line with no-wrap: at 320px
-                 the text-in number used to break after its area code. -->
-            <q-separator class="q-mb-md" />
-
-            <!-- The number on file, where a wrong one can be caught before it's
-                 texted from: reps can't change their own (a deliberate limit), so the
-                 ? says who can. A popup, not a tooltip, because tooltips don't open
-                 on a phone. -->
-            <div v-if="phoneOnFile">
-              <div class="text-caption text-grey-8">Your number</div>
+          <q-card>
+            <!-- Conference. -->
+            <q-card-section>
               <div class="row items-center no-wrap">
-                <span class="text-subtitle1 text-weight-bold text-no-wrap">{{ phoneOnFile }}</span>
-                <q-btn flat round icon="help_outline" color="grey-7" aria-label="Wrong number?">
-                  <q-popup-proxy>
-                    <div class="q-pa-md setup-popup">
-                      Wrong number? Contact your Solutions Success rep and they'll fix it.
+                <q-avatar size="26px" :color="joinedEvent ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
+                  <q-icon v-if="joinedEvent" name="check" size="18px" />
+                  <template v-else>1</template>
+                </q-avatar>
+                <div class="col">
+                  <div v-if="!eventsLoaded" class="text-caption text-grey-8">Loading…</div>
+                  <template v-else-if="joinedEvent">
+                    <div class="text-subtitle1 text-weight-medium">{{ cleanConferenceName(joinedEvent.name) }}</div>
+                    <div class="row items-center q-gutter-x-sm text-caption text-grey-8">
+                      <span>{{ conferenceWhen(joinedEvent) }}</span>
+                      <!-- The check stays: they're still connected, and leads sent for a
+                           conference that ended two days ago still arrive. The chip is only
+                           there so someone who's at the wrong conference notices. -->
+                      <q-badge v-if="endedLabel" class="text-no-wrap" color="orange-10" :label="endedLabel" />
                     </div>
-                  </q-popup-proxy>
-                </q-btn>
+                  </template>
+                  <!-- Joining is a real write, not a display choice: a rep's QR resolves its
+                       conference from their own current_event_id (contacts-create), and
+                       holds the attendee's submission for Solutions Success if that's
+                       empty. Seeing a conference here (events-active falls back to the most
+                       recent one for staff with none linked) is not the same as being linked
+                       to it, so this always asks. -->
+                  <template v-else>
+                    <div class="text-subtitle1 text-weight-medium">Choose your conference</div>
+                    <div class="text-caption text-grey-8">So every lead lands in the right place.</div>
+                  </template>
+                </div>
+                <!-- "Choose" and "Change" both open the one dialog, which lists live
+                     conferences (Join) and upcoming ones (Activate). -->
+                <q-btn
+                  v-if="eventsLoaded"
+                  :flat="!!joinedEvent" :unelevated="!joinedEvent" no-caps color="primary"
+                  :label="joinedEvent ? 'Change' : 'Choose'" :disable="previewing" @click="picking = true"
+                />
               </div>
-            </div>
-            <div v-else-if="smsStatus === 'no-phone'" class="text-body2 text-orange-10">
-              Your account has no phone number yet, so texted cards can't be credited to you. Ask
-              your Solutions Success rep to add yours.
-            </div>
+            </q-card-section>
 
-            <q-separator class="q-my-md" />
+            <q-separator />
 
-            <div class="text-subtitle2 text-weight-bold">We'll turn anything into a contact</div>
-            <div class="column q-gutter-y-md q-mt-xs text-body2">
+            <!-- Phone. Texting SETUP is self-contained (twilio-webhook finds or starts the
+                 conference by name and binds the phone itself), so none of the
+                 instructions or the disclosure depend on having joined a conference
+                 here. Only the status does (smsBound is per conference). -->
+            <q-card-section>
               <div class="row items-center no-wrap">
-                <span class="setup-tile q-mr-md"><q-icon name="photo_camera" size="20px" /></span>
-                <span class="col">Photograph a business card, conference ID or contact list</span>
+                <q-avatar size="26px" :color="smsStatus === 'connected' ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
+                  <q-icon v-if="smsStatus === 'connected'" name="check" size="18px" />
+                  <template v-else>2</template>
+                </q-avatar>
+                <div class="col">
+                  <div class="text-subtitle1 text-weight-medium">Your phone</div>
+                  <!-- The number on file, where a wrong one can be caught before it's
+                       texted from: reps can't change their own (a deliberate limit), so the
+                       ? says who can. A popup, not a tooltip, because tooltips don't open
+                       on a phone. -->
+                  <div v-if="phoneOnFile" class="row items-center no-wrap">
+                    <span class="text-body2 text-grey-8 text-no-wrap">{{ phoneOnFile }}</span>
+                    <q-btn flat round dense icon="help_outline" color="grey-7" aria-label="Wrong number?">
+                      <q-popup-proxy>
+                        <div class="q-pa-md setup-popup">
+                          Wrong number? Contact your Solutions Success rep and they'll fix it.
+                        </div>
+                      </q-popup-proxy>
+                    </q-btn>
+                  </div>
+                </div>
+                <!-- role=status so a screen reader hears it when Check connection (or
+                     coming back from Messages) flips it, without moving focus. -->
+                <span role="status" aria-atomic="true">
+                  <q-badge v-if="smsStatus === 'connected'" class="text-no-wrap" color="positive" label="Connected" />
+                  <q-badge v-else-if="smsStatus === 'pending'" class="text-no-wrap" color="orange-10" label="Not connected" />
+                  <q-badge v-else-if="smsStatus === 'no-phone'" class="text-no-wrap" color="grey-7" label="Phone number needed" />
+                </span>
               </div>
-              <div class="row items-center no-wrap">
-                <span class="setup-tile q-mr-md"><q-icon name="mic" size="20px" /></span>
-                <span class="col">Send a voice memo</span>
-              </div>
-              <div class="row items-center no-wrap">
-                <span class="setup-tile q-mr-md"><q-icon name="sms" size="20px" /></span>
-                <span class="col">Text the info yourself</span>
-                <q-btn flat round icon="info_outline" color="grey-7" aria-label="Texting tip">
-                  <q-popup-proxy>
-                    <div class="q-pa-md setup-popup">
-                      Due to character limits, text one contact per message for best results.
-                    </div>
-                  </q-popup-proxy>
-                </q-btn>
-              </div>
-            </div>
 
-            <q-separator class="q-my-md" />
-
-            <div v-if="!joinedEvent" class="text-caption text-grey-8 q-mb-sm">
-              Your connection status shows here once you've chosen a conference.
-            </div>
-            <!-- Joined, but eventStore.activeEvent hasn't caught up yet (a moment after
-                 joining or switching). Without this, smsStatus null would fall through
-                 to the "not connected" action below for a conference whose status
-                 simply isn't known yet. -->
-            <div v-else-if="smsStatus === null" class="text-caption text-grey-8 q-mb-sm">Checking…</div>
-
-            <div v-if="smsStatus === 'connected'">
-              <div class="text-caption text-grey-8">Text photos and voice memos to</div>
-              <div class="setup-numberbox row items-center no-wrap q-mt-xs">
-                <span class="col text-h6 text-weight-bold text-no-wrap">{{ twilioNumber }}</span>
-                <q-btn flat round icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
+              <div v-if="smsStatus === 'no-phone'" class="text-body2 text-orange-10 q-mt-sm">
+                Your account has no phone number yet, so texted cards can't be credited to you. Ask
+                your Solutions Success rep to add yours.
               </div>
-            </div>
-            <!-- Not connected: the same action the onboarding's quick start offers. On a
-                 phone a button opens a text with SETUP filled in; on a laptop (where sms:
-                 does nothing) a QR code does the same job from the rep's phone camera, with
-                 the number spelled out underneath. The disclosure sits directly under it. -->
-            <TextSetupAction v-else :has-phone="true" :disabled="previewing">
-              <div class="row items-center no-wrap q-mt-xs">
+
+              <div class="text-body2 q-mt-sm">
+                Photograph a business card, conference ID or contact list, send a voice memo, or text one
+                contact per message.
+              </div>
+
+              <div v-if="!joinedEvent" class="text-caption text-grey-8 q-mt-sm">
+                Your connection status shows here once you've chosen a conference.
+              </div>
+              <!-- Joined, but eventStore.activeEvent hasn't caught up yet (a moment after
+                   joining or switching). Without this, smsStatus null would fall through
+                   to the "not connected" action below for a conference whose status
+                   simply isn't known yet. -->
+              <div v-else-if="smsStatus === null" class="text-caption text-grey-8 q-mt-sm">Checking…</div>
+
+              <div v-if="smsStatus === 'connected'" class="q-mt-sm">
+                <div class="text-caption text-grey-8">Text photos and voice memos to</div>
+                <div class="setup-numberbox row items-center no-wrap q-mt-xs">
+                  <span class="col text-h6 text-weight-bold text-no-wrap">{{ twilioNumber }}</span>
+                  <q-btn flat round icon="content_copy" color="primary" aria-label="Copy the number" @click="copy(twilioNumber, 'Number copied.')" />
+                </div>
+              </div>
+              <!-- Not connected: the same action the onboarding's quick start offers. On a
+                   phone a button opens a text with SETUP filled in; on a laptop (where sms:
+                   does nothing) a QR code does the same job from the rep's phone camera, with
+                   the number spelled out underneath. The disclosure sits directly under it. -->
+              <TextSetupAction v-else class="q-mt-sm" :has-phone="true" :disabled="previewing">
                 <q-btn
                   flat no-caps color="primary" icon="refresh" label="Check connection"
-                  class="q-px-sm" :loading="checking" @click="checkConnection"
+                  class="q-px-sm q-mt-xs" :loading="checking" @click="checkConnection"
                 />
-                <q-space />
-                <q-btn flat round icon="content_copy" color="primary" aria-label="Copy SETUP" @click="copy('SETUP', 'Copied SETUP.')" />
-              </div>
-            </TextSetupAction>
+              </TextSetupAction>
 
-            <!-- Connected: no action to offer, but the disclosure stays on the card (it
-                 covers any text that links a phone, so it is not only for SETUP). -->
-            <SmsConsent v-if="smsStatus === 'connected'" />
-          </q-card-section>
-        </q-card>
+              <!-- Connected: no action to offer, but the disclosure stays on the card (it
+                   covers any text that links a phone, so it is not only for SETUP). -->
+              <SmsConsent v-if="smsStatus === 'connected'" />
+            </q-card-section>
+          </q-card>
+        </section>
 
-        <!-- Step 3: kiosk. The PIN belongs to the login, so it's available before
-             joining anything: reps can set up a booth iPad ahead of the event. -->
-        <q-card>
-          <q-card-section>
-            <div class="row items-center no-wrap">
-              <q-avatar size="26px" :color="subject?.hasKioskPin ? 'positive' : 'primary'" text-color="white" class="q-mr-sm">
-                <q-icon v-if="subject?.hasKioskPin" name="check" size="18px" />
-                <template v-else>3</template>
-              </q-avatar>
-              <div class="col text-subtitle1 text-weight-medium">Kiosk setup</div>
-              <q-badge class="text-no-wrap" v-if="subject?.hasKioskPin" color="positive" label="PIN set" />
-              <q-badge class="text-no-wrap" v-else color="grey-7" label="PIN not set" />
-            </div>
-          </q-card-section>
-          <q-card-section class="q-pt-none">
-            <div class="text-body2 text-grey-8">
-              Lock a shared device to the sign-up form. You unlock it with a PIN of your own, separate
-              from your password.
-            </div>
-            <q-btn
-              outline no-caps color="primary" class="q-mt-sm"
-              :label="subject?.hasKioskPin ? 'Change PIN' : 'Set PIN'"
-              :disable="previewing"
-              @click="promptKioskPin"
-            />
-            <div class="text-caption text-grey-8 q-mt-xs">When you're ready, open the Kiosk tab and tap Lock kiosk.</div>
-          </q-card-section>
-        </q-card>
+        <!-- 2. Other people add themselves: a rep's QR code, and the Kiosk form on a
+             shared device. Neither depends on joining anything first: the code is the
+             rep's own and reusable, and the PIN belongs to the login, so reps can set up
+             a booth iPad ahead of the event. -->
+        <section :class="twoColumns ? 'col-6' : ''">
+          <div class="text-subtitle1 text-weight-medium">Other people add themselves</div>
+          <div class="text-caption text-grey-8 q-mb-sm">
+            {{ canManageEvents ? "Anyone who scans a rep's QR code or fills in the Kiosk form." : 'Anyone who scans your QR code or fills in the Kiosk form.' }}
+          </div>
 
-        <!-- Your QR code: a resource, not a step. No number and no check, so the page
-             doesn't read as finished at the point a rep still has nothing to do.
-             Available before joining (the code is the rep's own and reusable), but
-             a scan only reaches their Review once they're linked to a conference (otherwise it
-             waits for Solutions Success to file it). Sales accounts only:
-             repSlug is only ever generated for them (profiles-create/-update). -->
-        <q-card v-if="subject?.repSlug">
-          <q-card-section>
-            <div class="row items-start no-wrap">
-              <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
-              <div class="col">
+          <q-card>
+            <!-- A rep's own QR (Sales accounts only: repSlug is only ever generated for
+                 them, profiles-create/-update). Says where a scan goes *right now*, and
+                 is true when nothing is chosen: contacts-create holds the scan
+                 (unassigned_submissions) for Solutions Success instead of filing it under
+                 the previous conference or losing it. -->
+            <template v-if="subject?.repSlug">
+              <q-card-section>
                 <div class="text-subtitle1 text-weight-medium">Your QR code</div>
-                <div class="text-body2 text-grey-8">Your QR is unique to you and works at any conference.</div>
-                <!-- Says where a scan goes *right now*, and is true when nothing is
-                     chosen: contacts-create holds the scan (unassigned_submissions)
-                     for Solutions Success instead of filing it under the previous
-                     conference or losing it. -->
-                <div v-if="joinedEvent" class="text-body2 q-mt-xs">
-                  Right now, contacts who scan it are attached to
+                <div v-if="joinedEvent" class="text-body2 text-grey-8">
+                  Works at any conference. Scans go to
                   <span class="text-weight-bold">{{ cleanConferenceName(joinedEvent.name) }}</span>.
                 </div>
-                <div v-else class="text-body2 text-orange-10 q-mt-xs">
+                <div v-else class="text-body2 text-orange-10">
                   You're not at a conference, so scans wait for Solutions Success to file them. Choose one and they go straight to your Review.
                 </div>
                 <qr-save-buttons
-                  :rep="{ name: subject.name, repSlug: subject.repSlug }" class="q-mt-sm"
+                  :rep="{ name: subject.name, repSlug: subject.repSlug }" dense
+                  :class="$q.screen.lt.sm ? 'full-width q-mt-sm' : 'q-mt-sm'"
                 />
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
+              </q-card-section>
+              <q-separator />
+            </template>
 
-        <!-- Admin and Solutions Success: they hold no QR of their own but are who
-             sends each rep theirs, so the reps' slides are listed here (and per rep
-             in Admin -> Team). Nothing here depends on a conference. -->
-        <q-card v-if="canManageEvents">
-          <q-card-section>
-            <div class="row items-start no-wrap">
-              <q-icon name="qr_code_2" size="28px" color="primary" class="q-mr-md" />
-              <div class="col">
+            <!-- Admin and Solutions Success: they hold no QR of their own but are who
+                 sends each rep theirs, so the reps' slides are listed here (and per rep
+                 in Admin -> Team). Nothing here depends on a conference. -->
+            <template v-if="canManageEvents">
+              <q-card-section>
                 <div class="text-subtitle1 text-weight-medium">Rep QR slides</div>
                 <div class="text-body2 text-grey-8">
-                  Every Sales rep has a reusable QR slide. Download one to send it to them, as a slide or a phone-screen code. It only
-                  works once they've joined a conference.
+                  Every Sales rep has a reusable QR code. Save one to send it to them. It only works once they've joined a conference.
                 </div>
                 <q-list v-if="salesReps.length" dense separator class="q-mt-sm">
                   <q-item v-for="rep in salesReps" :key="rep.id" class="q-px-none">
@@ -274,29 +215,30 @@
                   No Sales reps yet. Add one in
                   <router-link to="/admin" class="text-primary">Admin</router-link>.
                 </div>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
+              </q-card-section>
+              <q-separator />
+            </template>
 
-        <!-- Once a conference is joined there was no "you're done here" moment, so a
-             rep finished the page not knowing where to go next. -->
-        <q-card v-if="joinedEvent">
-          <q-card-section>
-            <div class="row items-center no-wrap">
-              <q-icon name="check_circle" color="positive" size="24px" class="q-mr-sm" />
-              <div class="text-subtitle1 text-weight-medium">You're ready to capture leads</div>
-            </div>
-            <div class="text-body2 text-grey-8 q-mt-xs">
-              Everything you capture shows up in Review a few minutes later.
-            </div>
-            <div class="row q-gutter-sm q-mt-sm">
-              <q-btn unelevated no-caps color="primary" icon="checklist" label="Go to Review" to="/review" class="col-12 col-sm-auto" />
-              <q-btn outline no-caps color="primary" icon="tablet_mac" label="Open the sign-up form" to="/connect" class="col-12 col-sm-auto" />
-            </div>
-          </q-card-section>
-        </q-card>
-      </template>
+            <!-- Kiosk. The PIN belongs to the login. -->
+            <q-card-section>
+              <div class="row items-center no-wrap">
+                <div class="col text-subtitle1 text-weight-medium">Kiosk</div>
+                <q-badge v-if="subject?.hasKioskPin" class="text-no-wrap" color="positive" label="PIN set" />
+                <q-badge v-else class="text-no-wrap" color="grey-7" label="PIN not set" />
+              </div>
+              <div class="text-body2 text-grey-8">
+                Lock a shared device to the sign-up form. Open the Kiosk tab and tap Lock kiosk.
+              </div>
+              <q-btn
+                outline no-caps color="primary" class="q-mt-sm" :class="{ 'full-width': $q.screen.lt.sm }"
+                :label="subject?.hasKioskPin ? 'Change PIN' : 'Set PIN'"
+                :disable="previewing"
+                @click="promptKioskPin"
+              />
+            </q-card-section>
+          </q-card>
+        </section>
+      </div>
 
       <StartConferenceDialog v-model="picking" @started="onStarted" />
     </div>
@@ -305,7 +247,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { Dialog, Notify, copyToClipboard } from 'quasar';
+import { Dialog, Notify, copyToClipboard, useQuasar } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { TWILIO_NUMBER_DISPLAY } from '@/utils/smsNumber';
@@ -333,6 +275,7 @@ interface ActiveEventOption {
 const twilioNumber = TWILIO_NUMBER_DISPLAY;
 // (The "Text SETUP" action itself, phone button or laptop QR code, is TextSetupAction.)
 
+const $q = useQuasar();
 const eventStore = useEventStore();
 const sessionStore = useSessionStore();
 // Whether the conference dialog is open. It is both "Choose" and "Change": it
@@ -352,6 +295,9 @@ const checking = ref(false);
 // conference is open to every role -- see StartConferenceDialog.
 // Admin "View as": whose Setup is on screen. subject is that person's own facts
 // (sessionStore.preview) or the caller's; null only while a preview loads.
+// Two columns on a laptop-sized window, one column below it. (Which phone/laptop CONTROLS
+// show follows the device instead, in TextSetupAction and QrSaveButtons.)
+const twoColumns = computed(() => $q.screen.gt.sm);
 const previewing = computed(() => !!sessionStore.viewingAs);
 const subject = computed<PreviewUser | SessionUser | null>(() => (previewing.value ? sessionStore.preview : sessionStore.user));
 
@@ -507,17 +453,6 @@ watch(canManageEvents, (staff) => { if (staff) void loadProfiles(); }, { immedia
    straight over the dimmed page, nearly invisible. On a laptop it is a q-menu,
    which does paint white, so this was only ever seen on a phone. Any new
    popup-proxy content needs a background of its own for the same reason. */
-.setup-tile {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: #E8F1F9;
-  color: #0067AC;
-}
 .setup-numberbox {
   background: #F4F6F9;
   border-radius: 10px;
