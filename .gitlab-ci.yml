@@ -10,7 +10,7 @@ lint-and-typecheck:
     - bash -n watcher/watch-cards.command
     - bash -n local-agent/start-agent.command
     - bash -n scripts/check-deployed-functions.sh
-    - cd frontend && npm ci && npm run typecheck
+    - cd frontend && npm ci && npm run typecheck && npm test
 
 # Split into its own job (rather than added to lint-and-typecheck's node:22
 # image) because this was missing here entirely until GitHub's equivalent

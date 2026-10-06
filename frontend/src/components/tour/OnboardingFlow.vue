@@ -25,14 +25,22 @@
 
   <OnboardingFrame
     v-else-if="phase === 'quick1'"
-    stage back :steps="2" :current="0"
+    stage back :steps="2" :current="0" :fill="quickFill"
     :title="C.quickText.title" :body="C.quickText.body" :note="C.quickText.note"
     @back="setPhase('splash')"
   >
-    <TourStage :scene="TourSceneQuickText" :manager="isManagerRole" :role="role" />
+    <TourStage
+      scene-id="quick-text"
+      :scene="TourSceneQuickText"
+      :manager="isManagerRole"
+      :role="role"
+      @restart="quickFill = 0; quickReady = false"
+      @progress="(f: number) => (quickFill = f)"
+      @played="quickReady = true"
+    />
     <template #actions>
       <q-space />
-      <q-btn unelevated no-caps color="primary" label="Next" class="ob-next" @click="setPhase('quick2')" />
+      <q-btn unelevated no-caps color="primary" label="Next" class="ob-next" :class="{ 'of-pulse': quickReady }" @click="setPhase('quick2')" />
     </template>
   </OnboardingFrame>
 
@@ -129,6 +137,10 @@ const phase = ref<FlowPhase>(props.start ?? (mode.value === 'first' ? 'splash' :
 const stepIndex = ref(props.startIndex ?? 0);
 const tourKey = ref(0);
 const isMobile = Platform.is.mobile === true;
+// The quick start's texting screen: its bar fills as the animation plays, then Next
+// pulses once (same as the tour; see TourPlayer).
+const quickFill = ref(0);
+const quickReady = ref(false);
 
 // What the tour plays: the rest for a reminder, the whole thing otherwise.
 const steps = ref<Step[]>(mode.value === 'remainder' ? remainderSteps(isManagerRole.value, props.resumeFrom ?? null) : fullSteps(isManagerRole.value));

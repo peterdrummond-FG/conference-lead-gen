@@ -7,7 +7,7 @@
       <div v-if="steps || back || skip" class="of-top">
         <q-btn v-if="back" flat round dense icon="arrow_back" color="grey-8" aria-label="Back" @click="$emit('back')" />
         <div class="of-segs" :aria-label="steps ? `Step ${current + 1} of ${steps}` : undefined">
-          <i v-for="i in steps" :key="i" :class="{ on: i - 1 <= current }" />
+          <i v-for="i in steps" :key="i"><b :style="{ width: segmentWidth(i - 1) }" /></i>
         </div>
         <q-btn v-if="skip" flat no-caps dense color="grey-8" :label="skip" class="of-skip" @click="$emit('skip')" />
       </div>
@@ -29,7 +29,7 @@ import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import { renderCopy } from './tourFlow';
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   steps?: number;
   current?: number;
   back?: boolean;
@@ -43,11 +43,22 @@ withDefaults(defineProps<{
   // A narrow card that still holds an animation (the quick start's first
   // screen), so it needs a height for the animation to fill.
   stage?: boolean;
-}>(), { steps: 0, current: 0 });
+  // How far through the CURRENT segment is (0 to 1), for a screen with an animation:
+  // the segment fills as the scene plays, so the person can see when it's done
+  // instead of tapping Next halfway. Finished steps are full, later ones empty. A
+  // screen with nothing playing leaves it at 1, which is the old "current is full".
+  fill?: number;
+}>(), { steps: 0, current: 0, fill: 1 });
 defineEmits<{ back: []; skip: [] }>();
 
 const $q = useQuasar();
 const isPhone = computed(() => $q.screen.lt.sm);
+
+function segmentWidth(i: number): string {
+  if (i < props.current) return '100%';
+  if (i > props.current) return '0%';
+  return `${Math.round(Math.min(1, Math.max(0, props.fill)) * 100)}%`;
+}
 </script>
 
 <style scoped>
@@ -55,8 +66,9 @@ const isPhone = computed(() => $q.screen.lt.sm);
 .of-card { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .of-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px 16px; min-height: 52px; }
 .of-segs { flex: 1; display: flex; gap: 4px; }
-.of-segs i { flex: 1; height: 4px; border-radius: 2px; background: #DDE4EB; }
-.of-segs i.on { background: var(--q-primary); }
+.of-segs i { flex: 1; height: 4px; border-radius: 2px; background: #DDE4EB; overflow: hidden; }
+.of-segs i b { display: block; height: 100%; width: 0; background: var(--q-primary); transition: width 0.12s linear; }
+@media (prefers-reduced-motion: reduce) { .of-segs i b { transition: none; } }
 .of-skip { min-height: 40px; padding: 0 8px; }
 .of-main { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0 10px; }
 .of-copy { padding: 12px 18px 0; display: flex; flex-direction: column; gap: 6px; }
@@ -74,4 +86,18 @@ const isPhone = computed(() => $q.screen.lt.sm);
 .of.is-wide .of-bottom { padding: 14px 24px 20px; }
 .of.is-wide .of-top { padding: 14px 16px 10px 24px; }
 .of.is-wide .of-main { margin: 0 16px; }
+</style>
+
+<style>
+/* Put on the Next button once the scene has played all the way through: one gentle
+   pulse that says "that's the whole thing", never a loop. Global because the button
+   belongs to whoever uses the frame (the tour, the quick start). Under reduced
+   motion the bar still fills, and there is just no pulse. */
+.of-pulse { animation: of-pulse 0.9s ease-out 1; }
+@keyframes of-pulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--q-primary) 50%, transparent); }
+  40% { transform: scale(1.05); box-shadow: 0 0 0 7px color-mix(in srgb, var(--q-primary) 18%, transparent); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--q-primary) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .of-pulse { animation: none; } }
 </style>

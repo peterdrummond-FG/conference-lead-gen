@@ -274,6 +274,7 @@ it is clickable and nothing is sent anywhere. Where things live:
 | The rules (when the splash shows, what's recorded, the reminder, what the remainder plays) | `frontend/src/utils/onboardingFlow.ts` (pure, tested) |
 | The words | `components/tour/tourCopy.ts` (scenes, splash, quick start, "Your turn") and `tourText.ts` (what our number texts back) |
 | Wiring words to scene components | `components/tour/tourFlow.ts` (`playlist`) |
+| How long each scene plays (for the progress bar) | `components/tour/tourLengths.ts`, held to the real scripts by `tourLengths.test.mjs` |
 | The screens | `components/tour/OnboardingFlow.vue` (splash, quick start, tour, "Your turn"), `TourPlayer.vue`, `TourReminder.vue` |
 | Connecting it to the account and router | `components/tour/OnboardingHost.vue`, `stores/tour-store.ts` (per-tab progress), `stores/session-store.ts` (`recordOnboarding`) |
 | What the account remembers | `profiles.onboarding_*` / `tour_resume_from` (migration `20261006120000_onboarding_v2.sql`), read by `me`, written by `profiles-complete-onboarding` |
@@ -345,6 +346,23 @@ Things to preserve:
   with its waits cut and counts completed runs in `<html data-tour-cycles>`; a scene that
   can't find what it points at logs an error and stops. "Cycles went up and the console is
   clean" for every scene, per role and width, is the check run before shipping.
+- **The progress bar shows when a scene is done.** The current segment of the bar fills
+  as the scene plays (`OnboardingFrame`'s `fill`); finished scenes are full and later ones
+  empty. Watching on a phone, you couldn't tell how long a scene ran and tapped Next
+  halfway through. The fill is the engine's own count of the ms each `wait()` asked for
+  (`createRun`'s `elapsed()`, pause-aware, not wall-clock) divided by the scene's declared
+  length in `tourLengths.ts`, held at 97% until the script really finishes and then
+  snapped to 100%, so a slow device never shows "done" early. On that first finish Next
+  pulses once (`.of-pulse`; no pulse under reduced motion) and the scene keeps looping;
+  Next works at any time. Back, Next, a replay or a phone/laptop flip restart the bar.
+  The same goes for the quick start's first screen. A scene's length is a number someone
+  has to keep right, so `tourLengths.test.mjs` runs every real scene script (the `.vue`
+  file's own `<script setup>`, compiled with Vue's SFC compiler, against the real engine
+  in fast mode) for every variant (rep/manager QR, phone/laptop, import-only) and fails if
+  a declared length is more than 15% off. A smooth scroll's real duration isn't modelled,
+  hence the allowance. Re-measure with `TOUR_LENGTHS_PRINT=1`. CI used to run only the
+  frontend typecheck, not `npm test`, so none of these tests (Smart view, tour copy)
+  gated anything; both CI files now run it.
 - **The copy makes promises about Setup and Review.** If Smart's Ready rule, Setup's flow,
   the text-in replies or the intake form change, update the tour's copy in the same change.
 

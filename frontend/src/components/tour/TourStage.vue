@@ -24,10 +24,18 @@ import type { Role } from '@/types/review';
 import { useQuasar } from 'quasar';
 import TourDevice from './TourDevice.vue';
 import { createRun, TourCancelled, type TourDeviceApi, type TourRun } from './useTourScript';
+import { sceneMs } from './tourLengths';
 
 // importOnly: the version of "Send us leads" that starts at Import (see tourCopy.ts).
 // Bound only when true, so a scene that has no such prop never receives the attribute.
-const props = defineProps<{ scene: Component; manager: boolean; role?: Role; importOnly?: boolean }>();
+const props = defineProps<{ scene: Component; sceneId: string; manager: boolean; role?: Role; importOnly?: boolean }>();
+// What the progress bar needs to know. `restart`: the scene is starting over from
+// the top (just mounted, or the layout flipped between phone and laptop), so its bar
+// resets. `progress`: how far through the first play it is, 0 to 1, held at 0.97
+// until the script really finishes. `played`: the first play finished (the bar has
+// just been sent 1). The scene then keeps looping behind the finished bar and says
+// nothing more: leaving early is the person's choice, the bar just shows it.
+const emit = defineEmits<{ restart: []; progress: [fraction: number]; played: [] }>();
 // The scenes' header is the app's own AppHeader, which differs by role (an admin has
 // View as, Solutions Success shows a name), so the role goes down by provide/inject:
 // a prop on every scene would land as an attribute on whatever element each one renders.
@@ -53,17 +61,33 @@ let token = 0;
 // that can't find what it points at logs an error and stops instead, so
 // "cycles went up and the console is clean" means the scene played to the end.
 const FAST = import.meta.env.DEV && new URLSearchParams(window.location.search).has('fast');
+// How far the bar is allowed to get before the script has actually finished: a slow
+// device or a long smooth scroll then never shows "done" early.
+const HOLD = 0.97;
 async function play() {
   const mine = ++token;
+  emit('restart');
   await nextTick();
   const alive = () => mine === token && !!device.value && !!sceneRef.value;
+  let played = false;
+  const ms = sceneMs(props.sceneId, { manager: props.manager, phone: isPhone.value, importOnly: !!props.importOnly });
   while (alive()) {
-    const run = createRun(device.value!, { paused: () => paused.value, alive, fast: FAST });
+    const run = createRun(device.value!, {
+      paused: () => paused.value,
+      alive,
+      fast: FAST,
+      onTick: (elapsed) => { if (!played) emit('progress', Math.min(HOLD, elapsed / ms)); },
+    });
     try {
       sceneRef.value!.reset();
       run.hideFinger();
       await nextTick();
       await sceneRef.value!.run(run);
+      if (!played) {
+        played = true;
+        emit('progress', 1);
+        emit('played');
+      }
       if (FAST) document.documentElement.dataset.tourCycles = String(Number(document.documentElement.dataset.tourCycles ?? 0) + 1);
       await run.wait(2500);
     } catch (e) {
