@@ -188,3 +188,9 @@ been replaced, the replacement is noted here instead of rewriting history.
   runs; the `contact_intent*` columns are kept on purpose, and
   `insert_contact_with_duplicate_check` still maps a `contact_intent` payload key
   (nothing sends one). Recreate that function before ever dropping the columns.
+
+- **`20261008100000_voice_memo_actions.sql`** — adds `note_submissions.source_message_id`
+  and replaces `claim_unlinked_audio_messages` (originally in
+  `20260922110000_voice_memo_link_state_and_ocr_retry.sql`) so it skips a memo with a
+  create-contacts submission in flight. The older migration's definition is no longer
+  the live one; read this one.

@@ -1,7 +1,8 @@
 // Stage 17 — POST { noteSubmissionId, firstName, lastName, email?, phone?,
 //        title?, districtName?, schoolName?, interactionNotes?,
 //        extractionConfidence }
-// -> { id, createdAt }, 201. Called only by local-agent's noteLoop once
+// -> { id, createdAt }, 201. Called only by local-agent's noteLoop (and the n8n
+// note pipeline) once
 // extract-note-contacts has split a pasted note into people — never a
 // browser. Authenticated via the service-role key, not a logged-in user.
 //
@@ -14,6 +15,13 @@ import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts
 import { isServiceRoleCall } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { resolveDistrict, resolveSchool } from "../_shared/contacts.ts";
+
+// A submission can carry a voice memo it came from (note_submissions.source_message_id,
+// set by inbound-messages-create-contacts when a person taps Create contacts on a
+// memo). Its people are filed as source='voice_memo' against that memo, exactly like
+// the ones contacts-from-voice-memo creates, so Contacts says "Voice memo" and
+// deleting the memo's contacts cleans up its audio.
+const nameKey = (first: string, last: string) => `${first.trim().toLowerCase()}\u0000${last.trim().toLowerCase()}`;
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -48,7 +56,7 @@ Deno.serve(async (req) => {
   // the contact's own fields.
   const { data: submission, error: submissionError } = await supabase
     .from("note_submissions")
-    .select("id, event_id, submitted_by, from_phone, event:events(state)")
+    .select("id, event_id, submitted_by, from_phone, source_message_id, event:events(state)")
     .eq("id", body.noteSubmissionId)
     .maybeSingle();
   if (submissionError) return errorResponse(req, 500, submissionError.message);
@@ -80,6 +88,25 @@ Deno.serve(async (req) => {
     repId = rep?.id ?? null;
   }
 
+  const memoId: string | null = submission.source_message_id ?? null;
+
+  // A replay of the same person from the same memo (the pipeline retried after a
+  // crash between "contact created" and the submission being marked done) is a
+  // no-op, not a second contact. Compared in JS, not ilike: a name is model output
+  // and ILIKE would treat a % or _ in it as a wildcard.
+  const findExisting = async () => {
+    if (!memoId) return null;
+    const { data } = await supabase
+      .from("contacts")
+      .select("id, created_at, first_name, last_name")
+      .eq("source_message_id", memoId)
+      .eq("source", "voice_memo");
+    const wanted = nameKey(body.firstName, body.lastName);
+    return (data ?? []).find((r) => nameKey(r.first_name ?? "", r.last_name ?? "") === wanted) ?? null;
+  };
+  const already = await findExisting();
+  if (already) return jsonResponse(req, { id: already.id, createdAt: already.created_at, alreadyProcessed: true });
+
   // deno-lint-ignore no-explicit-any
   const eventState = (submission.event as any)?.state ?? null;
   const district = await resolveDistrict(supabase, eventState, body.districtName);
@@ -94,7 +121,7 @@ Deno.serve(async (req) => {
     .rpc("insert_contact_with_duplicate_check", {
       payload: {
         event_id: submission.event_id,
-        source: "note",
+        source: memoId ? "voice_memo" : "note",
         rep_id: repId,
         first_name: body.firstName.trim(),
         // A blank surname stays blank rather than becoming a placeholder —
@@ -112,10 +139,42 @@ Deno.serve(async (req) => {
         // Seeds interaction_notes at insert time.
         interaction_notes: body.interactionNotes?.trim() || null,
         source_note_id: submission.id,
+        source_message_id: memoId,
       },
     })
     .single();
-  if (error) return errorResponse(req, 500, error.message);
+  if (error) {
+    // Unique-violation race with a concurrent replay of the same person.
+    if (error.code === "23505") {
+      const raced = await findExisting();
+      if (raced) return jsonResponse(req, { id: raced.id, createdAt: raced.created_at, alreadyProcessed: true });
+    }
+    return errorResponse(req, 500, error.message);
+  }
 
-  return jsonResponse(req, { id: data.id, createdAt: data.created_at }, 201);
+  // supabase-js types an rpc() result as unknown; this one returns the inserted row.
+  const row = data as { id: string; created_at: string };
+
+  // Only once a person really exists does the memo leave Contacts' voice memo list
+  // (reserve -> work -> confirm): a run that finds nobody leaves it where it was, so
+  // nothing the rep said is hidden behind a "done" that produced nothing. 'linked'
+  // stays 'linked' (an existing contact already has it attached); the new contact's
+  // id is still recorded against the memo.
+  if (memoId) {
+    const { data: memo } = await supabase
+      .from("inbound_messages")
+      .select("link_status, matched_contact_ids")
+      .eq("id", memoId)
+      .maybeSingle();
+    if (memo) {
+      const ids = new Set<string>(memo.matched_contact_ids ?? []);
+      ids.add(row.id);
+      const patch: Record<string, unknown> = { matched_contact_ids: [...ids] };
+      if (["unlinked", "no_candidate_found"].includes(memo.link_status)) patch.link_status = "contact_created";
+      const { error: memoError } = await supabase.from("inbound_messages").update(patch).eq("id", memoId);
+      if (memoError) console.error("could not mark voice memo contact_created", memoError);
+    }
+  }
+
+  return jsonResponse(req, { id: row.id, createdAt: row.created_at }, 201);
 });

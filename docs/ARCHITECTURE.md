@@ -582,9 +582,17 @@ the memo" fallbacks were worse than the problem they tried to solve.
 `claim_unlinked_audio_messages` retries a memo up to `LINK_MAX_ATTEMPTS`
 times against whatever candidates exist *at attempt time* — it can never
 close a memo out on its own, because "nobody yet" and "nobody ever" look
-identical from inside the loop. Contacts' unresolved-intake panel
-(`inbound-messages-unresolved-list`) surfaces exactly those two closing
-moves to a human instead:
+identical from inside the loop. Contacts' **Voice memos** section
+(`inbound-messages-unresolved-list`; `components/memos/`, state in
+`composables/useVoiceMemos.ts`, words and rules in `utils/voiceMemos.ts`) puts
+those memos in front of a person, in amber, above the contacts. A memo is listed
+only once it has a transcript, and only while its `link_status` is `unlinked`
+("Still matching") or `no_candidate_found` ("Needs review"); one that names a
+contact already in Contacts links itself and never appears. On a phone each memo
+is one thin card with every control on it; on a laptop it is a thin row that opens
+in the right pane (player, full transcript, the actions), where the contact editor
+normally is. The failed photos and memos the old panel also held stay in
+`UnresolvedIntakePanel`, now only that. Four actions:
 
 - `inbound-messages-assign` — attach the full transcript to a contact the
   reviewer picks by hand (candidates from `inbound-messages-link-candidates`,
@@ -598,6 +606,31 @@ moves to a human instead:
   `contacts-bulk-delete` uses against a stale client selection: a memo the
   auto-linker just matched out from under the reviewer can never be
   deleted through this endpoint.
+  Refused (409) while a Create contacts run is in flight for the memo.
+- `inbound-messages-retry` — also **Retry matching**: a memo at
+  `no_candidate_found` goes back to `unlinked` with `link_attempts = 0`, guarded on
+  the status it was read at, so the sweep picks it up on its next pass. Offered only
+  on Needs review; a memo still `unlinked` is already being retried and is refused.
+  (The same endpoint still puts a *failed* photo or memo back in the queue.)
+- `inbound-messages-create-contacts` — **Create contacts**: for a memo about
+  someone new. Records the transcript as a `note_submissions` row with
+  `source_message_id` set and `from_phone` = the memo's sender, so the existing
+  note extraction (`extract-note-contacts` via the agent / n8n) does the work and
+  nothing here calls a model. `contacts-from-note` sees `source_message_id`, files
+  each person as `source='voice_memo'` against the memo (deduped on memo + name, same
+  index as `contacts-from-voice-memo`) and only then marks the memo `contact_created`,
+  so a run that finds nobody leaves the memo listed (reserve → work → confirm).
+  Bounded: one run in flight per memo, three runs in total (`MAX_ATTEMPTS`), the
+  transcript capped at the notes limit. While a run is in flight
+  `claim_unlinked_audio_messages` skips the memo (the sweep and the person must not
+  both create the same people). The list reports it as `create: working | none |
+  failed`, which is what the card shows ("Reading memo…"), and the page polls every
+  6s while any memo is working.
+- `inbound-messages-audio` — the play button. Returns `{ url }`, a 5-minute signed
+  `voice-memos` URL (JSON rather than contacts-photo's 302, because an `<audio>`
+  element can't send the Authorization header). Same ownership rule as the others;
+  404 once the 90-day purge has removed the file, and the card then shows no
+  player. `index.html`'s CSP gained `media-src 'self' https://*.supabase.co` for it.
 
 ### Voice-memo fallback contact creation
 

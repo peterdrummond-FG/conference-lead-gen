@@ -9,7 +9,13 @@
 //     20260922110000_voice_memo_link_state_and_ocr_retry.sql. 'unlinked'
 //     rows are still being retried automatically (claim_unlinked_audio_messages);
 //     included here so a human can see and, if they recognize who it's
-//     about, resolve it themselves rather than only ever waiting.
+//     about, resolve it themselves rather than only ever waiting. Only memos
+//     that already have a transcript: one still being transcribed has nothing
+//     to read, assign or extract people from, and would sit here as "(no
+//     transcript)" for the seconds it takes. Each also says whether its audio
+//     still exists (hasAudio; the 90-day purge nulls storage_path), who sent it
+//     (repName, for a manager's list) and what a person's "Create contacts" is
+//     doing (create: working / none / failed, null when nobody has tried).
 //   - failedIntake: any inbound_messages row stuck at status='failed'
 //     (photo OCR or transcription) — pairs with inbound-messages-retry's
 //     manual retry action.
@@ -54,9 +60,11 @@ Deno.serve(async (req) => {
 
   let audioQuery = supabase
     .from("inbound_messages")
-    .select("id, transcript, received_at, from_phone, event_id, link_status, link_attempts, event:events(name)")
+    .select("id, transcript, received_at, from_phone, event_id, link_status, link_attempts, storage_path, event:events(name)")
     .eq("kind", "audio")
     .in("link_status", ["unlinked", "no_candidate_found"])
+    .not("transcript", "is", null)
+    .neq("transcript", "")
     .order("received_at", { ascending: false });
   let failedQuery = supabase
     .from("inbound_messages")
@@ -81,6 +89,43 @@ Deno.serve(async (req) => {
   if (audioError) return errorResponse(req, 500, audioError.message);
   if (failedError) return errorResponse(req, 500, failedError.message);
 
+  // Two small lookups keyed on the memos just fetched, not joins: the sender's name
+  // (a phone number maps to at most one profile) and every Create-contacts attempt
+  // made for these memos, newest first so the first one seen per memo is the latest.
+  const memoIds = (audio ?? []).map((m) => m.id);
+  const phones = [...new Set((audio ?? []).map((m) => m.from_phone))];
+  const [{ data: reps }, { data: submissions }] = await Promise.all([
+    phones.length
+      ? supabase.from("profiles").select("name, phone_number").in("phone_number", phones)
+      : Promise.resolve({ data: [] as { name: string; phone_number: string }[] }),
+    memoIds.length
+      ? supabase
+        .from("note_submissions")
+        .select("source_message_id, status, error, created_at")
+        .in("source_message_id", memoIds)
+        .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as { source_message_id: string; status: string; error: string | null }[] }),
+  ]);
+  const repByPhone = new Map((reps ?? []).map((r) => [r.phone_number, r.name]));
+  const attemptsByMemo = new Map<string, { latest: { status: string; error: string | null }; count: number }>();
+  for (const sub of submissions ?? []) {
+    const seen = attemptsByMemo.get(sub.source_message_id);
+    if (seen) seen.count += 1;
+    else attemptsByMemo.set(sub.source_message_id, { latest: sub, count: 1 });
+  }
+  // A memo is only listed while it has no contact, so a completed submission here
+  // means the extraction ran and found nobody ("none"), not that it succeeded.
+  const createState = (memoId: string) => {
+    const a = attemptsByMemo.get(memoId);
+    if (!a) return null;
+    const status = ["pending_extraction", "processing"].includes(a.latest.status)
+      ? "working"
+      : a.latest.status === "failed"
+      ? "failed"
+      : "none";
+    return { status, error: status === "failed" ? a.latest.error : null, attempts: a.count };
+  };
+
   return jsonResponse(req, {
     // deno-lint-ignore no-explicit-any
     audio: (audio ?? []).map((m: any) => ({
@@ -88,10 +133,13 @@ Deno.serve(async (req) => {
       transcript: m.transcript,
       receivedAt: m.received_at,
       fromPhone: m.from_phone,
+      repName: repByPhone.get(m.from_phone) ?? null,
       eventId: m.event_id,
       eventName: m.event?.name ?? null,
       linkStatus: m.link_status,
       linkAttempts: m.link_attempts,
+      hasAudio: !!m.storage_path,
+      create: createState(m.id),
     })),
     // deno-lint-ignore no-explicit-any
     failedIntake: (failedIntake ?? []).map((m: any) => ({

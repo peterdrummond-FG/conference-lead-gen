@@ -242,6 +242,22 @@ Supabase CLI on this machine.
   district for you" hint is a promise about that pipeline. Details: `docs/ARCHITECTURE.md`,
   "State, District and School".
 
+- **Voice memos in Contacts are only the ones nobody could match, and a memo is only
+  "done" once a person exists.** The amber "Voice memos" section lists `inbound_messages`
+  audio that has a transcript and is `unlinked` (Still matching) or `no_candidate_found`
+  (Needs review); one that names an existing contact links itself and never shows
+  (Peter, 2026-10-07: a recognised contact must not sit here). Phone: one thin card with
+  every control on it, nothing expands; laptop: a thin row that opens in the right pane.
+  Retry matching only on Needs review. **Create contacts** reuses the pasted-note
+  extraction (`note_submissions.source_message_id`; `contacts-from-note` files people as
+  `voice_memo` and flips the memo to `contact_created` only after the first contact is
+  inserted), and `claim_unlinked_audio_messages` skips a memo while one is running, so the
+  sweep and a person can't both create the same people. If you change what these buttons
+  do, update `utils/voiceMemos.ts`'s words and its source-reading tests, and redeploy
+  `contacts-from-note` plus the four `inbound-messages-*` functions. The player needs
+  `media-src` in `index.html`'s CSP; audio is deleted after 90 days, so old memos have
+  no player. Details: `docs/ARCHITECTURE.md`, "Human override".
+
 - **The tab is called "Kiosk", the URL is still `/connect`.** Only the label in
   `MainLayout.vue` changed. `/connect/<repSlug>` is printed on slides and QR
   codes, so the route, its redirects and `generateConnectSlide.ts` keep the old

@@ -91,18 +91,33 @@ export interface UpdateContactPayload {
   followedUp?: boolean;
 }
 
-// The two "went missing" shapes surfaced by inbound-messages-unresolved-list
-// (2026-09-22 voice-memo audit) — Contacts previously had no visibility into
-// either, since it only ever lists contacts.
+// What a person's "Create contacts" on a memo is doing (inbound-messages-unresolved-list).
+// working = the transcript is queued or being read; none = it ran and found nobody
+// (the memo stays listed, so nothing is hidden behind a "done" that made no one);
+// failed = the run itself broke. attempts counts every try, capped server-side.
+export interface MemoCreateState {
+  status: 'working' | 'none' | 'failed';
+  error: string | null;
+  attempts: number;
+}
+
+// A voice memo nobody has matched to a contact (inbound-messages-unresolved-list). Only
+// memos that already have a transcript are listed. linkStatus 'unlinked' = still being
+// retried automatically ("Still matching"); 'no_candidate_found' = it gave up ("Needs
+// review"), the only state with a Retry matching button.
 export interface UnresolvedAudioMemo {
   id: string;
   transcript: string | null;
   receivedAt: string;
   fromPhone: string;
+  repName: string | null;
   eventId: string | null;
   eventName: string | null;
   linkStatus: 'unlinked' | 'no_candidate_found';
   linkAttempts: number;
+  // False once the 90-day purge has removed the recording: the card shows no player.
+  hasAudio: boolean;
+  create: MemoCreateState | null;
 }
 
 // Assignment target for the "Assign to contact" action on an unmatched
