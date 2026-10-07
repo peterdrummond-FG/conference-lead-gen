@@ -65,3 +65,18 @@ test('the fields load the whole list once and filter on the device', () => {
   assert.match(c, /all: 1/, 'the lists are fetched whole (all=1)');
   assert.ok(!/search/.test(c.replace(/\/\/.*$/gm, '')), 'no per-keystroke server search');
 });
+
+// 2026-10-07: InstitutionFields renders State, District and School as a fragment (three roots), and a
+// scoped style only reaches a child's SINGLE root. The editor's `.le-s2 / .le-s4 / .le-s6` column
+// spans were plain scoped rules, so the three fields never got them and each squeezed into one of the
+// grid's six tracks on a phone ("Texas", an empty District and "Chocta" side by side, arrows over the
+// text). Any host that hands layout classes to the component must style them with :deep.
+test('the lead editor spans the institution fields with :deep rules, which reach a fragment', () => {
+  const src = readFileSync(join(SRC, 'components/contacts/ContactEditor.vue'), 'utf8');
+  const classes = /state-class="(le-s\d)" district-class="(le-s\d)" school-class="(le-s\d)"/.exec(src);
+  assert.ok(classes, 'ContactEditor passes layout classes to InstitutionFields');
+  for (const cls of classes.slice(1)) {
+    assert.match(src, new RegExp(`\\.le-form :deep\\(\\.${cls}\\)`), `.${cls} must be a :deep rule`);
+    assert.doesNotMatch(src, new RegExp(`^\\.${cls}\\s*\\{`, 'm'), `.${cls} must not be a plain scoped rule`);
+  }
+});
