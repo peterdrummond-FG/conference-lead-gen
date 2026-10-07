@@ -23,14 +23,14 @@
              including ones with no rep, so a rep (or an admin looking as one) must not
              see it. -->
         <UnassignedScansBanner v-if="canSeeUnassigned" />
-        <UnresolvedIntakePanel :items="failedIntake" :retrying="voice.retryingFailed" @retry="(id) => void voice.retryFailed(id)" />
-
-        <!-- Voice memos nobody could match to a contact. Hidden in the Rejected view, which
-             is about contacts. On a laptop a memo opens in the right pane; on a phone the
-             card carries every control. -->
+        <!-- "Needs attention": voice memos nobody could match to a contact, and photos or
+             memos that failed to process. Closed until opened. Hidden in the Rejected view,
+             which is about contacts. On a laptop an unmatched memo opens in the right pane;
+             on a phone, and for a failed item, the card carries every control. -->
         <MemoSection
           v-if="!showRejected"
           :memos="voiceMemos"
+          :failed="failedIntake"
           :desktop="isDesktop"
           :active-id="isDesktop ? selectedMemoId : null"
           :show-rep="!isSales"
@@ -41,6 +41,9 @@
           @create="(id) => void voice.createContacts(id)"
           @retry="(id) => void voice.retryMatching(id)"
           @delete="voice.confirmDelete"
+          @retry-failed="(m) => void voice.retryFailed(m)"
+          @delete-failed="voice.confirmDeleteFailed"
+          @view-photo="(id) => (photoId = id)"
         />
 
         <div v-if="showRejected && visible.length" class="rs-bulk">
@@ -156,6 +159,8 @@
       />
     </div>
 
+    <MemoPhotoDialog :photo-id="photoId" :load="voice.photoBlob" @close="photoId = null" />
+
     <!-- Phone: Assign on a memo card. -->
     <MemoAssignSheet
       v-if="!isDesktop"
@@ -199,7 +204,7 @@ import { ref, reactive, shallowRef, computed, watch, onMounted, onBeforeUnmount 
 import { useRouter } from 'vue-router';
 import { useQuasar, Dialog } from 'quasar';
 import { api } from '@/boot/axios';
-import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
+import MemoPhotoDialog from '@/components/memos/MemoPhotoDialog.vue';
 import MemoSection from '@/components/memos/MemoSection.vue';
 import MemoPane from '@/components/memos/MemoPane.vue';
 import MemoAssignSheet from '@/components/memos/MemoAssignSheet.vue';
@@ -467,6 +472,9 @@ async function openMemo(id: string) {
   if (!activeMemo.value && !(await confirmDiscard())) return;
   selectedMemoId.value = id;
 }
+
+// The failed photo being looked at.
+const photoId = ref<string | null>(null);
 
 // Phone: the memo whose Assign sheet is open.
 const assignMemoId = ref<string | null>(null);
