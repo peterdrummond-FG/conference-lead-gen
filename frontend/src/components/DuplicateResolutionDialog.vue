@@ -15,17 +15,17 @@
         <q-btn flat round dense icon="close" aria-label="Close without changing anything" @click="close" />
         <div class="dup-head-text">
           <div class="dup-title">Resolve duplicate</div>
-          <div v-if="group[0]" class="dup-sub">{{ group.length }} leads named {{ group[0].firstName }} {{ group[0].lastName }}</div>
+          <div v-if="group[0]" class="dup-sub">{{ group.length }} contacts named {{ group[0].firstName }} {{ group[0].lastName }}</div>
         </div>
       </div>
 
       <div class="dup-scroll">
         <div v-if="loading" class="text-center q-pa-lg"><q-spinner size="32px" /></div>
 
-        <div v-else-if="group.length < 2" class="dup-note">This lead has no other duplicates any more. Close this and refresh Contacts.</div>
+        <div v-else-if="group.length < 2" class="dup-note">This contact has no other duplicates any more. Close this and refresh Contacts.</div>
 
         <template v-else>
-          <div class="dup-hint">Pick the record that looks right. It becomes the lead, and the others are rejected as duplicates.</div>
+          <div class="dup-hint">Pick the record that looks right. It becomes the contact, and the others are rejected as duplicates.</div>
 
           <div class="dup-recs" role="radiogroup" aria-label="Which record to keep">
             <div
@@ -126,9 +126,9 @@
            one-way change (nothing re-flags these rows), so it asks first. -->
       <q-dialog v-model="confirmSeparate" :position="isPhone ? 'bottom' : 'standard'">
         <q-card class="dup-sheet">
-          <div class="dup-sheet-title">Keep these as separate leads?</div>
+          <div class="dup-sheet-title">Keep these as separate contacts?</div>
           <p class="dup-sheet-body">
-            All {{ group.length }} stay in Contacts as their own leads and no longer show as possible duplicates. Use this when they're different people who share a name.
+            All {{ group.length }} stay in Contacts as their own contacts and no longer show as possible duplicates. Use this when they're different people who share a name.
           </p>
           <q-btn unelevated no-caps color="primary" class="full-width dup-foot-btn" label="Keep separate" :loading="separating" @click="keepSeparate" />
           <q-btn flat no-caps class="full-width dup-foot-btn q-mt-xs" label="Cancel" :disable="separating" @click="confirmSeparate = false" />
@@ -307,7 +307,7 @@ async function keepSeparate() {
   try {
     await api.post('/contacts-mark-not-duplicate', null, { params: { id: props.contactId } });
     confirmSeparate.value = false;
-    Notify.create({ type: 'positive', message: 'Kept as separate leads' });
+    Notify.create({ type: 'positive', message: 'Kept as separate contacts' });
     emit('resolved');
     close();
   } finally {

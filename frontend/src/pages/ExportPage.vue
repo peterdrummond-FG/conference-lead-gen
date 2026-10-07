@@ -48,7 +48,7 @@ async function download() {
     if (!batchId) {
       Notify.create({
         type: 'warning',
-        message: 'Downloaded, but the export could not be confirmed — these leads will appear in the next export too.',
+        message: 'Downloaded, but the export could not be confirmed — these contacts will appear in the next export too.',
       });
       await load();
       return;
@@ -70,7 +70,7 @@ async function confirmExport() {
     await load();
     Notify.create({
       type: 'positive',
-      message: `Exported ${count} ${count === 1 ? 'lead' : 'leads'}. They're marked as synced.`,
+      message: `Exported ${count} ${count === 1 ? 'contact' : 'contacts'}. They're marked as synced.`,
     });
   } finally {
     confirming.value = false;

@@ -30,8 +30,8 @@
         </div>
         <div class="le-nav">
           <span v-if="position" class="le-pos">{{ position.index }} of {{ position.total }}</span>
-          <q-btn v-if="position" flat round dense icon="expand_less" aria-label="Previous lead" :disable="position.index <= 1" @click="$emit('prev')" />
-          <q-btn v-if="position" flat round dense icon="expand_more" aria-label="Next lead" :disable="position.index >= position.total" @click="$emit('next')" />
+          <q-btn v-if="position" flat round dense icon="expand_less" aria-label="Previous contact" :disable="position.index <= 1" @click="$emit('prev')" />
+          <q-btn v-if="position" flat round dense icon="expand_more" aria-label="Next contact" :disable="position.index >= position.total" @click="$emit('next')" />
           <q-btn v-if="closable" flat round dense icon="close" aria-label="Close" @click="$emit('close')" />
         </div>
       </div>
@@ -55,7 +55,7 @@
            still processing). Replaces the old list of problems, which only ever
            named what was wrong and left the rep to guess what right looked like.
            Same rules as the chip and the button (readinessChecklist). -->
-      <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this lead needs before it can be confirmed">
+      <ul v-if="contact.reviewStatus === 'needs_review'" class="le-check" aria-label="What this contact needs before it can be confirmed">
         <li v-for="item in shownChecklist" :key="item.key" class="le-check-item" :class="`is-${item.state}`">
           <q-icon :name="checkIcon(item.state)" size="18px" class="le-check-icon" />
           <span class="le-check-text">
@@ -112,7 +112,7 @@
             </q-item>
           </q-list>
         </template>
-        <div v-else class="text-caption text-grey-8">No close match found. Confirming sends this as a new lead.</div>
+        <div v-else class="text-caption text-grey-8">No close match found. Confirming sends this as a new contact.</div>
       </div>
 
       <DuplicateResolutionDialog v-model="showDuplicateDialog" :contact-id="contact.id" @resolved="$emit('duplicatesResolved')" />
@@ -160,7 +160,7 @@
 
           <!-- Same State / District / School fields as the attendee form and the merge dialog. -->
           <InstitutionFields
-            :model="draft" variant="editor"
+            :model="draft" variant="editor" :readonly="demo"
             state-label="State" district-label="District" school-label="School / campus"
             state-class="le-s2" district-class="le-s4" school-class="le-s6"
           />
@@ -253,6 +253,11 @@ const props = defineProps<{
   closable?: boolean;
   showKeys?: boolean;
   position?: { index: number; total: number } | null;
+  // The onboarding tour draws this editor with sample contacts: the State / District /
+  // School fields must not fetch their lists (the sample ids are not real, and the real
+  // schools-list answers 400 and the app toasts it). The same switch the attendee form
+  // gets in the tour (InstitutionFields `readonly`).
+  demo?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -460,7 +465,7 @@ const footNote = computed(() => {
   if (c.reviewStatus !== 'needs_review') return '';
   if (c.matchStatus === 'pending') return 'The automatic match gave up, so this can\'t be confirmed yet. Use Retry match above.';
   if (c.localDuplicateOfContactName) return "Possible duplicate. You'll be asked to check before confirming.";
-  if (c.matchStatus === 'ambiguous') return 'No confirmed match. Confirming sends this as a new lead.';
+  if (c.matchStatus === 'ambiguous') return 'No confirmed match. Confirming sends this as a new contact.';
   return '';
 });
 

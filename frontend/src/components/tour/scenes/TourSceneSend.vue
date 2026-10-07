@@ -117,7 +117,7 @@ async function run(t: TourRun) {
   t.hideFinger();
   notePhase.value = 'working';
   for (const [i, c] of NOTE_RESULTS.entries()) {
-    await t.wait(900);
+    await t.wait(700);
     noteContacts.value = [...noteContacts.value, c];
     if (i === 0) {
       await nextTick();
@@ -125,17 +125,17 @@ async function run(t: TourRun) {
     }
   }
   notePhase.value = 'done';
-  await t.wait(400);
-  await t.ring(t.find('.notes-column .q-card').parentElement ?? t.find('.notes-column .q-card'), 2200);
+  await t.wait(300);
+  await t.ring(t.find('.notes-column .q-card').parentElement ?? t.find('.notes-column .q-card'), 1500);
 
   // They land in Contacts, and are still being matched: that takes a few minutes.
   await t.tap(t.findText('Open Contacts'), { press: true });
   leads.value = allSentLeads();
   part.value = 'contacts';
   await nextTick();
-  await t.wait(700);
+  await t.wait(400);
   t.hideFinger();
-  await t.ring(t.findIncl('processing', '.rs-sgm'), 2600);
+  await t.ring(t.findIncl('Processing', '.rs-sgm'), 1600);
 }
 
 defineExpose({ run, reset });

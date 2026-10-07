@@ -33,16 +33,7 @@
         <!-- With Ready selected, everything listed is ready, so one button confirms
              the lot (the same dialog and request as ever). It acts only on what is
              on screen. -->
-        <q-btn
-          v-if="showConfirmAll"
-          unelevated
-          no-caps
-          color="positive"
-          icon="done_all"
-          :label="`Confirm all ${readyCount}`"
-          class="rs-confirm-all"
-          @click="confirmApproveReady"
-        />
+        <ContactsConfirmAll v-if="showConfirmAll" :count="readyCount" @click="confirmApproveReady" />
 
         <!-- A rep who picked Earlier or All conferences: one section per conference,
              so a big history stays tidy. -->
@@ -171,6 +162,7 @@ import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
 import UnassignedScansBanner from '@/components/UnassignedScansBanner.vue';
 import ContactsHeader from '@/components/ContactsHeader.vue';
 import ContactsFilter from '@/components/ContactsFilter.vue';
+import ContactsConfirmAll from '@/components/ContactsConfirmAll.vue';
 import ContactList from '@/components/contacts/ContactList.vue';
 import ContactEditor from '@/components/contacts/ContactEditor.vue';
 import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
@@ -727,7 +719,6 @@ onBeforeUnmount(() => {
 }
 .rs-sec-toggle:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 6px; }
 
-.rs-confirm-all { width: 100%; min-height: 44px; margin: 4px 0 10px; font-size: 15px; font-weight: 600; }
 .rs-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .rs-bulk-btn { min-height: 44px; }
 

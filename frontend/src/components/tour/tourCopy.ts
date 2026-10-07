@@ -45,21 +45,21 @@ export const SCENE_COPY: SceneCopyEntry[] = [
   },
   {
     id: 'send',
-    title: 'Send us leads',
+    title: 'Send us contacts',
     body: 'Text a photo of a business card, conference ID or contact list, or a voice memo. Typing it out? One person per text.',
-    note: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one lead per person.',
+    note: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one contact per person.',
     // The quick start already showed the texting half, so a quick-start rep's
     // reminder plays this scene starting at the Import button.
     importOnly: {
-      title: 'Send us leads',
-      body: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one lead per person.',
+      title: 'Send us contacts',
+      body: 'Jotted down a few names? Tap **Import** in Contacts and paste them. We make one contact per person.',
       note: 'You can also text photos, a voice memo, or one person at a time.',
     },
   },
   {
     id: 'qr',
     title: 'Or let them add themselves',
-    body: 'Tap the QR icon at the top to show your code. People scan it, fill in their details, and the lead comes to you.',
+    body: 'Tap the QR icon at the top to show your code. People scan it, fill in their details, and the contact comes to you.',
     note: 'Setting up an iPad at the booth? Open **Kiosk**.',
     forManagers: {
       body: 'Every rep has a QR code of their own. Save it for them from **Admin**, under Team.',
@@ -68,13 +68,19 @@ export const SCENE_COPY: SceneCopyEntry[] = [
   {
     id: 'review',
     title: 'Check it, then confirm it',
-    body: 'Every lead arrives already checked against Zoho. Tap one, fix anything missing, tick **Followed up**, then **Confirm**.',
-    note: 'Notes you add go to Zoho with the lead.',
+    // New contacts show Processing in the scene before this one, so this can't say
+    // they "arrive checked": the Zoho match takes a few minutes (twilio-webhook says
+    // so too). The colours are the status bar's and the left edge of every card.
+    body: 'New contacts are checked against Zoho within a few minutes. Green is ready, orange needs something, blue is still processing. Tap **Ready**, then **Confirm all**.',
+    note: "Or open one, fix what's missing, tick **Followed up**, then **Confirm**. Tap the conference name or **Filter** for rejected contacts and earlier conferences.",
+    forManagers: {
+      note: "Or open one, fix what's missing, tick **Followed up**, then **Confirm**. Tap **Filter** for rejected contacts or to pick a conference.",
+    },
   },
   {
     id: 'export',
     title: 'Export to Zoho',
-    body: 'Open **Export** and download your confirmed leads, ready to import into Zoho.',
+    body: 'Open **Export** and download your confirmed contacts, ready to import into Zoho.',
     note: 'Then tap **Yes, it downloaded** so they are not in your next file.',
     managersOnly: true,
   },
@@ -94,23 +100,23 @@ export const ONBOARDING_COPY = {
     title: 'Welcome to CKH Connect',
     body: 'Send us the people you meet and we check them against Zoho for you. How do you want to start?',
     quick: { label: 'Just get me texting', sub: 'Link your phone and start sending contacts.' },
-    tour: { label: 'Show me how it works', sub: 'A 1-minute tour of everything.', subManagers: 'A 1-minute tour, plus Export and Admin.' },
+    tour: { label: 'Show me how it works', sub: 'A quick tour of everything.', subManagers: 'A quick tour, plus Export and Admin.' },
     fine: 'You can watch the tour any time from the ? at the top of the app.',
   },
   quickText: {
-    title: 'Text us your leads',
+    title: 'Text us your contacts',
     // This is the quick start's FIRST screen and "Link your phone" is the second,
     // so it can't open with "Then". The body says the true order: a first text from
     // a phone that isn't linked yet gets "Text SETUP to link it", so linking has to
     // come before any of this works, and the next screen is where they do it.
-    body: 'Once your phone is linked, snap a business card, conference ID or contact list, or send a voice memo. We turn it into a lead.',
+    body: 'Once your phone is linked, snap a business card, conference ID or contact list, or send a voice memo. We turn it into a contact.',
     note: 'Typing it yourself? One person per text.',
   },
   quickLink: {
     title: 'Link your phone',
     body: "Text **SETUP**, then reply with your conference's name and pick it from the list.",
-    noPhoneBody: 'Texting your leads in needs your mobile number on your account.',
-    footer: 'Want the full picture? Tap **?** at the top any time for the 1-minute tour.',
+    noPhoneBody: 'Texting your contacts in needs your mobile number on your account.',
+    footer: 'Want the full picture? Tap **?** at the top any time for the quick tour.',
   },
   finish: {
     title: 'Your turn',
@@ -122,7 +128,7 @@ export const ONBOARDING_COPY = {
     // wrong. The real value comes from `me`'s sms status (phoneConnected).
     connected: {
       title: "You're all set",
-      body: "Your phone is linked, so text your leads in whenever you're ready.",
+      body: "Your phone is linked, so text your contacts in whenever you're ready.",
       go: 'Go to Contacts',
     },
   },

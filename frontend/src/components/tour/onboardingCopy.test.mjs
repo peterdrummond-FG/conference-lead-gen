@@ -138,7 +138,7 @@ test('nothing a rep reads uses developer words', () => {
 // The bold rule (see SceneCopy in tourCopy.ts): bold is only the name of a tab or
 // button the person taps, or SETUP as the word they text. Anything else bold reads
 // as random emphasis (a field label, a phone number), which is what this replaced.
-const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Contacts', 'Import', 'Export', 'Admin', 'Confirm', 'Followed up', 'Yes, it downloaded', '?'];
+const BOLD_ALLOWED = ['SETUP', 'Setup', 'Kiosk', 'Contacts', 'Import', 'Export', 'Admin', 'Confirm', 'Confirm all', 'Ready', 'Filter', 'Followed up', 'Yes, it downloaded', '?'];
 test('bold is only a tab or button the person taps, or the word SETUP', () => {
   for (const text of allCopy()) {
     for (const [, word] of text.matchAll(/\*\*(.+?)\*\*/g)) {
@@ -193,6 +193,13 @@ test('a lead that has just arrived is processing, never ready', () => {
   assert.ok(fresh.every((l) => l.matchedZohoAccountName === null), 'no Zoho result before matching finishes');
 });
 
+test('the tour draws the contact editor with `demo`, so its pickers fetch nothing', () => {
+  const screen = read(HERE, 'TourContactsScreen.vue');
+  const tags = screen.match(/<ContactEditor[^>]*>/g) ?? [];
+  assert.ok(tags.length >= 2, 'the screen should draw the editor for the pane and the sheet');
+  for (const t of tags) assert.ok(/\sdemo[\s>]/.test(t), 'a ContactEditor in the tour is missing `demo`');
+});
+
 test('the tour never talks to the server, apart from the host that records the outcome', () => {
   for (const f of files(HERE).filter((f) => !f.endsWith('OnboardingHost.vue'))) {
     const src = read(f);
@@ -208,6 +215,9 @@ const SHARED = [
   ['TourAppBar.vue', 'AppHeader', 'layouts/MainLayout.vue'],
   ['TourAppBar.vue', 'AppMenu', 'layouts/MainLayout.vue'],
   ['TourContactsScreen.vue', 'ContactsHeader', 'pages/ContactsPage.vue'],
+  ['TourContactsScreen.vue', 'ContactsFilterPanel', 'components/ContactsFilter.vue'],
+  ['TourContactsScreen.vue', 'ContactsConfirmAll', 'pages/ContactsPage.vue'],
+  ['TourContactsScreen.vue', 'ContactList', 'pages/ContactsPage.vue'],
   ['TourContactsScreen.vue', 'UnassignedScansList', 'components/UnassignedScansBanner.vue'],
   ['screens/TourNotesScreen.vue', 'NotesBody', 'pages/NotesPage.vue'],
   ['screens/TourExportScreen.vue', 'ExportCard', 'pages/ExportPage.vue'],

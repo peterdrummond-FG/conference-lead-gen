@@ -16,7 +16,7 @@
 
     <div v-if="expanded" class="q-mt-sm">
       <div class="text-caption q-mb-sm usb-help">
-        Someone scanned a QR code but no live conference was chosen. Pick one to file them as a lead.
+        Someone scanned a QR code but no live conference was chosen. Pick one to file them as a contact.
       </div>
       <div v-for="s in items" :key="s.id" class="usb-item">
         <div class="usb-name">

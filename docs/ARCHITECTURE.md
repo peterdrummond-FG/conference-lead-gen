@@ -185,7 +185,7 @@ never resolved through the profile. The disclosure ("By texting this code, …")
 visible directly under the action that gives consent — keep it there, and not
 inside the collapsible steps.
 
-Setup is two sections, because there are two jobs, each in one card. **You send leads
+Setup is two sections, because there are two jobs, each in one card. **You send contacts
 in** is the rep's own: **Choose your conference** (folds to one line with a "Change"
 button, plus an "Ended N days ago" chip once its last day has passed) and **Your phone**
 (status, the number we have on file, the Text SETUP action, Check connection, and the
@@ -339,7 +339,7 @@ Things to preserve:
 - **It tells a first-time rep what is actually true.** A new rep isn't linked yet, so the
   tour shows the real from-scratch conversation (SETUP, "What's the name of the
   conference?", a partial name, the list, a number, "You're linked to…"), quoted from
-  `twilio-webhook`. Their leads arrive in the real **processing** state (`Checking
+  `twilio-webhook`. Their contacts arrive in the real **processing** state (`Checking
   match…`), Confirmed and Rejected start at 0, and the people are one story across scenes
   (`tourSampleData.ts`). With no mobile number on the account (`me.hasPhone`), scene 1's
   note says who can add it, by role; once the phone is linked (`me.phoneConnected`),
@@ -347,9 +347,21 @@ Things to preserve:
 - **The pictures quote the real thing, and tests hold them to it** (`onboardingCopy.test.mjs`):
   every reply our number sends is checked against `twilio-webhook`'s source; the form is
   `IntakeFormFields`; the number comes from `utils/smsNumber.ts`; the scene ids match the
-  rules and the Edge Function's allow-list; none of the sample leads' ids look real, a
-  fresh lead is processing and never Ready, and no tour file talks to the server (apart
+  rules and the Edge Function's allow-list; none of the sample contacts' ids look real, a
+  fresh contact is processing and never Ready, and no tour file talks to the server (apart
   from the host that records the outcome).
+- **The Contacts scene teaches the page as it is** (2026-10-07). `TourContactsScreen.vue`
+  draws the app's own `ContactsHeader`, `ContactList`, `ContactsConfirmAll` and
+  `ContactsFilterPanel` (the Filter panel without its dialog, which would escape the phone
+  frame) with the real ordering (`orderDeck`) and the real hold-then-slide. The script:
+  open a contact that needs info, the Zoho banner, Followed up, add the phone, Confirm (it
+  turns green and stays), go on to another contact (it slides to the bottom), the status
+  bar's colours, Ready then Confirm all, then the conference line, which opens Filter at
+  Conference, with Rejected and Conference pointed out. The tour's editor is drawn with
+  `demo` so State / District / School fetch nothing (sample ids; the real `schools-list`
+  answers 400 and the app would toast it); `onboardingCopy.test.mjs` holds that. The words
+  say new contacts are checked against Zoho "within a few minutes", because the scene before
+  shows them processing.
 - **The tour never offers its own "text now" button.** Texting SETUP is consent. The quick
   start's SETUP action and Setup's phone card are the same component (`TextSetupAction`),
   so the opt-in disclosure lives in one place directly under the action; on a laptop it
@@ -467,7 +479,7 @@ file, asks "Did the file download?", and only calls `export-confirm` when the
 person says yes. **Download again** re-saves the held file without touching the
 server — needed because a fresh export inside the 30-minute window would find
 the reserved leads unavailable. Leave the page without confirming and the batch
-simply releases itself. The summary card's "Still needs review" count links to
+simply releases itself. The summary card's "Not confirmed yet" count links to
 Contacts, since those are the leads that won't be in the file.
 
 The Description column leads with the rep's notes (`Notes: …`); see "Contacts".

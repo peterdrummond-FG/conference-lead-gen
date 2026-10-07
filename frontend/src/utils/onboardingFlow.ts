@@ -39,16 +39,18 @@ export interface SceneMeta {
   id: string;
   // A phrase that finishes "Still to see: …".
   short: string;
-  // A rough length, for "About 40 seconds". Measured off the scripts, not exact.
+  // A rough length, for "About 40 seconds". Measured off the scripts (tourLengths.ts, the
+  // phone figure to the nearest second), not exact. Re-check it when a scene changes: the
+  // reminder's "about N seconds" is a promise.
   seconds: number;
   managersOnly?: boolean;
 }
 
 export const SCENES: SceneMeta[] = [
-  { id: 'setup', short: 'linking your phone', seconds: 20 },
-  { id: 'send', short: 'sending us leads', seconds: 30 },
-  { id: 'qr', short: 'your QR code', seconds: 15 },
-  { id: 'review', short: 'reviewing your leads', seconds: 15 },
+  { id: 'setup', short: 'linking your phone', seconds: 22 },
+  { id: 'send', short: 'sending us contacts', seconds: 28 },
+  { id: 'qr', short: 'your QR code', seconds: 22 },
+  { id: 'review', short: 'checking and confirming contacts', seconds: 23 },
   { id: 'export', short: 'exporting to Zoho', seconds: 10, managersOnly: true },
   { id: 'admin', short: 'looking after your team', seconds: 20, managersOnly: true },
 ];
@@ -56,7 +58,7 @@ export const SCENES: SceneMeta[] = [
 // The second half of "Send us leads": Contacts' Import button and a pasted note.
 // A quick-start rep has already seen the texting half, so their remainder starts
 // here, in a scene that skips the texting.
-export const IMPORT_ONLY: SceneMeta = { id: 'send-import', short: 'adding a typed note', seconds: 10 };
+export const IMPORT_ONLY: SceneMeta = { id: 'send-import', short: 'adding a typed note', seconds: 15 };
 
 export const RESUME_IDS = [...SCENES.map((s) => s.id), IMPORT_ONLY.id];
 

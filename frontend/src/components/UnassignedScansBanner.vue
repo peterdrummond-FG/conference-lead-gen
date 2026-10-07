@@ -12,7 +12,7 @@
   <q-dialog v-model="dialogOpen">
       <q-card class="usb-dialog">
         <q-card-section>
-          <div class="text-subtitle1">File {{ target?.firstName }} {{ target?.lastName }} as a lead</div>
+          <div class="text-subtitle1">File {{ target?.firstName }} {{ target?.lastName }} as a contact</div>
           <div class="text-caption text-grey-8">{{ [target?.email, target?.phone].filter(Boolean).join(' · ') }}</div>
         </q-card-section>
         <q-card-section class="q-pt-none">
@@ -41,14 +41,14 @@
             dense
             class="q-mt-sm"
             label="Rep to credit"
-            hint="Optional. The lead shows up in this rep's Contacts."
+            hint="Optional. The contact shows up in this rep's Contacts."
             :loading="optionsLoading"
           />
-          <div class="text-caption text-grey-8 q-mt-sm">It gets checked against Zoho like any other lead.</div>
+          <div class="text-caption text-grey-8 q-mt-sm">It gets checked against Zoho like any other contact.</div>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps label="Cancel" v-close-popup />
-          <q-btn unelevated no-caps color="primary" label="File lead" :disable="!eventId" :loading="saving" @click="file" />
+          <q-btn unelevated no-caps color="primary" label="File contact" :disable="!eventId" :loading="saving" @click="file" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -108,7 +108,7 @@ async function file() {
   try {
     await api.post('/unassigned-assign', { eventId: eventId.value, repId: repId.value }, { params: { id: target.value.id } });
     dialogOpen.value = false;
-    Notify.create({ type: 'positive', message: 'Filed as a lead.' });
+    Notify.create({ type: 'positive', message: 'Filed as a contact.' });
     await load();
   } catch {
     // The axios interceptor already showed why (for example "Someone has already
@@ -122,7 +122,7 @@ async function file() {
 function confirmDiscard(s: UnassignedSubmission) {
   Dialog.create({
     title: 'Discard this scan?',
-    message: `${s.firstName} ${s.lastName}'s details won't become a lead.`,
+    message: `${s.firstName} ${s.lastName}'s details won't become a contact.`,
     cancel: true,
     persistent: true,
     ok: { label: 'Discard', color: 'negative' },

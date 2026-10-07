@@ -27,11 +27,11 @@ export interface SceneVariant {
 // phone = a phone-width screen (the ☰ menu), wide = a laptop (tabs along the top).
 const SCENE_MS: Record<string, { phone: number; wide: number }> = {
   setup: { phone: 21950, wide: 21950 },
-  send: { phone: 30200, wide: 30200 },
-  'send:import': { phone: 18150, wide: 18150 },
+  send: { phone: 27500, wide: 27500 },
+  'send:import': { phone: 15450, wide: 15450 },
   qr: { phone: 21700, wide: 21700 },
   'qr:manager': { phone: 7350, wide: 5450 },
-  review: { phone: 11300, wide: 11300 },
+  review: { phone: 22600, wide: 21150 },
   export: { phone: 11100, wide: 9200 },
   admin: { phone: 22650, wide: 18850 },
 };

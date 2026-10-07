@@ -8,8 +8,8 @@
          scan with a camera is laptop-only; both are TextSetupAction's, by device). -->
     <div :style="{ width: twoColumns ? '960px' : '640px', maxWidth: '100%' }" class="q-gutter-md">
       <div>
-        <div class="text-h5">Set up your leads</div>
-        <div class="text-body2 text-grey-8 q-mt-xs">How leads reach you, from you and from other people.</div>
+        <div class="text-h5">Set up your contacts</div>
+        <div class="text-body2 text-grey-8 q-mt-xs">How contacts reach you, from you and from other people.</div>
       </div>
 
       <!-- Previewing someone (admin "View as"): the cards below show THEIR Setup,
@@ -32,7 +32,7 @@
              green check, so a rep can see what's left and, coming back later, which row
              to tap to change. -->
         <section :class="twoColumns ? 'col-6' : ''">
-          <div class="text-subtitle1 text-weight-medium">You send leads in</div>
+          <div class="text-subtitle1 text-weight-medium">You send contacts in</div>
           <div class="text-caption text-grey-8 q-mb-sm">Text photos, voice memos or notes from your phone.</div>
 
           <q-card>
@@ -63,7 +63,7 @@
                        to it, so this always asks. -->
                   <template v-else>
                     <div class="text-subtitle1 text-weight-medium">Choose your conference</div>
-                    <div class="text-caption text-grey-8">So every lead lands in the right place.</div>
+                    <div class="text-caption text-grey-8">So every contact lands in the right place.</div>
                   </template>
                 </div>
                 <!-- "Choose" and "Change" both open the one dialog, which lists live

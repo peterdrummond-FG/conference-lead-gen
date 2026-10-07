@@ -110,15 +110,15 @@ test('a rep never gets a manager scene, even if the id was recorded for one', ()
 test('a quick-start rep is offered the tour, not told they left one', () => {
   assert.deepEqual(reminderCopy(remainderSteps(false, 'send-import'), 'quick'), {
     title: 'Want a quick tour?',
-    body: 'You went straight to texting earlier. In about 40 seconds, see what else you can do: adding a typed note, your QR code and reviewing your leads.',
+    body: 'You went straight to texting earlier. In about 60 seconds, see what else you can do: adding a typed note, your QR code and checking and confirming contacts.',
   });
 });
 test('someone who left the tour partway is asked to finish it', () => {
   assert.deepEqual(reminderCopy(remainderSteps(false, 'qr'), 'tour'), {
     title: 'Finish the tour?',
-    body: 'You left the tour partway through. Still to see: your QR code and reviewing your leads. About 30 seconds.',
+    body: 'You left the tour partway through. Still to see: your QR code and checking and confirming contacts. About 50 seconds.',
   });
-  assert.match(reminderCopy(remainderSteps(false, 'review'), 'tour').body, /Still to see: reviewing your leads\. About 20 seconds\.$/);
+  assert.match(reminderCopy(remainderSteps(false, 'review'), 'tour').body, /Still to see: checking and confirming contacts\. About 20 seconds\.$/);
   const long = reminderCopy(remainderSteps(true, 'setup'), 'tour');
   assert.match(long.body, /About 2 minutes\.$/);
 });
