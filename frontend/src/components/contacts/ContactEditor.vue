@@ -575,11 +575,17 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
   cursor: default;
 }
 
+/* :deep, not plain classes: InstitutionFields renders its three fields as a fragment, and a
+   scoped style only reaches a child component's single root. With plain .le-s2 / .le-s4 /
+   .le-s6 the State, District and School fields never got their column span, so each fell
+   into ONE of the six tracks (~1/6 of the row): "Texas", an empty District and "Chocta" side
+   by side with their arrows on top of the text (seen on a phone, 2026-10-07; broken since the
+   shared picker landed on 2026-10-06). */
 .le-form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; align-content: start; }
-.le-s2 { grid-column: span 2; }
-.le-s3 { grid-column: span 3; }
-.le-s4 { grid-column: span 4; }
-.le-s6 { grid-column: span 6; }
+.le-form :deep(.le-s2) { grid-column: span 2; }
+.le-form :deep(.le-s3) { grid-column: span 3; }
+.le-form :deep(.le-s4) { grid-column: span 4; }
+.le-form :deep(.le-s6) { grid-column: span 6; }
 .le-suggest { margin-top: -6px; }
 .le-lookup { margin-top: -4px; font-size: 12px; line-height: 1.4; color: #4A555F; }
 .le-lookup a { color: var(--q-primary); overflow-wrap: anywhere; }
@@ -621,7 +627,7 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 
   /* Email, phone, state and district each take a full row: at 2-4 tracks of a
      ~317px form, State was ~98px and clipped "Tennessee" to "Tennes". */
-  .le-s2, .le-s4 { grid-column: span 6; }
+  .le-form :deep(.le-s2), .le-form :deep(.le-s4) { grid-column: span 6; }
   /* Not the Notes textarea: pinning its control to 44px squeezed the text into a
      one-line box and let the rest spill out over the hint beneath it. */
   .le-form :deep(.q-field--dense:not(.le-notes) .q-field__control),
