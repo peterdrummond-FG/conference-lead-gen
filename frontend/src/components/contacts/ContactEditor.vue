@@ -11,31 +11,41 @@
        desktop and the sheet ~375px on a phone. -->
   <div class="le">
     <div class="le-head">
+      <!-- Wide (the laptop pane): the name and chips on the left, the arrows on the right.
+           Narrow (the phone sheet): the name and 44px arrows on one row, a quiet line under
+           it saying where the contact is from (conference, rep: context, not status) with
+           "1 of N" at its right, then only the chips that describe the contact, across the
+           full width. Before, the arrows took ~150px of a 375px sheet and the chips wrapped one
+           per line (146px of header for a manager). Which of these shows is a container query,
+           so the pane and the sheet each get theirs. -->
       <div class="le-head-top">
-        <div class="le-head-id">
-          <div class="le-name">{{ name }}</div>
-          <div class="le-chips">
-            <LeadChip tone="grey">{{ sourceLabel(contact) }}</LeadChip>
-            <!-- The attendee's own "How did you hear about us?" answer. Said again only when the
-                 source chip doesn't already say it (QR Booth / QR Session do). -->
-            <LeadChip v-if="contact.qrChannel && !sourceNamesChannel" tone="blue">{{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}</LeadChip>
-            <LeadChip v-if="!isSales" tone="grey">{{ contact.eventName }}</LeadChip>
-            <LeadChip v-if="!isSales && contact.repName" tone="grey">{{ contact.repName }}</LeadChip>
-            <!-- Reps get plain "New district / Existing school"; admin and
-                 Solutions Success keep the wording they know from Classic. -->
-            <LeadChip v-if="contact.reviewStatus === 'needs_review' && ready" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
-            <LeadChip v-if="!isSales" :tone="badge?.tone ?? 'grey'">{{ accountDetailLabel(contact) }}</LeadChip>
-            <LeadChip v-else-if="badge" :tone="badge.tone">{{ badge.label }}</LeadChip>
-          </div>
-        </div>
+        <div class="le-name">{{ name }}</div>
         <div class="le-nav">
-          <span v-if="position" class="le-pos">{{ position.index }} of {{ position.total }}</span>
+          <span v-if="position" class="le-pos le-pos-wide">{{ position.index }} of {{ position.total }}</span>
           <q-btn v-if="position" flat round dense icon="expand_less" aria-label="Previous contact" :disable="position.index <= 1" @click="$emit('prev')" />
           <q-btn v-if="position" flat round dense icon="expand_more" aria-label="Next contact" :disable="position.index >= position.total" @click="$emit('next')" />
           <q-btn v-if="closable" flat round dense icon="close" aria-label="Close" @click="$emit('close')" />
         </div>
+        <div v-if="whereText || position" class="le-ctx">
+          <span class="le-where">{{ whereText }}</span>
+          <!-- Same words as the wide copy above; hidden from screen readers so it is read once. -->
+          <span v-if="position" class="le-pos" aria-hidden="true">{{ position.index }} of {{ position.total }}</span>
+        </div>
+        <div class="le-chips">
+          <LeadChip tone="grey">{{ sourceLabel(contact) }}</LeadChip>
+          <!-- The attendee's own "How did you hear about us?" answer. Said again only when the
+               source chip doesn't already say it (QR Booth / QR Session do). -->
+          <LeadChip v-if="contact.qrChannel && !sourceNamesChannel" tone="blue">{{ contact.qrChannel === 'booth' ? 'Booth' : 'Breakout session' }}</LeadChip>
+          <!-- Conference and rep: chips on the wide pane, the quiet line above on a phone. -->
+          <LeadChip v-if="!isSales" tone="grey" class="le-chip-ctx">{{ contact.eventName }}</LeadChip>
+          <LeadChip v-if="!isSales && contact.repName" tone="grey" class="le-chip-ctx">{{ contact.repName }}</LeadChip>
+          <!-- Reps get plain "New district / Existing school"; admin and
+               Solutions Success keep the wording they know from Classic. -->
+          <LeadChip v-if="contact.reviewStatus === 'needs_review' && ready" tone="green"><q-icon name="check" size="14px" />{{ READY_LABEL }}</LeadChip>
+          <LeadChip v-if="!isSales" :tone="badge?.tone ?? 'grey'">{{ accountDetailLabel(contact) }}</LeadChip>
+          <LeadChip v-else-if="badge" :tone="badge.tone">{{ badge.label }}</LeadChip>
+        </div>
       </div>
-
     </div>
 
     <div class="le-scroll">
@@ -272,6 +282,7 @@ const emit = defineEmits<{
   next: [];
 }>();
 
+const whereText = computed(() => (props.isSales ? '' : [props.contact.eventName, props.contact.repName].filter(Boolean).join(' · ')));
 const name = computed(() => fullName(props.contact));
 const processing = computed(() => isProcessing(props.contact));
 const ready = computed(() => isReady(props.contact));
@@ -502,12 +513,12 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 }
 
 .le-head { padding: 12px 16px 8px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
-.le-head-top { display: flex; align-items: flex-start; gap: 8px; }
-.le-head-id { flex: 1; min-width: 0; }
-.le-name { font-size: 18px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
-.le-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.le-nav { display: flex; align-items: center; gap: 0; margin: -4px -8px 0 0; flex: none; }
+.le-head-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: start; }
+.le-name { grid-column: 1; grid-row: 1; font-size: 18px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.le-nav { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 0; margin: -4px -8px 0 0; }
 .le-pos { font-size: 12px; color: #5B6670; margin-right: 4px; white-space: nowrap; }
+.le-ctx { display: none; }
+.le-chips { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 
 .le-followed { padding: 0 0 8px; margin-bottom: 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
 
@@ -606,7 +617,19 @@ defineExpose({ isDirty, approveClick, rejectClick, appendNote });
 .le-keys { margin-top: 6px; font-size: 12px; color: #6B7680; text-align: right; }
 
 @container le (max-width: 560px) {
-  .le-head { padding: 10px 12px 8px; }
+  .le-head { padding: 6px 12px 10px; }
+  /* The phone's header (see the template): name and 44px arrows, a quiet where-from line with
+     "1 of N", then the chips across the full width. */
+  .le-head-top { align-items: center; }
+  .le-name { padding: 4px 0; }
+  .le-nav { margin: 0 -8px 0 0; }
+  .le-nav :deep(.q-btn.q-btn--round) { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .le-pos-wide { display: none; }
+  .le-ctx { display: flex; grid-column: 1 / -1; grid-row: 2; align-items: baseline; gap: 8px; min-width: 0; margin-top: -2px; font-size: 13px; color: #5B6670; }
+  .le-where { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .le-ctx .le-pos { flex: none; margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .le-chips { grid-row: 3; margin-top: 8px; }
+  .le-chip-ctx { display: none; }
   .le-scroll { padding: 8px 12px 12px; }
   .le-foot { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
   .le-follow { margin-left: 0; }
