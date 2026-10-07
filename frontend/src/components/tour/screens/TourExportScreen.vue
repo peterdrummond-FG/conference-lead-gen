@@ -7,7 +7,7 @@
       :summary="summary" :pending="phase === 'pending' ? { count: 8 } : null" :export-count="exportCount"
       :exporting="false" :confirming="false"
     />
-    <div v-if="done" class="tex-toast">Exported 8 leads. They're marked as synced.</div>
+    <div v-if="done" class="tex-toast">Exported 8 contacts. They're marked as synced.</div>
   </div>
 </template>
 

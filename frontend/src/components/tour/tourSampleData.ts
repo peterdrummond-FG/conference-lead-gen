@@ -191,8 +191,8 @@ function processing(l: ContactListItem): ContactListItem {
   };
 }
 
-// Contacts' "To review" list for a scene: the people who exist at that point in
-// the story, newest first. `processing` are the ones whose match hasn't finished.
+// The unconfirmed contacts in a scene (new ones, none confirmed yet): the people who
+// exist at that point in the story, newest first. `processing` are the ones whose match hasn't finished.
 export function tourLeads(who: TourPerson[], opts: { processing?: TourPerson[] } = {}): ContactListItem[] {
   return NEWEST_FIRST.filter((k) => who.includes(k)).map((k) => (opts.processing?.includes(k) ? processing(MATCHED[k]) : MATCHED[k]));
 }

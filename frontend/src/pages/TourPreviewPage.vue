@@ -1,7 +1,7 @@
 <template>
   <!-- DEVELOPMENT ONLY (see router/routes.ts): the onboarding on its own page, with
        no account, for review at phone and laptop sizes and for headless checks.
-       Every lead and person in it is sample data, and nothing is sent to the
+       Every contact and person in it is sample data, and nothing is sent to the
        server: the log below says what the real app would record. Add ?fast to
        play every script with its waits cut (see TourStage). -->
   <div class="tpp">

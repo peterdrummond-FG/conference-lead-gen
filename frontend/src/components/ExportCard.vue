@@ -3,7 +3,7 @@
     <q-card-section>
       <div class="text-h5">Export to Zoho</div>
       <div class="text-body2 text-grey-8 q-mt-xs">
-        Downloads a CSV of every confirmed lead that hasn't been exported yet. A lead with no
+        Downloads a CSV of every confirmed contact that hasn't been exported yet. A contact with no
         Zoho account is included and flagged as a new account to create.
       </div>
     </q-card-section>
@@ -43,7 +43,7 @@
         <div class="text-weight-medium">Did the file download?</div>
         <div class="text-body2 q-mt-xs">
           Check your Downloads for <span class="text-weight-medium">ckh-connect-leads.csv</span>.
-          Confirm below and these {{ pending.count }} leads are marked as exported, so they won't
+          Confirm below and these {{ pending.count }} contacts are marked as exported, so they won't
           be in the next file.
         </div>
       </q-banner>
@@ -55,7 +55,7 @@
 
     <template v-else>
       <q-card-section v-if="summary && exportCount === 0" class="q-pt-none text-body2 text-grey-8">
-        Nothing to export yet. Confirm leads in Contacts and they'll show up here.
+        Nothing to export yet. Confirm contacts on the Contacts page and they'll show up here.
       </q-card-section>
       <q-card-actions align="right">
         <q-btn
@@ -63,7 +63,7 @@
           no-caps
           unelevated
           icon="download"
-          :label="exportCount > 0 ? `Export ${exportCount} ${exportCount === 1 ? 'lead' : 'leads'}` : 'Export to Zoho'"
+          :label="exportCount > 0 ? `Export ${exportCount} ${exportCount === 1 ? 'contact' : 'contacts'}` : 'Export to Zoho'"
           class="ex-btn"
           :class="{ 'full-width': $q.screen.lt.sm }"
           :loading="exporting"
