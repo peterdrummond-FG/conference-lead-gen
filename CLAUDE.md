@@ -281,7 +281,7 @@ Supabase CLI on this machine.
   `docs/ARCHITECTURE.md`, "Onboarding".
 
 - **Setup is two sections, and its QR line is a claim about the server.**
-  "You send leads in" (conference, phone) and "Other people add themselves" (QR,
+  "You send contacts in" (conference, phone) and "Other people add themselves" (QR,
   Kiosk), each one card; side by side on a laptop, stacked on a phone, with each
   device keeping only the controls that work on it (Text SETUP button on a phone, a
   QR to scan on a laptop; "Save QR" vs "Download QR"). The conference and phone rows
