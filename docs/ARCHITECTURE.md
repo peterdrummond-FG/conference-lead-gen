@@ -582,7 +582,7 @@ the memo" fallbacks were worse than the problem they tried to solve.
 `claim_unlinked_audio_messages` retries a memo up to `LINK_MAX_ATTEMPTS`
 times against whatever candidates exist *at attempt time* — it can never
 close a memo out on its own, because "nobody yet" and "nobody ever" look
-identical from inside the loop. Contacts' **Needs attention** section
+identical from inside the loop. Contacts' **Unlinked Voice Memos / Errors** section
 (`inbound-messages-unresolved-list`; `components/memos/`, state in
 `composables/useVoiceMemos.ts`, words and rules in `utils/voiceMemos.ts`) puts
 those memos in front of a person, in amber, above the contacts. A memo is listed

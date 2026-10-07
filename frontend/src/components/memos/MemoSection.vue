@@ -1,5 +1,5 @@
 <template>
-  <!-- "Needs attention" at the top of Contacts: voice memos nobody could match to a contact,
+  <!-- "Unlinked Voice Memos / Errors" at the top of Contacts: voice memos nobody could match to a contact,
        and photos or memos that failed to process. Nothing to show is the common case, so it
        renders nothing then. CLOSED until the rep opens it (Peter, 2026-10-07): open by
        default it pushed every contact below it and hid them. The header stays, with its
@@ -83,11 +83,12 @@ const items = computed<Item[]>(() => [
 .ms { margin-bottom: 8px; }
 .ms-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 0 6px;
   width: 100%;
   min-height: 44px;
-  padding: 0 2px;
+  padding: 2px 2px;
   border: 0;
   background: transparent;
   font: inherit;
@@ -97,7 +98,7 @@ const items = computed<Item[]>(() => [
 }
 .ms-head:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; border-radius: 6px; }
 .ms-mark { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #FFE0B2; color: #8A4B00; display: inline-flex; align-items: center; justify-content: center; }
-.ms-name { font-size: 16px; font-weight: 500; }
+.ms-name { min-width: 0; font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
 .ms-count { padding: 2px 8px; border-radius: 10px; background: #FFE0B2; color: #8A4B00; font-size: 12px; font-weight: 500; }
 .ms-help { margin: 0 2px 8px; font-size: 13px; color: #5B6670; }
 </style>

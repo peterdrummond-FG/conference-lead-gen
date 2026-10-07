@@ -23,7 +23,7 @@
              including ones with no rep, so a rep (or an admin looking as one) must not
              see it. -->
         <UnassignedScansBanner v-if="canSeeUnassigned" />
-        <!-- "Needs attention": voice memos nobody could match to a contact, and photos or
+        <!-- "Unlinked Voice Memos / Errors": voice memos nobody could match to a contact, and photos or
              memos that failed to process. Closed until opened. Hidden in the Rejected view,
              which is about contacts. On a laptop an unmatched memo opens in the right pane;
              on a phone, and for a failed item, the card carries every control. -->

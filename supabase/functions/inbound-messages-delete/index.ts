@@ -1,6 +1,6 @@
 // POST ?id=<inboundMessageId> -> { deleted: id }
 //
-// Two kinds of row can be deleted here, both from Contacts' "Needs attention" section:
+// Two kinds of row can be deleted here, both from Contacts' "Unlinked Voice Memos / Errors" section:
 //   - an unmatched voice memo (audio, link_status unlinked / no_candidate_found);
 //   - a photo or memo that FAILED to process (status='failed'): a blurry card, a
 //     duplicate, a recording that won't transcribe. Nothing was made from it, so there

@@ -242,7 +242,7 @@ Supabase CLI on this machine.
   district for you" hint is a promise about that pipeline. Details: `docs/ARCHITECTURE.md`,
   "State, District and School".
 
-- **"Needs attention" in Contacts is closed by default, and a memo is only "done" once a
+- **"Unlinked Voice Memos / Errors" in Contacts is closed by default, and a memo is only "done" once a
   person exists.** Open, it pushed every contact down the page and hid them (Peter,
   2026-10-07), so it shows only its header and count until the rep opens it. It also holds
   failed photos / memos as soft-red cards (Retry once the system has given up, Delete,
