@@ -65,7 +65,7 @@ export function createNote(m: Pick<UnresolvedAudioMemo, 'create'>): string | nul
 
 // The section holds two kinds of thing: voice memos nobody could match to a contact
 // (unmatched) and photos or memos that failed to process (failed).
-export const SECTION_TITLE = 'Needs attention';
+export const SECTION_TITLE = 'Unlinked Voice Memos / Errors';
 
 export function sectionCount(n: number): string {
   return n === 1 ? '1 item' : `${n} items`;

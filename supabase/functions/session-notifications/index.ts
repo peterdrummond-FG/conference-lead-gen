@@ -12,7 +12,7 @@
 //
 // A count of zero is only worth a text when a PHOTO was in the batch: a card that
 // didn't read really did make no contact, and the rep should check Contacts (where
-// it sits under "Needs attention" with Retry). A batch of only voice memos makes no
+// it sits under "Unlinked Voice Memos / Errors" with Retry). A batch of only voice memos makes no
 // contact by design (a memo attaches to a contact the rep already has, or waits to be
 // matched), so "0 contacts received." was both untrue-sounding and noise: a rep who
 // had just sent a contact got it straight after the memo (2026-10-07). That batch is

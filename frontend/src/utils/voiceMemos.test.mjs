@@ -54,7 +54,7 @@ test('the note under the buttons says what happened and what is left to do', () 
 });
 
 test('section words agree with the number and with what is in it', () => {
-  assert.equal(SECTION_TITLE, 'Needs attention');
+  assert.equal(SECTION_TITLE, 'Unlinked Voice Memos / Errors');
   assert.equal(sectionCount(1), '1 item');
   assert.equal(sectionCount(3), '3 items');
   assert.equal(sectionHelp(1, 0), "We couldn't tell who this is about.");
