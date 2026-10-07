@@ -52,6 +52,19 @@ Deno.serve(async (req) => {
     }
   }
 
+  // A person's "Create contacts" is still running for this memo: deleting it now
+  // would orphan the extraction (its contacts would point at a memo that is gone)
+  // and throw away the transcript it is reading. It finishes in about a minute.
+  const { data: inFlight, error: inFlightError } = await supabase
+    .from("note_submissions")
+    .select("id")
+    .eq("source_message_id", id)
+    .in("status", ["pending_extraction", "processing"])
+    .limit(1)
+    .maybeSingle();
+  if (inFlightError) return errorResponse(req, 500, inFlightError.message);
+  if (inFlight) return errorResponse(req, 409, "Contacts are still being created from this memo. Try again in a minute.");
+
   // Audit S12 pattern (see contacts-bulk-delete): remove the media before
   // the row, not after -- if Storage cleanup fails we still have the row to
   // retry from, whereas deleting the row first orphans the object with

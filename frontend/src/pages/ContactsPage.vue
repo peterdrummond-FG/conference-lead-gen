@@ -23,7 +23,25 @@
              including ones with no rep, so a rep (or an admin looking as one) must not
              see it. -->
         <UnassignedScansBanner v-if="canSeeUnassigned" />
-        <UnresolvedIntakePanel :view-as-rep-id="sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null" />
+        <UnresolvedIntakePanel :items="failedIntake" :retrying="voice.retryingFailed" @retry="(id) => void voice.retryFailed(id)" />
+
+        <!-- Voice memos nobody could match to a contact. Hidden in the Rejected view, which
+             is about contacts. On a laptop a memo opens in the right pane; on a phone the
+             card carries every control. -->
+        <MemoSection
+          v-if="!showRejected"
+          :memos="voiceMemos"
+          :desktop="isDesktop"
+          :active-id="isDesktop ? selectedMemoId : null"
+          :show-rep="!isSales"
+          :doing="voice.doing"
+          :get-url="voice.audioUrl"
+          @open="(id) => void openMemo(id)"
+          @assign="(id) => (assignMemoId = id)"
+          @create="(id) => void voice.createContacts(id)"
+          @retry="(id) => void voice.retryMatching(id)"
+          @delete="voice.confirmDelete"
+        />
 
         <div v-if="showRejected && visible.length" class="rs-bulk">
           <q-checkbox :model-value="allSelected" label="Select all" @update:model-value="toggleSelectAll" />
@@ -51,7 +69,7 @@
             <ContactList
               v-if="isGroupOpen(g.eventId, i)"
               :leads="g.leads"
-              :active-id="isDesktop ? (activeLead?.id ?? null) : null"
+              :active-id="isDesktop ? activeContactId : null"
               :compact="isDesktop"
               :busy="busy"
               :selectable="showRejected"
@@ -67,7 +85,7 @@
         <ContactList
           v-else-if="visible.length"
           :leads="visible"
-          :active-id="isDesktop ? (activeLead?.id ?? null) : null"
+          :active-id="isDesktop ? activeContactId : null"
           :compact="isDesktop"
           :busy="busy"
           :show-event="showEventOnCards"
@@ -87,9 +105,22 @@
         </div>
       </div>
 
-      <aside v-if="isDesktop" class="rs-pane" aria-label="Contact details">
+      <aside v-if="isDesktop" class="rs-pane" :aria-label="activeMemo ? 'Voice memo details' : 'Contact details'">
+        <MemoPane
+          v-if="activeMemo"
+          :key="activeMemo.id"
+          :memo="activeMemo"
+          :show-rep="!isSales"
+          :doing="voice.doing[activeMemo.id]"
+          :get-url="() => voice.audioUrl(activeMemo!.id)"
+          :load="() => voice.candidates(activeMemo!.id)"
+          @assign="(contactId, name) => void voice.assign(activeMemo!.id, contactId, name)"
+          @create="void voice.createContacts(activeMemo!.id)"
+          @retry="void voice.retryMatching(activeMemo!.id)"
+          @delete="voice.confirmDelete(activeMemo!.id)"
+        />
         <ContactEditor
-          v-if="activeLead"
+          v-else-if="activeLead"
           ref="editorRef"
           :key="activeLead.id"
           :contact="activeLead"
@@ -125,6 +156,16 @@
       />
     </div>
 
+    <!-- Phone: Assign on a memo card. -->
+    <MemoAssignSheet
+      v-if="!isDesktop"
+      :memo="assignMemo"
+      :load="() => voice.candidates(assignMemoId!)"
+      :saving="assignMemoId ? voice.doing[assignMemoId] === 'assign' : false"
+      @assign="onAssignFromSheet"
+      @close="assignMemoId = null"
+    />
+
     <AddNoteDialog v-model="noteDialogOpen" :name="noteTarget ? fullName(noteTarget) : ''" @save="onSaveNote" />
 
     <!-- Phone / tablet: the same editor as a bottom sheet. -->
@@ -159,6 +200,9 @@ import { useRouter } from 'vue-router';
 import { useQuasar, Dialog } from 'quasar';
 import { api } from '@/boot/axios';
 import UnresolvedIntakePanel from '@/components/UnresolvedIntakePanel.vue';
+import MemoSection from '@/components/memos/MemoSection.vue';
+import MemoPane from '@/components/memos/MemoPane.vue';
+import MemoAssignSheet from '@/components/memos/MemoAssignSheet.vue';
 import UnassignedScansBanner from '@/components/UnassignedScansBanner.vue';
 import ContactsHeader from '@/components/ContactsHeader.vue';
 import ContactsFilter from '@/components/ContactsFilter.vue';
@@ -167,6 +211,7 @@ import ContactList from '@/components/contacts/ContactList.vue';
 import ContactEditor from '@/components/contacts/ContactEditor.vue';
 import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
 import { useContacts, type DisplayPatch } from '@/composables/useContacts';
+import { useVoiceMemos } from '@/composables/useVoiceMemos';
 import { useSessionStore } from '@/stores/session-store';
 import type { ContactListItem, Profile, UpdateContactPayload } from '@/types/review';
 import {
@@ -182,6 +227,16 @@ const sessionStore = useSessionStore();
 const { buckets, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useContacts();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');
+
+// Voice memos nobody could match to a contact (and failed photos / memos). An admin
+// previewing a rep sees exactly that rep's, same as the contact list does. Something
+// that changes a contact (a memo assigned, Create contacts finishing) refreshes the
+// list without moving anything under the person.
+const voice = useVoiceMemos({
+  viewAsRepId: computed(() => (sessionStore.viewingAs?.role === 'sales' ? sessionStore.viewingAs.id : null)),
+  onContactsChanged: () => void load({ keepOrder: true }),
+});
+const { memos: voiceMemos, failed: failedIntake } = voice;
 const canSeeUnassigned = computed(() => !sessionStore.viewingAs && ['admin', 'solutionsSuccess'].includes(sessionStore.user?.role ?? ''));
 // Quasar's md breakpoint (1024px) and up: room for the list and the editor
 // side by side, and the Filter panel as a dropdown. Below it the editor and the
@@ -398,6 +453,29 @@ const activeLead = computed<ContactListItem | null>(() => {
 });
 const sheetOpen = computed(() => !isDesktop.value && !!activeLead.value);
 
+// A voice memo open in the laptop pane, in the contact editor's place. While one is open
+// no contact row looks open. When it leaves the list (assigned, deleted, turned into
+// contacts) the pane moves to the next memo, or back to the contact editor.
+const selectedMemoId = ref<string | null>(null);
+const activeMemo = computed(() => (isDesktop.value && selectedMemoId.value ? voiceMemos.value.find((m) => m.id === selectedMemoId.value) ?? null : null));
+const activeContactId = computed(() => (activeMemo.value ? null : activeLead.value?.id ?? null));
+watch(voiceMemos, (list) => {
+  if (selectedMemoId.value && !list.some((m) => m.id === selectedMemoId.value)) selectedMemoId.value = list[0]?.id ?? null;
+});
+async function openMemo(id: string) {
+  // The editor holds the draft; leaving it for a memo asks first, same as another contact.
+  if (!activeMemo.value && !(await confirmDiscard())) return;
+  selectedMemoId.value = id;
+}
+
+// Phone: the memo whose Assign sheet is open.
+const assignMemoId = ref<string | null>(null);
+const assignMemo = computed(() => voiceMemos.value.find((m) => m.id === assignMemoId.value) ?? null);
+async function onAssignFromSheet(contactId: string, name: string) {
+  const id = assignMemoId.value;
+  if (id && await voice.assign(id, contactId, name)) assignMemoId.value = null;
+}
+
 const position = computed(() => {
   const idx = flatLeads.value.findIndex((c) => c.id === activeLead.value?.id);
   return idx >= 0 ? { index: idx + 1, total: flatLeads.value.length } : null;
@@ -408,7 +486,7 @@ const position = computed(() => {
 function setActive(id: string | null) {
   if (pinnedId.value !== id) pinnedId.value = null;
   if (id !== null) settleOthers(id);
-  if (isDesktop.value) selectedId.value = id;
+  if (isDesktop.value) { selectedId.value = id; selectedMemoId.value = null; }
   else sheetId.value = id;
 }
 
@@ -588,6 +666,8 @@ function onKeydown(e: KeyboardEvent) {
   if (!isDesktop.value || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
   if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   if (document.querySelector('.q-dialog, .q-menu')) return;
+  // A memo is open in the pane: J / K / C / R are about contacts, so leave them alone.
+  if (activeMemo.value) return;
   const key = e.key.toLowerCase();
   const unconfirmed = activeLead.value?.reviewStatus === 'needs_review';
   if (key === 'j') void step(1);
@@ -637,7 +717,7 @@ watch(isDesktop, (desktop) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  const jobs: Promise<unknown>[] = [load()];
+  const jobs: Promise<unknown>[] = [load(), voice.load()];
   if (!isSales.value) jobs.push(api.get<Profile[]>('/profiles-list').then(({ data }) => { profiles.value = data; }));
   await Promise.all(jobs);
 });

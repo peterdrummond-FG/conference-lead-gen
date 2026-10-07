@@ -1,4 +1,6 @@
-// POST ?id=<inboundMessageId> -> { id, status }
+// POST ?id=<inboundMessageId> -> { id, status } for a failed photo / voice memo,
+//                              or { id, linkStatus: 'unlinked' } for a voice memo
+//                              that gave up looking for its contact.
 // Staff escape hatch once reconcile_retryable_failed_inbound_messages
 // (20260922110000_voice_memo_link_state_and_ocr_retry.sql) has given up --
 // which for a 'terminal' failure (error_class='terminal', e.g. "no legible
@@ -37,15 +39,30 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: message, error: fetchError } = await supabase
     .from("inbound_messages")
-    .select("id, kind, status, from_phone")
+    .select("id, kind, status, from_phone, link_status")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) return errorResponse(req, 500, fetchError.message);
   if (!message) return errorResponse(req, 404, `No inbound message with id '${id}'.`);
 
+  // Two different retries share this endpoint because both are "put it back in
+  // the queue the automatic loop already drains":
+  //   - a FAILED photo or memo goes back to pending_ocr / pending_transcription;
+  //   - a transcribed memo that gave up matching (link_status no_candidate_found,
+  //     "Needs review" in Contacts) goes back to 'unlinked' with a fresh attempt
+  //     count, so claim_unlinked_audio_messages picks it up on its next sweep. A
+  //     memo still 'unlinked' is already being retried, so there is nothing for a
+  //     person to add and it is refused rather than silently resetting its count.
+  const retryMatching = message.kind === "audio" && message.status !== "failed";
   const pendingStatus = PENDING_STATUS_BY_KIND[message.kind];
   if (!pendingStatus) return errorResponse(req, 400, `Only a photo or audio message can be retried, not '${message.kind}'.`);
-  if (message.status !== "failed") return errorResponse(req, 400, "Message is not failed — nothing to retry.");
+  if (retryMatching) {
+    if (message.link_status !== "no_candidate_found") {
+      return errorResponse(req, 400, "This memo is still being matched automatically — nothing to retry yet.");
+    }
+  } else if (message.status !== "failed") {
+    return errorResponse(req, 400, "Message is not failed — nothing to retry.");
+  }
 
   // Same ownership model as contacts-retry-match: a sales rep may retry only
   // their own submissions (matched by phone number, since inbound_messages
@@ -59,6 +76,21 @@ Deno.serve(async (req) => {
     if (!profile?.phone_number || profile.phone_number !== message.from_phone) {
       return errorResponse(req, 404, `No inbound message with id '${id}'.`);
     }
+  }
+
+  if (retryMatching) {
+    // Guarded on the status it was just read at, so a memo the sweep linked (or a
+    // person assigned) in the meantime is not pulled back out of 'linked'.
+    const { data: reset, error: resetError } = await supabase
+      .from("inbound_messages")
+      .update({ link_status: "unlinked", link_attempts: 0, last_link_attempt_at: null })
+      .eq("id", id)
+      .eq("link_status", "no_candidate_found")
+      .select("id")
+      .maybeSingle();
+    if (resetError) return errorResponse(req, 500, resetError.message);
+    if (!reset) return errorResponse(req, 409, "That memo changed while you were looking at it. Refresh and try again.");
+    return jsonResponse(req, { id: message.id, linkStatus: "unlinked" });
   }
 
   const { error } = await supabase
