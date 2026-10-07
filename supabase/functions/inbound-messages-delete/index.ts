@@ -1,5 +1,11 @@
 // POST ?id=<inboundMessageId> -> { deleted: id }
 //
+// Two kinds of row can be deleted here, both from Contacts' "Needs attention" section:
+//   - an unmatched voice memo (audio, link_status unlinked / no_candidate_found);
+//   - a photo or memo that FAILED to process (status='failed'): a blurry card, a
+//     duplicate, a recording that won't transcribe. Nothing was made from it, so there
+//     is nothing else to clean up beyond its stored file.
+//
 // Lets a human discard an unmatched voice memo from Review's unresolved-
 // intake list (inbound-messages-unresolved-list) once they've read it and
 // decided it's not worth keeping around for another 50 link_attempts (or a
@@ -29,16 +35,14 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: message, error: messageError } = await supabase
     .from("inbound_messages")
-    .select("id, kind, link_status, from_phone, storage_path")
+    .select("id, kind, status, link_status, from_phone, storage_path")
     .eq("id", id)
     .maybeSingle();
   if (messageError) return errorResponse(req, 500, messageError.message);
-  if (
-    !message ||
-    message.kind !== "audio" ||
-    !["unlinked", "no_candidate_found"].includes(message.link_status)
-  ) {
-    return errorResponse(req, 404, `No unmatched audio message with id '${id}'.`);
+  const unmatchedMemo = message?.kind === "audio" && ["unlinked", "no_candidate_found"].includes(message.link_status);
+  const failedItem = message?.status === "failed" && ["photo", "audio"].includes(message.kind);
+  if (!message || !(unmatchedMemo || failedItem)) {
+    return errorResponse(req, 404, `No unmatched or failed message with id '${id}'.`);
   }
 
   if (user.role === "sales") {
@@ -48,7 +52,7 @@ Deno.serve(async (req) => {
       .eq("id", user.id)
       .maybeSingle();
     if (!profile?.phone_number || profile.phone_number !== message.from_phone) {
-      return errorResponse(req, 404, `No unmatched audio message with id '${id}'.`);
+      return errorResponse(req, 404, `No unmatched or failed message with id '${id}'.`);
     }
   }
 
@@ -71,8 +75,10 @@ Deno.serve(async (req) => {
   // nothing left pointing at it. A missing object is the desired end state
   // anyway, so a Storage error here is logged and non-fatal.
   if (message.storage_path) {
-    const { error: removeError } = await supabase.storage.from("voice-memos").remove([message.storage_path]);
-    if (removeError) console.error("voice memo cleanup failed", removeError);
+    // Photos live in contact-photos, memos in voice-memos (twilio-webhook picks the bucket by kind).
+    const bucket = message.kind === "photo" ? "contact-photos" : "voice-memos";
+    const { error: removeError } = await supabase.storage.from(bucket).remove([message.storage_path]);
+    if (removeError) console.error("inbound media cleanup failed", removeError);
   }
 
   const { error: deleteError } = await supabase.from("inbound_messages").delete().eq("id", id);

@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     .order("received_at", { ascending: false });
   let failedQuery = supabase
     .from("inbound_messages")
-    .select("id, kind, received_at, from_phone, event_id, error, error_class, processing_attempts, event:events(name)")
+    .select("id, kind, received_at, from_phone, event_id, error, error_class, processing_attempts, storage_path, event:events(name)")
     .eq("status", "failed")
     .in("kind", ["photo", "audio"])
     .order("received_at", { ascending: false });
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
   // (a phone number maps to at most one profile) and every Create-contacts attempt
   // made for these memos, newest first so the first one seen per memo is the latest.
   const memoIds = (audio ?? []).map((m) => m.id);
-  const phones = [...new Set((audio ?? []).map((m) => m.from_phone))];
+  const phones = [...new Set([...(audio ?? []), ...(failedIntake ?? [])].map((m) => m.from_phone))];
   const [{ data: reps }, { data: submissions }] = await Promise.all([
     phones.length
       ? supabase.from("profiles").select("name, phone_number").in("phone_number", phones)
@@ -148,6 +148,10 @@ Deno.serve(async (req) => {
       receivedAt: m.received_at,
       fromPhone: m.from_phone,
       eventId: m.event_id,
+      repName: repByPhone.get(m.from_phone) ?? null,
+      // Whether the stored photo / recording still exists (the 90-day purge removes it):
+      // the card offers View photo / Play only while it does.
+      hasMedia: !!m.storage_path,
       eventName: m.event?.name ?? null,
       error: m.error,
       errorClass: m.error_class,

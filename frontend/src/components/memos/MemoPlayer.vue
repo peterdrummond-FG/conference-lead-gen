@@ -2,7 +2,7 @@
   <!-- sm: just the round play button, for the thin phone card. lg: the button, a
        scrubber and the clock, for the laptop pane. A memo whose recording has been
        purged (90 days) draws a plain mic in the same circle: nothing to press. -->
-  <div class="mp" :class="`mp-${size}`">
+  <div class="mp" :class="[`mp-${size}`, { 'mp-red': tone === 'red' }]">
     <button
       v-if="hasAudio"
       type="button"
@@ -11,7 +11,7 @@
       :disabled="loading"
       @click="toggle"
     >
-      <q-spinner v-if="loading" size="20px" color="amber-10" />
+      <q-spinner v-if="loading" size="20px" :color="tone === 'red' ? 'negative' : 'amber-10'" />
       <q-icon v-else :name="playing ? 'pause' : 'play_arrow'" :size="size === 'lg' ? '28px' : '22px'" />
     </button>
     <span v-else class="mp-btn mp-none" role="img" aria-label="Recording no longer available" title="The recording was deleted after 90 days. The transcript is kept.">
@@ -40,7 +40,7 @@
 import { useMemoAudio } from '@/composables/useMemoAudio';
 import { clock } from '@/utils/voiceMemos';
 
-const props = defineProps<{ size: 'sm' | 'lg'; hasAudio: boolean; getUrl: () => Promise<string> }>();
+const props = defineProps<{ size: 'sm' | 'lg'; hasAudio: boolean; getUrl: () => Promise<string>; tone?: 'amber' | 'red' }>();
 const { playing, loading, failed, time, duration, toggle, seek } = useMemoAudio(() => props.getUrl());
 </script>
 
@@ -59,6 +59,7 @@ const { playing, loading, failed, time, duration, toggle, seek } = useMemoAudio(
   color: #8A4B00;
   cursor: pointer;
 }
+.mp-red .mp-btn { background: #F7D4D4; color: #8E2B2B; }
 .mp-lg .mp-btn { width: 48px; height: 48px; background: #E3F1FA; color: #0067AC; }
 .mp-btn:focus-visible { outline: 2px solid #0067AC; outline-offset: 2px; }
 .mp-btn:disabled { cursor: progress; }

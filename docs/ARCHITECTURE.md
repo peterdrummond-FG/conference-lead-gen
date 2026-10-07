@@ -582,7 +582,7 @@ the memo" fallbacks were worse than the problem they tried to solve.
 `claim_unlinked_audio_messages` retries a memo up to `LINK_MAX_ATTEMPTS`
 times against whatever candidates exist *at attempt time* — it can never
 close a memo out on its own, because "nobody yet" and "nobody ever" look
-identical from inside the loop. Contacts' **Voice memos** section
+identical from inside the loop. Contacts' **Needs attention** section
 (`inbound-messages-unresolved-list`; `components/memos/`, state in
 `composables/useVoiceMemos.ts`, words and rules in `utils/voiceMemos.ts`) puts
 those memos in front of a person, in amber, above the contacts. A memo is listed
@@ -591,8 +591,15 @@ only once it has a transcript, and only while its `link_status` is `unlinked`
 contact already in Contacts links itself and never appears. On a phone each memo
 is one thin card with every control on it; on a laptop it is a thin row that opens
 in the right pane (player, full transcript, the actions), where the contact editor
-normally is. The failed photos and memos the old panel also held stay in
-`UnresolvedIntakePanel`, now only that. Four actions:
+normally is. The section is **closed until the rep opens it** (open, it pushed
+every contact below it); its header and count are always visible. It also holds
+photos and memos that **failed to process** (`status='failed'`) as soft-red cards
+(`FailedCard`) on laptop and phone alike: Retry (only once the system has given
+up, `error_class` not `transient`), Delete (`inbound-messages-delete` also accepts
+a failed photo or memo and removes its file from the right bucket) and View photo /
+Play (`inbound-messages-photo` redirects to a signed `contact-photos` URL the page
+shows as a blob; memos use `inbound-messages-audio`). The old
+`UnresolvedIntakePanel` is gone. Four actions on an unmatched memo:
 
 - `inbound-messages-assign` — attach the full transcript to a contact the
   reviewer picks by hand (candidates from `inbound-messages-link-candidates`,

@@ -135,6 +135,9 @@ export interface FailedIntakeMessage {
   kind: 'photo' | 'audio';
   receivedAt: string;
   fromPhone: string;
+  repName: string | null;
+  // False once the 90-day purge has removed the photo / recording: no View photo, no player.
+  hasMedia: boolean;
   eventId: string | null;
   eventName: string | null;
   error: string | null;

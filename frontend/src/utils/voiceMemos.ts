@@ -5,7 +5,7 @@
 // Every sentence here is a promise about the pipeline behind it (CLAUDE.md, "a UI
 // promise has to be true"): memoWords.test.mjs checks the ones that can be checked
 // against the Edge Functions' source.
-import type { LinkCandidateContact, UnresolvedAudioMemo } from '@/types/review';
+import type { FailedIntakeMessage, LinkCandidateContact, UnresolvedAudioMemo } from '@/types/review';
 
 // How many automatic attempts the agent makes before a memo becomes "Needs review"
 // (LINK_MAX_ATTEMPTS in local-agent/agent.mjs and the 20 the n8n sweep passes to
@@ -63,13 +63,43 @@ export function createNote(m: Pick<UnresolvedAudioMemo, 'create'>): string | nul
     : "Reading this memo didn't work. Try again, or assign it to a contact.";
 }
 
+// The section holds two kinds of thing: voice memos nobody could match to a contact
+// (unmatched) and photos or memos that failed to process (failed).
+export const SECTION_TITLE = 'Needs attention';
+
 export function sectionCount(n: number): string {
-  return `${n} not linked`;
+  return n === 1 ? '1 item' : `${n} items`;
 }
 
-export function sectionHelp(n: number): string {
-  return `We couldn't tell who ${n === 1 ? 'this is' : 'these are'} about.`;
+export function sectionHelp(unmatched: number, failed: number): string {
+  if (!failed) return `We couldn't tell who ${unmatched === 1 ? 'this is' : 'these are'} about.`;
+  if (!unmatched) return failed === 1 ? "This couldn't be read." : "These couldn't be read.";
+  return "Memos we couldn't match to a contact, and photos or memos we couldn't read.";
 }
+
+// ── Failed photos and memos ──────────────────────────────────────────────────────
+type FailedFields = Pick<FailedIntakeMessage, 'kind' | 'errorClass' | 'error'>;
+
+export const failedKind = (m: Pick<FailedIntakeMessage, 'kind'>): string => (m.kind === 'photo' ? 'Card photo' : 'Voice memo');
+
+// 'transient' = the agent is retrying it on its own (reconcile_retryable_failed_inbound_messages);
+// anything else is waiting for a person.
+export const failedState = (m: Pick<FailedIntakeMessage, 'errorClass'>): string => (m.errorClass === 'transient' ? 'Retrying automatically' : 'Needs manual retry');
+
+// Retry only where the system has given up, the same rule as a memo's Retry matching.
+export const canRetryFailed = (m: Pick<FailedIntakeMessage, 'errorClass'>): boolean => m.errorClass !== 'transient';
+
+export const failedText = (m: FailedFields): string => `${failedKind(m)}: ${m.error?.trim() || "couldn't be processed"}`;
+
+export function failedDelete(m: Pick<FailedIntakeMessage, 'kind'>): { title: string; message: string; toast: string } {
+  return m.kind === 'photo'
+    ? { title: 'Delete this photo?', message: "This permanently deletes the photo. This can't be undone.", toast: 'Photo deleted' }
+    : { title: 'Delete voice memo?', message: "This permanently deletes the memo and its recording. This can't be undone.", toast: DELETED_TOAST };
+}
+
+export const failedRetryToast = (m: Pick<FailedIntakeMessage, 'kind'>): string => (
+  m.kind === 'photo' ? 'Trying again. If the card reads, the contact shows up in your list.' : 'Trying again. If it transcribes, it joins the memos here or becomes a contact.'
+);
 
 // "2:14 PM" for today, "Oct 6, 2:14 PM" for any other day. `now` is a parameter so the
 // wording is testable.

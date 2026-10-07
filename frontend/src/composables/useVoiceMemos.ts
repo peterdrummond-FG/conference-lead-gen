@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch, type Ref } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import type { FailedIntakeMessage, LinkCandidateContact, UnresolvedAudioMemo } from '@/types/review';
-import { CREATED_TOAST, CREATE_STARTED_TOAST, DELETED_TOAST, RETRY_TOAST, assignedToast } from '@/utils/voiceMemos';
+import { CREATED_TOAST, CREATE_STARTED_TOAST, DELETED_TOAST, RETRY_TOAST, assignedToast, failedDelete, failedRetryToast } from '@/utils/voiceMemos';
 
 // While a person's Create contacts is running the page polls for the result. The
 // extraction is a model call behind the agent / n8n pipeline, so it is seconds to
@@ -24,7 +24,6 @@ export function useVoiceMemos(opts: { viewAsRepId: Ref<string | null>; onContact
   const failed = ref<FailedIntakeMessage[]>([]);
   const loaded = ref(false);
   const doing = reactive<Record<string, Doing | undefined>>({});
-  const retryingFailed = reactive<Record<string, boolean>>({});
 
   async function load() {
     const params: Record<string, string> = {};
@@ -138,17 +137,35 @@ export function useVoiceMemos(opts: { viewAsRepId: Ref<string | null>; onContact
     return data.url;
   }
 
-  // Failed photos and memos (the old panel's other half): Retry puts them back in the
-  // queue the agent already drains.
-  async function retryFailed(id: string) {
-    retryingFailed[id] = true;
-    try {
-      await api.post('/inbound-messages-retry', undefined, { params: { id } });
-      failed.value = failed.value.filter((m) => m.id !== id);
-    } finally {
-      retryingFailed[id] = false;
-    }
+  // Failed photos and memos: Retry puts them back in the queue the agent already
+  // drains; Delete removes the item and its stored file; View photo shows the picture.
+  const retryFailed = (m: FailedIntakeMessage) => run(m.id, 'retry', async () => {
+    await api.post('/inbound-messages-retry', undefined, { params: { id: m.id } });
+    failed.value = failed.value.filter((x) => x.id !== m.id);
+    Notify.create({ type: 'info', message: failedRetryToast(m) });
+  });
+
+  function confirmDeleteFailed(m: FailedIntakeMessage) {
+    const words = failedDelete(m);
+    Dialog.create({
+      title: words.title,
+      message: words.message,
+      cancel: true,
+      persistent: true,
+      ok: { label: 'Delete', color: 'negative' },
+    }).onOk(() => void run(m.id, 'delete', async () => {
+      await api.post('/inbound-messages-delete', undefined, { params: { id: m.id } });
+      failed.value = failed.value.filter((x) => x.id !== m.id);
+      Notify.create({ type: 'positive', message: words.toast });
+    }));
   }
 
-  return { memos, failed, loaded, doing, retryingFailed, load: safeLoad, createContacts, retryMatching, confirmDelete, assign, candidates, audioUrl, retryFailed };
+  // The image as bytes (the page's CSP has no Storage host in img-src), shown from a
+  // blob: URL the dialog revokes when it closes. Same pattern as useContactPhoto.
+  async function photoBlob(id: string): Promise<Blob> {
+    const { data } = await api.get<Blob>('/inbound-messages-photo', { params: { id }, responseType: 'blob' });
+    return data;
+  }
+
+  return { memos, failed, loaded, doing, load: safeLoad, createContacts, retryMatching, confirmDelete, assign, candidates, audioUrl, retryFailed, confirmDeleteFailed, photoBlob };
 }

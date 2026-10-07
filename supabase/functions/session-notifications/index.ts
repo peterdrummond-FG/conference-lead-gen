@@ -10,6 +10,14 @@
 // been pending long enough that we stop waiting on it), text back how many
 // contacts were actually created from that batch.
 //
+// A count of zero is only worth a text when a PHOTO was in the batch: a card that
+// didn't read really did make no contact, and the rep should check Contacts (where
+// it sits under "Needs attention" with Retry). A batch of only voice memos makes no
+// contact by design (a memo attaches to a contact the rep already has, or waits to be
+// matched), so "0 contacts received." was both untrue-sounding and noise: a rep who
+// had just sent a contact got it straight after the memo (2026-10-07). That batch is
+// settled silently; the immediate "Got it" reply already said it arrived.
+//
 // There used to be a second sweep, retired 2026-10-05: an "expiry reminder"
 // texted to any bound phone idle for 60 minutes —
 //   "Your session is about to pause. Text in more contacts now or respond
@@ -117,7 +125,7 @@ Deno.serve(async (req) => {
   for (const binding of bindings ?? []) {
     const { data: msgs, error: msgsError } = await supabase
       .from("inbound_messages")
-      .select("id, status, received_at")
+      .select("id, kind, status, received_at")
       .eq("from_phone", binding.phone_number)
       .in("kind", ["photo", "audio"])
       .gt("received_at", binding.contacts_confirmed_through)
@@ -151,7 +159,14 @@ Deno.serve(async (req) => {
     if (!fromNumber) continue;
 
     const n = count ?? 0;
+    const photos = msgs.filter((m) => m.kind === "photo").length;
     const label = n === 1 ? "1 contact" : `${n} contacts`;
+    // Nothing true and useful to say (see the header): settle the batch without a text.
+    const text = n > 0
+      ? `${label} received.`
+      : photos > 0
+      ? `We couldn't make a contact from ${photos === 1 ? "that photo" : "those photos"}. Check Contacts.`
+      : null;
 
     if (sent >= MAX_SENDS_PER_TICK) break;
 
@@ -172,9 +187,10 @@ Deno.serve(async (req) => {
       .select("phone_number")
       .maybeSingle();
     if (!claimedConfirm) continue;
+    if (text === null) continue;
 
     try {
-      await sendSms(accountSid, authToken, binding.phone_number, fromNumber, `${label} received.`);
+      await sendSms(accountSid, authToken, binding.phone_number, fromNumber, text);
       sent++;
     } catch (err) {
       // Release the claim so a transient failure retries, rather than being

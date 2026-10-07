@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AUTO_ATTEMPTS, ASSIGN_HINT, MAX_CREATE_ATTEMPTS, assignedToast, candidateName, canCreate, canRetry, clock, createNote,
-  filterCandidates, isBusy, memoState, memoTime, sectionCount, sectionHelp,
+  filterCandidates, isBusy, memoState, memoTime, sectionCount, sectionHelp, SECTION_TITLE, canRetryFailed, failedDelete, failedRetryToast, failedState, failedText,
 } from './voiceMemos.ts';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,10 +53,31 @@ test('the note under the buttons says what happened and what is left to do', () 
   assert.doesNotMatch(createNote(memo({ create: { status: 'failed', error: 'x', attempts: MAX_CREATE_ATTEMPTS } })), /Try again/);
 });
 
-test('section words agree with the number', () => {
-  assert.equal(sectionCount(3), '3 not linked');
-  assert.equal(sectionHelp(1), "We couldn't tell who this is about.");
-  assert.equal(sectionHelp(2), "We couldn't tell who these are about.");
+test('section words agree with the number and with what is in it', () => {
+  assert.equal(SECTION_TITLE, 'Needs attention');
+  assert.equal(sectionCount(1), '1 item');
+  assert.equal(sectionCount(3), '3 items');
+  assert.equal(sectionHelp(1, 0), "We couldn't tell who this is about.");
+  assert.equal(sectionHelp(2, 0), "We couldn't tell who these are about.");
+  assert.equal(sectionHelp(0, 1), "This couldn't be read.");
+  assert.equal(sectionHelp(0, 2), "These couldn't be read.");
+  assert.match(sectionHelp(1, 1), /match to a contact.*couldn't read/);
+});
+
+test('a failed item can be retried by hand only where the system has given up', () => {
+  assert.equal(canRetryFailed({ errorClass: 'terminal' }), true);
+  assert.equal(canRetryFailed({ errorClass: null }), true);
+  assert.equal(canRetryFailed({ errorClass: 'transient' }), false);
+  assert.equal(failedState({ errorClass: 'transient' }), 'Retrying automatically');
+  assert.equal(failedState({ errorClass: 'terminal' }), 'Needs manual retry');
+});
+
+test('a failed item says what it was and why, and the delete words match the kind', () => {
+  assert.equal(failedText({ kind: 'photo', errorClass: 'terminal', error: 'no legible business card detected in photo' }), 'Card photo: no legible business card detected in photo');
+  assert.equal(failedText({ kind: 'audio', errorClass: null, error: null }), "Voice memo: couldn't be processed");
+  assert.equal(failedDelete({ kind: 'photo' }).title, 'Delete this photo?');
+  assert.equal(failedDelete({ kind: 'audio' }).title, 'Delete voice memo?');
+  assert.match(failedRetryToast({ kind: 'photo' }), /card reads/);
 });
 
 test('a memo from today shows the time, an older one shows the day too', () => {
@@ -120,4 +141,23 @@ test('the automatic retry sweep skips a memo a person is creating contacts from'
 test('delete refuses while contacts are being created, and the list only shows memos that have a transcript', () => {
   assert.match(fn('inbound-messages-delete'), /pending_extraction/);
   assert.match(fn('inbound-messages-unresolved-list'), /\.not\("transcript", "is", null\)/);
+});
+
+test('delete accepts a failed photo or memo, from the right bucket, and still guards against a stale tab', () => {
+  const del = fn('inbound-messages-delete');
+  assert.match(del, /status === "failed"/);
+  assert.match(del, /kind === "photo" \? "contact-photos" : "voice-memos"/);
+  // The photo viewer's function reads the same bucket the webhook stores photos in.
+  assert.match(fn('inbound-messages-photo'), /from\("contact-photos"\)/);
+  assert.match(readFileSync(join(REPO, 'supabase/functions/twilio-webhook/index.ts'), 'utf8'), /kind === "photo" \? "contact-photos" : "voice-memos"/);
+});
+
+test('a batch of only voice memos never gets a "0 contacts" text, and a zero-contact photo batch says what went wrong', () => {
+  const src = fn('session-notifications');
+  assert.doesNotMatch(src, /`\$\{label\} received\.`\);/, 'the count text must go through the zero-contact check');
+  assert.match(src, /n > 0\s*\? `\$\{label\} received\.`/);
+  assert.match(src, /photos > 0/);
+  assert.match(src, /if \(text === null\) continue;/);
+  // The watermark is claimed BEFORE the silent skip, so a settled batch is not re-read every minute.
+  assert.ok(src.indexOf('contacts_confirmed_through: newest.received_at') < src.indexOf('if (text === null) continue;'));
 });
