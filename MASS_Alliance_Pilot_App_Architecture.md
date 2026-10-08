@@ -637,7 +637,7 @@ ever" used to be the only two outcomes for a memo with no matching candidate.
 Now, at `LinkAttempts = LINK_FALLBACK_ATTEMPT` (3, well short of
 `LINK_MAX_ATTEMPTS`'s 20), `attribute-voice-memo` is additionally asked
 (`extractFallbackContact: true` in its input) whether the transcript alone —
-a name plus a title, school, or district — is independently enough to create
+a name plus a phone, email, title, school, or district (phone and email added 2026-10-08) — is independently enough to create
 a contact, no card or roster photo needed. A qualifying transcript is POSTed
 to a new Edge Function, `contacts-from-voice-memo` (sibling of
 `contacts-from-note`, keyed on the `InboundMessages` id rather than a note

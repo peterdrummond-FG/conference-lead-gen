@@ -82,14 +82,17 @@ test('AttributionOutput requires exactly one of excerpt / notFound', () => {
   assert.equal(AttributionOutput.safeParse({ results: [{ contactId: id }] }).success, false);
 });
 
-test('AttributionOutput accepts a well-formed extractedContact (name + title/district/school)', () => {
+test('AttributionOutput accepts a well-formed extractedContact (name + phone/email/title/district/school)', () => {
   const base = { results: [], extractedContact: { firstName: 'Alex', extractionConfidence: 'medium' } };
   assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, title: 'Curriculum Director' } }).success, true);
   assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, districtName: 'Rivera Unified' } }).success, true);
   assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, schoolName: 'Rivera Elementary' } }).success, true);
+  // The 2026-10-08 memo: a name and a spoken phone number, nothing else.
+  assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, phone: '555-275-6211' } }).success, true);
+  assert.equal(AttributionOutput.safeParse({ ...base, extractedContact: { ...base.extractedContact, email: 'alex@rivera.example' } }).success, true);
 });
 
-test('AttributionOutput rejects extractedContact with no title/district/school', () => {
+test('AttributionOutput rejects extractedContact with no phone/email/title/district/school', () => {
   const r = AttributionOutput.safeParse({
     results: [],
     extractedContact: { firstName: 'Alex', extractionConfidence: 'low' },

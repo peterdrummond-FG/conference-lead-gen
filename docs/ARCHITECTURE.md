@@ -655,8 +655,9 @@ shows as a blob; memos use `inbound-messages-audio`). The old
 ### Voice-memo fallback contact creation
 
 "Nobody yet" and "nobody ever" aren't the only two outcomes — a memo can
-also describe someone thoroughly enough (a name plus a title, school, or
-district) that no card or roster photo is needed to place them at all. At
+also describe someone thoroughly enough (a name plus a phone, email, title, school,
+or district; phone and email were added 2026-10-08 after a memo naming someone
+with only a phone number was refused) that no card or roster photo is needed to place them at all. At
 `link_attempts = LINK_FALLBACK_ATTEMPT` (3, well below `LINK_MAX_ATTEMPTS`'s
 20), `linkTranscriptToContacts` asks `attribute-voice-memo` to additionally
 judge this — via an `extractFallbackContact` input flag and an

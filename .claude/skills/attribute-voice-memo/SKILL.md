@@ -101,12 +101,19 @@ from the caller, not something to attempt on your own initiative.
    whether the transcript, on its own, names someone clearly enough to create
    a brand-new contact. That requires **both**:
    - a person's name (first name at minimum), **and**
-   - at least one of: a job title, a school name, or a district name.
+   - at least one other piece of identifying information the transcript
+     states: a phone number, an email address, a job title, a school name, or
+     a district name. (2026-10-08: a memo with a name and a spoken phone
+     number was refused because only title/school/district counted, so a lead
+     the rep had clearly captured never became a contact. A phone or email is
+     how the rep follows up, so it identifies the person as well as a title.)
 
-   A name with no school/district/title at all ("talked to someone named
-   Alex") is not enough — leave `extractedContact` out of your output
-   entirely. Never invent a school, district, or title to satisfy this rule;
-   only use what the transcript actually states. If it qualifies, extract:
+   A name with none of those ("talked to someone named Alex", or a name plus
+   only what they were interested in) is not enough — leave
+   `extractedContact` out of your output entirely. Never invent a phone,
+   email, school, district, or title to satisfy this rule; only use what the
+   transcript actually states, and copy a phone or email exactly as spoken. If
+   it qualifies, extract:
    `firstName`, `lastName` (may be `""` if never stated), `email` (`""` if
    none), `phone` (`""` if none), `title` (`""` if none), `districtName`
    (`""` if none), `schoolName` (`""` if none), `interactionNotes` (the

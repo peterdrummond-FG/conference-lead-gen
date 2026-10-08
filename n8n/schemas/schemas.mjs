@@ -173,13 +173,16 @@ const ExtractedVoiceMemoContact = z
     extractionConfidence: confidence,
   })
   // Backstop behind the SKILL.md sufficiency rule (Step 7): a name alone,
-  // with nothing to independently place the person at a school/district or
-  // in a role, is exactly the "not enough to stand alone" case the skill is
-  // told to leave out — enforced here rather than trusted, same reasoning
-  // as every other refine in this file.
-  .refine((c) => Boolean(c.title.trim() || c.districtName.trim() || c.schoolName.trim()), {
-    message: 'extractedContact requires a title, districtName, or schoolName',
-  });
+  // with nothing else to identify the person (a phone, an email, a role, a
+  // school or district), is exactly the "not enough to stand alone" case the
+  // skill is told to leave out — enforced here rather than trusted, same
+  // reasoning as every other refine in this file. Phone and email count since
+  // 2026-10-08: a memo naming someone and giving a number was refused under
+  // the old title/school/district-only rule and the lead never became a contact.
+  .refine(
+    (c) => Boolean(c.phone.trim() || c.email.trim() || c.title.trim() || c.districtName.trim() || c.schoolName.trim()),
+    { message: 'extractedContact requires a phone, email, title, districtName, or schoolName' },
+  );
 
 // A person the rep met who matches NO captured contact, returned only when the
 // memo did attribute to at least one candidate (SKILL.md Step 8). On
