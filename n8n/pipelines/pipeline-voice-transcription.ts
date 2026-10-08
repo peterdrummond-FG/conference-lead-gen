@@ -9,10 +9,11 @@ const SAMPLE_ID = '7d2e3b64-3a9f-4c54-8e6f-1c8d6a1fab22';
 const SAMPLE_EVENT = '5b0c1d42-1e7d-4a32-8c4d-9a6b4e8f0c33';
 const SAMPLE_CONTACT = '0b8f0b3e-3a33-4a4f-9d3f-4b9b1d1f7c20';
 const LINK_MAX_ATTEMPTS = 20;
-// Scratch space for the AMR -> M4A conversion (n8n/ffmpeg/README.md). Every
-// path under it is built from the claimed row's UUID, which Safe Storage Path?
-// re-validates first -- no text from a memo, rep or attendee reaches the shell.
-const SCRATCH_DIR = '/tmp/ckh-voice';
+// AMR -> M4A conversion service (n8n/ffmpeg-service, a Vercel function). Phones
+// send AMR and OpenAI's transcription API rejects it; the n8n host has no ffmpeg
+// and its admin could not add one (see n8n/ffmpeg-service/api/convert.mjs).
+// Vercel project audio-convert-ffmpeg (n8n/ffmpeg-service/README.md).
+const FFMPEG_SERVICE_URL = 'https://audio-convert-ffmpeg.vercel.app/api/convert';
 // At this attempt, if no existing candidate has matched yet, ask
 // attribute-voice-memo to additionally judge whether the transcript alone
 // justifies creating a brand-new contact (see Attribution Input,
@@ -20,7 +21,6 @@ const SCRATCH_DIR = '/tmp/ckh-voice';
 // LINK_FALLBACK_ATTEMPT in local-agent/agent.mjs.
 const LINK_FALLBACK_ATTEMPT = 5;
 
-const NAME_PROMPT_JS = "// Audit A8: the roster is OCR of attacker-supplied cards and Whisper's\n// initial_prompt biases the text it emits, so accept only name-shaped tokens and\n// cap the list (Whisper silently truncates its conditioning window anyway).\nconst NAME_TOKEN = /^[\\p{L}][\\p{L}'\\-.]{0,30}$/u;\nlet rows = [];\nif ($json.statusCode === 200) {\n  try { const raw = $json.data ?? $json.body; const b = typeof raw === 'string' ? JSON.parse(raw) : raw; rows = Array.isArray(b) ? b : []; } catch (e) { rows = []; }\n}\nconst names = [];\nfor (const c of rows) {\n  const parts = [c.first_name, c.last_name].filter(Boolean).map(p => String(p).trim()).filter(Boolean);\n  if (parts.length === 0 || parts.length > 2) continue;\n  if (!parts.every(p => NAME_TOKEN.test(p))) continue;\n  if (parts.every(p => p === 'Illegible')) continue; // process-cards placeholder, not a name\n  names.push(parts.join(' '));\n  if (names.length >= 30) break;\n}\nconst claim = $('Claim Audio Message').item.json;\nreturn { json: { messageId: claim.id, claimedAttempts: claim.processing_attempts, storagePath: claim.storage_path, prompt: names.length ? 'Contacts at this event: ' + names.join(', ') + '.' : '' } };";
 
 const ATTRIBUTION_INPUT_JS = "const ctx = $('Link Context').item.json;\nlet rows = null;\nif ($json.statusCode === 200) {\n  try { const raw = $json.data ?? $json.body; const b = typeof raw === 'string' ? JSON.parse(raw) : raw; rows = Array.isArray(b) ? b : null; } catch (e) { rows = null; }\n}\nreturn { json: Object.assign({}, ctx, {\n  fetchOk: rows !== null,\n  candidateRows: (rows ?? []).map(c => ({ id: c.id, interaction_notes: c.interaction_notes ?? null })),\n  candidates: (rows ?? []).map(c => ({ contactId: c.id, firstName: c.first_name ?? '', lastName: c.last_name ?? '', email: c.email ?? '', phone: c.phone ?? '', title: c.title ?? '' })),\n  extractFallbackContact: ctx.linkAttempts === " + LINK_FALLBACK_ATTEMPT + "\n}) };";
 
@@ -285,9 +285,9 @@ const safePath = ifElse({
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
         conditions: [
           { leftValue: expr('{{ $json.storage_path }}'), operator: { type: 'string', operation: 'regex' }, rightValue: STORAGE_KEY_RE },
-          // The id goes into shell command lines below (scratch file names).
-          // It came from our own row, but it crossed DB -> n8n, so it is
-          // re-checked here rather than trusted because of where it came from.
+          // The id is used in claim and write filters below. It came from our
+          // own row, but it crossed DB -> n8n, so it is re-checked here rather
+          // than trusted because of where it came from.
           { leftValue: expr('{{ $json.id }}'), operator: { type: 'string', operation: 'regex' }, rightValue: UUID_RE }
         ],
         combinator: 'and'
@@ -296,65 +296,23 @@ const safePath = ifElse({
   }
 });
 
-const fetchPromptCandidates = node({
-  type: 'n8n-nodes-base.httpRequest',
-  version: 4.5,
+// No name hints are sent to the transcription: tested 2026-10-07, both
+// gpt-4o-transcribe and whisper-1 heard a noisy-room memo's name ("Chad
+// Schmeller") correctly without them, so the roster fetch that used to build a
+// prompt is gone. Everything after the claim reads the memo's id, attempt
+// number and storage path from here.
+const runContext = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.5,
   config: {
-    name: 'Fetch Prompt Names',
+    name: 'Run Context',
     position: [2620, 200],
     parameters: {
-      method: 'GET',
-      url: SUPABASE_URL + '/rest/v1/contacts',
-      authentication: 'predefinedCredentialType',
-      nodeCredentialType: 'supabaseApi',
-      sendQuery: true,
-      specifyQuery: 'keypair',
-      queryParameters: { parameters: [
-        { name: 'select', value: 'first_name,last_name,source_msg:inbound_messages!contacts_source_message_id_fkey!inner(from_phone)' },
-        { name: 'event_id', value: expr("{{ 'eq.' + ($json.event_id ?? '') }}") },
-        { name: 'source', value: 'in.(card_photo,directory_photo)' },
-        { name: 'source_msg.from_phone', value: expr("{{ 'eq.' + ($json.from_phone ?? '') }}") },
-        { name: 'order', value: 'created_at.desc' },
-        { name: 'limit', value: '200' }
-      ] },
-      options: {
-        response: { response: { fullResponse: true, neverError: true, responseFormat: 'text' } },
-        timeout: 30000
-      }
-    },
-    credentials: { supabaseApi: newCredential('Supabase account') }
-  },
-  output: [{ statusCode: 200, body: '[{"first_name":"Jane","last_name":"Doe"}]' }]
-});
-
-const buildPrompt = node({
-  type: 'n8n-nodes-base.code',
-  version: 2,
-  config: {
-    name: 'Build Name Prompt',
-    position: [2840, 200],
-    parameters: { mode: 'runOnceForEachItem', language: 'javaScript', jsCode: NAME_PROMPT_JS }
-  },
-  output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, storagePath: 'sms/' + SAMPLE_ID + '.m4a', prompt: 'Contacts at this event: Jane Doe.' }]
-});
-
-// Execute Command replaces the item with {exitCode, stdout, stderr}, so every
-// node from here on reads the message id and storage path from Build Name
-// Prompt instead of $json. Also removes any leftover files for this memo: a
-// retry after a crash must not convert a stale half-written file.
-const prepareScratch = node({
-  type: 'n8n-nodes-base.executeCommand',
-  version: 1,
-  config: {
-    name: 'Prepare Scratch Dir',
-    position: [3060, 200],
-    executeOnce: false,
-    onError: 'continueErrorOutput',
-    parameters: {
-      command: expr("{{ 'mkdir -p " + SCRATCH_DIR + " && rm -f " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
+      mode: 'raw',
+      jsonOutput: expr("{{ ({ messageId: $json.id, claimedAttempts: $json.processing_attempts, storagePath: $json.storage_path }) }}")
     }
   },
-  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+  output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, storagePath: 'sms/' + SAMPLE_ID + '.amr' }]
 });
 
 const downloadAudio = node({
@@ -366,7 +324,7 @@ const downloadAudio = node({
     onError: 'continueRegularOutput',
     parameters: {
       method: 'GET',
-      url: expr("{{ '" + SUPABASE_URL + "/storage/v1/object/voice-memos/' + $('Build Name Prompt').item.json.storagePath }}"),
+      url: expr("{{ '" + SUPABASE_URL + "/storage/v1/object/voice-memos/' + $json.storagePath }}"),
       authentication: 'predefinedCredentialType',
       nodeCredentialType: 'supabaseApi',
       options: {
@@ -394,143 +352,102 @@ const downloaded = ifElse({
   }
 });
 
-// ffmpeg is a CLI, so the memo goes to disk, is converted, and comes back:
-// phones send AMR and OpenAI's transcription API does not accept it. The
-// command is the one in n8n/ffmpeg/README.md. Each of these three nodes sends
-// its failure down the error output to Transcription Failed Row rather than
-// stopping the run, so the row is marked failed (transient: retried by the
-// backstop, bounded at 10 attempts) instead of being left in 'processing'.
-const writeAmr = node({
-  type: 'n8n-nodes-base.readWriteFile',
-  version: 1.1,
-  config: {
-    name: 'Write AMR',
-    position: [3720, 200],
-    onError: 'continueErrorOutput',
-    parameters: {
-      operation: 'write',
-      fileName: expr("{{ '" + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr' }}"),
-      dataPropertyName: 'audio'
-    }
-  },
-  output: [{ fileName: SCRATCH_DIR + '/' + SAMPLE_ID + '.amr' }]
-});
-
+// One call replaces the old Write AMR -> ffmpeg -> Read M4A chain: the memo's
+// bytes go to the conversion service and the M4A comes back as the same binary
+// property, so no scratch folder, Execute Command or file-access setting is
+// needed on the n8n host. The service authenticates with a bearer key held in
+// the 'FFmpeg Service Key' credential (an HTTP Header Auth credential:
+// Authorization: Bearer <key>); only this workflow may hold it. Any non-2xx
+// (bad key, not AMR, ffmpeg failure, over the 4 MB cap) lands in $json.error
+// via continue-on-error, which Converted? routes to Conversion Failed Row.
 const convertAudio = node({
-  type: 'n8n-nodes-base.executeCommand',
-  version: 1,
-  config: {
-    name: 'Convert With ffmpeg',
-    position: [3940, 200],
-    executeOnce: false,
-    onError: 'continueErrorOutput',
-    parameters: {
-      // -t 900 caps a memo at 15 minutes; mono 16 kHz AAC at 32 kbit/s keeps
-      // the upload around 4 MB per 15 minutes.
-      command: expr("{{ 'ffmpeg -nostdin -hide_banner -loglevel error -y -t 900 -i " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr -ac 1 -ar 16000 -c:a aac -b:a 32k " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
-    }
-  },
-  output: [{ exitCode: 0, stdout: '', stderr: '' }]
-});
-
-const readM4a = node({
-  type: 'n8n-nodes-base.readWriteFile',
-  version: 1.1,
-  config: {
-    name: 'Read M4A',
-    position: [4160, 200],
-    onError: 'continueErrorOutput',
-    parameters: {
-      operation: 'read',
-      fileSelector: expr("{{ '" + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}"),
-      options: { dataPropertyName: 'audio', fileName: 'memo.m4a', mimeType: 'audio/mp4' }
-    }
-  },
-  output: [{ fileName: 'memo.m4a' }]
-});
-
-// OpenAI gpt-4o-transcribe, shape proven by the probe workflow (n8n id
-// 2TVbxDKQGFqzIQDT). Not fullResponse/neverError: a 401/429/5xx raises and
-// lands in $json.error, which Transcription Failed Row classes as transient
-// (retried, bounded); an empty transcript is terminal. The prompt is only the
-// name-shaped tokens Build Name Prompt allowed (audit A8); when there are none
-// it falls back to a neutral phrase because an empty prompt field is untested.
-const callOpenAi = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.5,
   config: {
-    name: 'Call OpenAI Transcription',
-    position: [4380, 100],
+    name: 'Convert Audio',
+    position: [3720, 200],
     onError: 'continueRegularOutput',
     parameters: {
       method: 'POST',
-      url: 'https://api.openai.com/v1/audio/transcriptions',
-      authentication: 'predefinedCredentialType',
-      nodeCredentialType: 'openAiApi',
+      url: FFMPEG_SERVICE_URL,
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
       sendBody: true,
-      contentType: 'multipart-form-data',
-      bodyParameters: { parameters: [
-        { parameterType: 'formBinaryData', name: 'file', inputDataFieldName: 'audio' },
-        { parameterType: 'formData', name: 'model', value: 'gpt-4o-transcribe' },
-        { parameterType: 'formData', name: 'language', value: 'en' },
-        { parameterType: 'formData', name: 'prompt', value: expr("{{ $('Build Name Prompt').item.json.prompt || 'Conference voice memo.' }}") },
-        { parameterType: 'formData', name: 'response_format', value: 'text' }
-      ] },
+      contentType: 'binaryData',
+      inputDataFieldName: 'audio',
       options: {
-        response: { response: { responseFormat: 'text', outputPropertyName: 'transcript' } },
-        timeout: 120000
+        response: { response: { responseFormat: 'file', outputPropertyName: 'audio' } },
+        timeout: 60000
       }
     },
-    credentials: { openAiApi: newCredential('OpenAI account 2') }
+    credentials: { httpHeaderAuth: newCredential('FFmpeg Service Key') }
   },
-  output: [{ transcript: 'Met Jane Doe, she wants a demo.' }]
+  output: [{}]
 });
 
-// Side branch off Call OpenAI Transcription: delete this memo's files as soon
-// as the call returns, win or lose. It can't sit in the main chain because
-// Execute Command would replace the transcript. Files from a run that died
-// before reaching here are removed by Sweep Scratch Dir.
-const cleanupScratch = node({
-  type: 'n8n-nodes-base.executeCommand',
-  version: 1,
+const converted = ifElse({
+  version: 2.3,
   config: {
-    name: 'Delete Scratch Files',
-    position: [4600, -100],
-    executeOnce: false,
-    onError: 'continueRegularOutput',
+    name: 'Converted?',
+    position: [3940, 200],
     parameters: {
-      command: expr("{{ 'rm -f " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.amr " + SCRATCH_DIR + "/' + $('Build Name Prompt').item.json.messageId + '.m4a' }}")
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
+        conditions: [{ leftValue: expr('{{ !$json.error && !!$binary?.audio }}'), operator: { type: 'boolean', operation: 'true', singleValue: true }, rightValue: '' }],
+        combinator: 'and'
+      }
+    }
+  }
+});
+
+// Transient on purpose: a service outage, a redeploy or a rotated key is fixed
+// outside the memo, after which the backstop's retry (bounded at 10) picks it up
+// again. A genuinely un-convertible memo (not AMR, corrupt) uses up those
+// retries and ends 'failed' where a person sees it, never half-written.
+const conversionFailedRow = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.5,
+  config: {
+    name: 'Conversion Failed Row',
+    position: [4160, 416],
+    parameters: {
+      mode: 'raw',
+      jsonOutput: expr("{{ ({ messageId: $('Run Context').item.json.messageId, claimedAttempts: $('Run Context').item.json.claimedAttempts, status: 'failed', error: ('audio conversion failed: ' + String($json.error?.message ?? $json.error ?? 'the conversion service returned no audio (see the n8n execution of Convert Audio)')).slice(0, 2000), error_class: 'transient' }) }}")
     }
   },
-  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+  output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, status: 'failed', error: 'audio conversion failed: x', error_class: 'transient' }]
 });
 
-// Backstop sweep: voice recordings of attendees should not linger on the
-// server. Anything older than an hour is a leftover from a crashed run. mkdir
-// -p first so a missing directory (nothing converted yet) is not an error that
-// would email an alert every five minutes.
-const sweepScratch = node({
-  type: 'n8n-nodes-base.executeCommand',
-  version: 1,
+// The built-in OpenAI node (Audio > Transcribe) on the converted M4A. Verified
+// 2026-10-07 on this instance: it returns { text, usage } and reaches OpenAI
+// with credential "OpenAI account 2". It appears to use whisper-1 (its usage is
+// reported in seconds, whisper-1's format) and has no prompt or model option; on
+// a noisy test memo whisper-1 dropped the opening word that gpt-4o-transcribe
+// kept, so compare both on real memos before cutover. An API error (quota, 429,
+// 5xx) lands in $json.error, which Transcription Failed Row classes as transient
+// (retried, bounded); an empty transcript is terminal.
+const openAiTranscribe = node({
+  type: '@n8n/n8n-nodes-langchain.openAi',
+  version: 2.3,
   config: {
-    name: 'Sweep Scratch Dir',
-    position: [420, 800],
-    executeOnce: true,
+    name: 'OpenAI Transcribe',
+    position: [4380, 200],
     onError: 'continueRegularOutput',
-    parameters: { command: 'mkdir -p ' + SCRATCH_DIR + ' && find ' + SCRATCH_DIR + ' -type f -mmin +60 -delete' }
+    parameters: { resource: 'audio', operation: 'transcribe', binaryPropertyName: 'audio', options: { language: 'en' } },
+    credentials: { openAiApi: newCredential('OpenAI account 2') }
   },
-  output: [{ exitCode: 0, stdout: '', stderr: '' }]
+  output: [{ text: 'Met Jane Doe, she wants a demo.', usage: { type: 'duration', seconds: 10 } }]
 });
 
 const transcribed = ifElse({
   version: 2.3,
   config: {
     name: 'Transcribed?',
-    position: [4600, 100],
+    position: [4820, 200],
     parameters: {
       conditions: {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
-        conditions: [{ leftValue: expr("{{ !$json.error && typeof $json.transcript === 'string' && $json.transcript.trim() !== '' }}"), operator: { type: 'boolean', operation: 'true', singleValue: true }, rightValue: '' }],
+        conditions: [{ leftValue: expr("{{ !$json.error && typeof $json.text === 'string' && $json.text.trim() !== '' }}"), operator: { type: 'boolean', operation: 'true', singleValue: true }, rightValue: '' }],
         combinator: 'and'
       }
     }
@@ -549,7 +466,7 @@ const transcriptRow = node({
     position: [4820, 0],
     parameters: {
       mode: 'raw',
-      jsonOutput: expr("{{ ({ messageId: $('Build Name Prompt').item.json.messageId, claimedAttempts: $('Build Name Prompt').item.json.claimedAttempts, transcript: $json.transcript.trim(), status: 'completed', processed_at: $now.toISO(), error: null, error_class: null, link_attempts: ($('Claim Audio Message').item.json.link_attempts ?? 0) + 1, last_link_attempt_at: $now.toISO() }) }}")
+      jsonOutput: expr("{{ ({ messageId: $('Run Context').item.json.messageId, claimedAttempts: $('Run Context').item.json.claimedAttempts, transcript: $json.text.trim(), status: 'completed', processed_at: $now.toISO(), error: null, error_class: null, link_attempts: ($('Claim Audio Message').item.json.link_attempts ?? 0) + 1, last_link_attempt_at: $now.toISO() }) }}")
     }
   },
   output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, transcript: 'Met Jane Doe, she wants a demo.', status: 'completed', link_attempts: 1 }]
@@ -603,7 +520,7 @@ const transcriptionFailedRow = node({
     position: [4820, 300],
     parameters: {
       mode: 'raw',
-      jsonOutput: expr("{{ ({ messageId: $('Build Name Prompt').item.json.messageId, claimedAttempts: $('Build Name Prompt').item.json.claimedAttempts, status: 'failed', error: String($json.error?.message ?? $json.error ?? 'Transcription returned an empty transcript').slice(0, 2000), error_class: $json.error ? 'transient' : 'terminal' }) }}")
+      jsonOutput: expr("{{ ({ messageId: $('Run Context').item.json.messageId, claimedAttempts: $('Run Context').item.json.claimedAttempts, status: 'failed', error: String($json.error?.message ?? $json.error ?? 'Transcription returned an empty transcript').slice(0, 2000), error_class: $json.error ? 'transient' : 'terminal' }) }}")
     }
   },
   output: [{ messageId: SAMPLE_ID, claimedAttempts: 1, status: 'failed', error: 'ECONNREFUSED', error_class: 'transient' }]
@@ -1054,8 +971,8 @@ const failAttribution = node({
 });
 
 const note = sticky(
-  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> ffmpeg (AMR to M4A) -> OpenAI gpt-4o-transcribe -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path and id re-checked (key pattern / UUID) before either reaches a shell command (mismatch = terminal + Fail Loudly); transcription prompt = this rep's candidate names, name-shaped only, max 30 (audit A8). Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless the transcript came back empty); the backstop resurrects transient ones.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact of any kind. At link_attempts=5 (LINK_FALLBACK_ATTEMPT), if nothing matched, the skill is additionally asked whether the transcript alone names someone with a title/district/school -- if so, Create Voice Memo Contact mints a brand-new source='voice_memo' contact (link_status='contact_created'), which then flows through the normal pending-contact pipeline like any other intake path. Excerpts append atomically and idempotently via append_contact_interaction_notes. 'linked' only if every excerpt landed.\n\n**Conversion:** audio is downloaded, written to /tmp/ckh-voice/<id>.amr, converted by ONE fixed ffmpeg command (mono, 16 kHz, AAC 32k, 15-minute cap), read back and sent to OpenAI. Needs ffmpeg on the n8n host, Execute Command unblocked (NODES_EXCLUDE) and an 'OpenAI account 2' credential (see n8n/ffmpeg-admin-package). Scratch files are deleted right after the call; Sweep Scratch Dir deletes anything older than an hour. NOTE: the extractFallbackContact/extractedContact contract also depends on skill-attribute-voice-memo (id k1LFHrmVYBqDV4bT) being regenerated from the updated SKILL.md/attribution.schema.json via build-skill-workflow.mjs and republished -- not done as part of this change.",
-  [dbWebhook, webhookMessageId, backstop, resetStale, retryTransient, findPending, backstopMessageId, claimUnlinked, claimedWithTranscript, sweepScratch],
+  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> download -> Convert Audio (HTTP POST to the Vercel ffmpeg service, AMR to M4A) -> built-in OpenAI node (Audio > Transcribe) -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path and id re-checked before either reaches a storage URL or a row filter (mismatch = terminal + Fail Loudly). No name hints are sent (tested 2026-10-07: both OpenAI models heard a noisy memo's name correctly without them). A failed conversion (service down, bad key, not AMR) marks the memo failed (transient) via Converted?; success is detected by the returned audio, not an error branch. Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless the transcript came back empty); the backstop resurrects transient ones.\n\n**Needs before it can run:** the ffmpeg service deployed on Vercel (n8n/ffmpeg-service), FFMPEG_SERVICE_URL set in this file to its URL, and an 'FFmpeg Service Key' HTTP Header Auth credential in n8n (Authorization: Bearer <FFMPEG_SERVICE_KEY>). No admin involvement and no files on the n8n host.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact. At link_attempts=5, if nothing matched, the skill is asked whether the transcript alone names someone; if so Create Voice Memo Contact mints a source='voice_memo' contact. Excerpts append atomically and idempotently. NOT YET PORTED from local-agent: unplacedContacts (people the rep met who matched no card). REQUIRES skill-attribute-voice-memo (k1LFHrmVYBqDV4bT) to be regenerated from the current SKILL.md and schema first.",
+  [dbWebhook, webhookMessageId, backstop, resetStale, retryTransient, findPending, backstopMessageId, claimUnlinked, claimedWithTranscript],
   { color: 4 }
 );
 
@@ -1063,14 +980,14 @@ export default workflow('pipeline-voice-transcription', 'pipeline-voice-transcri
   .add(dbWebhook).to(webhookMessageId).to(validMessageId)
   .add(backstop).to(resetStale).to(retryTransient).to(findPending).to(backstopMessageId).to(validMessageId)
   .add(backstop).to(claimUnlinked).to(claimedWithTranscript).to(linkContext)
-  .add(backstop).to(sweepScratch)
-  .add(callOpenAi).to(cleanupScratch)
   .add(validMessageId).to(fetchMessage).to(readyToTranscribe).to(claimRow).to(claimMessage)
   .to(safePath
-    .onTrue(fetchPromptCandidates.to(buildPrompt).to(prepareScratch.onError(transcriptionFailedRow)).to(downloadAudio).to(downloaded
-      .onTrue(writeAmr.onError(transcriptionFailedRow).to(convertAudio.onError(transcriptionFailedRow)).to(readM4a.onError(transcriptionFailedRow)).to(callOpenAi.to(transcribed
-        .onTrue(transcriptRow.to(saveTranscript).to(stillUnlinked).to(linkContext))
-        .onFalse(transcriptionFailedRow.to(markTranscriptionFailed)))))
+    .onTrue(runContext.to(downloadAudio).to(downloaded
+      .onTrue(convertAudio.to(converted
+        .onTrue(openAiTranscribe.to(transcribed
+          .onTrue(transcriptRow.to(saveTranscript).to(stillUnlinked).to(linkContext))
+          .onFalse(transcriptionFailedRow.to(markTranscriptionFailed))))
+        .onFalse(conversionFailedRow.to(markTranscriptionFailed))))
       .onFalse(transcriptionFailedRow)))
     .onFalse(unsafePathRow.to(markUnsafeFailed).to(failUnsafe)))
   .add(linkContext).to(fetchLinkCandidates).to(attributionInput).to(fetchOk)

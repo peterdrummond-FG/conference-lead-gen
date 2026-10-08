@@ -1,3 +1,5 @@
+> **Superseded 2026-10-08.** Conversion now runs as a Vercel function (`n8n/ffmpeg-service/`); nothing in this file needs doing.
+
 # ffmpeg for n8n: what the n8n admin needs to do
 
 **For:** whoever runs `workflow.flippengroup.com`.

@@ -1,5 +1,5 @@
--- NOT YET APPLIED. Apply at cutover of pipeline-voice-transcription (needs
--- 00_notify_n8n_function.sql first). Webhook path: ckh-voice-transcription.
+-- APPLIED 2026-10-08 (version 20261008163919) at the cutover of pipeline-voice-transcription.
+-- Webhook path: ckh-voice-transcription.
 --
 -- INSERT *and* UPDATE: twilio-webhook inserts the row, uploads the file, then
 -- sets storage_path in a second UPDATE, so an INSERT-only trigger always fires

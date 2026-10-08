@@ -50,6 +50,10 @@ const DB_WEBHOOK_SECRET = 'Supabase DB Webhook Secret';
 // anything. This credential can't read or write our data. Keep it off every
 // other workflow.
 const TRANSCRIPTION = 'OpenAI account 2';
+// Bearer key for the Vercel ffmpeg service (n8n/ffmpeg-service). It lets the
+// holder convert audio and nothing else, but keep it to the one pipeline that
+// calls the service so a leak has one place to look.
+const FFMPEG_SERVICE = 'FFmpeg Service Key';
 const ALERT_SMTP = 'Alert SMTP';
 
 export const WORKFLOW_CREDENTIAL_POLICY = {
@@ -62,7 +66,7 @@ export const WORKFLOW_CREDENTIAL_POLICY = {
   'skill-process-cards': [MODEL],
 
   'pipeline-note-extraction': [SUPABASE, DB_WEBHOOK_SECRET],
-  'pipeline-voice-transcription': [SUPABASE, DB_WEBHOOK_SECRET, TRANSCRIPTION],
+  'pipeline-voice-transcription': [SUPABASE, DB_WEBHOOK_SECRET, TRANSCRIPTION, FFMPEG_SERVICE],
   'pipeline-process-cards-sms': [SUPABASE, DB_WEBHOOK_SECRET],
   'pipeline-match-contact': [SUPABASE, DB_WEBHOOK_SECRET],
 
