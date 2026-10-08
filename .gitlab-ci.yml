@@ -25,7 +25,10 @@ unit-tests:
   stage: test
   image: node:22
   script:
-    - cd n8n/schemas && npm ci && npm test
+    # Subshell: GitLab runs every script line in one shell, so a bare `cd` leaks
+    # into the next line and its repo-relative path stops resolving (the job
+    # failed with "Could not find 'n8n/scripts/...'" on 2026-10-08).
+    - (cd n8n/schemas && npm ci && npm test)
     - node --test n8n/scripts/check-n8n-credential-scopes.test.mjs
 
 repo-guards:
