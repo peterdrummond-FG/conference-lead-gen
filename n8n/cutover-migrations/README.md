@@ -32,7 +32,7 @@ migration here (never `supabase db push`). After each one, move the file into
    |---|---|---|
    | ~~`10_trigger_contact_intent.sql`~~ | ~~pipeline-contact-intent~~ | retired 2026-10-05 (heat removed; see `supabase/migrations/20261005120000_retire_contact_intent_classifier.sql`) |
    | `20_trigger_note_extraction.sql` | pipeline-note-extraction | `ckh-note-extraction` |
-   | `30_trigger_voice_transcription.sql` | pipeline-voice-transcription | `ckh-voice-transcription` |
+   | ~~`30_trigger_voice_transcription.sql`~~ | ~~pipeline-voice-transcription~~ | applied 2026-10-08 (`supabase/migrations/20261008163919_trigger_voice_transcription_n8n.sql`) |
    | `40_trigger_process_cards_sms.sql` | pipeline-process-cards-sms | `ckh-process-cards-sms` |
    | `50_trigger_match_contact.sql` | pipeline-match-contact | `ckh-match-contact` |
 

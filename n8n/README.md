@@ -117,19 +117,25 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
   allows it). The build found n8n refuses an unpublished sub-workflow more
   than one manual hop deep. Production calls haven't been tested, so publish
   first, then confirm the first live run.
-- Voice memos: transcription is OpenAI `gpt-4o-transcribe`, after an ffmpeg
-  conversion on the n8n host (phones send AMR, which OpenAI rejects). Before
-  `pipeline-voice-transcription` can run, the n8n admin needs to do what
-  `ffmpeg-admin-package/README.md` says: install ffmpeg, unblock Execute Command
-  (`NODES_EXCLUDE`), and, if the first test memo fails with a file-access
-  error, add `/tmp/ckh-voice` to `N8N_RESTRICT_FILE_ACCESS_TO` (n8n limits the
-  Read/Write Files node to its own folder by default; this is unconfirmed on
-  your instance). Then create an **"OpenAI account 2"** credential. The
-  pipeline in git is rewired for this but not yet pushed to n8n: the instance
-  rejects the Execute Command node until it is unblocked, so republish the
-  workflow after that. Then run the probe once (`2TVbxDKQGFqzIQDT`), apply
-  `cutover-migrations/30_trigger_voice_transcription.sql`, activate the
-  workflow and stop the local agent's voice loop (empty `AGENT_LOOPS`).
+- Voice memos: transcription is OpenAI (the built-in node), after an AMR to M4A
+  conversion (phones send AMR, which OpenAI rejects). The n8n host's admin
+  couldn't add ffmpeg, so conversion is a Vercel function: `ffmpeg-service/`
+  (project `audio-convert-ffmpeg`, https://audio-convert-ffmpeg.vercel.app/api/convert),
+  called by the pipeline's `Convert Audio` node. It needs no admin involvement and
+  leaves no files on the n8n host; `ffmpeg-admin-package/` and `ffmpeg/` are
+  superseded. Before `pipeline-voice-transcription` can run: create a
+  **"FFmpeg Service Key"** Header Auth credential (name `Authorization`, value
+  `Bearer <key>`; the key is in the macOS Keychain as `FFMPEG_SERVICE_KEY`) and
+  attach it to Convert Audio, and create an **"OpenAI account 2"** credential. The
+  pipeline is live as `pipeline-voice-transcription` (`kYKg80yktf4QKljI`,
+  published 2026-10-08); `skill-attribute-voice-memo` was regenerated and
+  republished the same day, and the DB trigger
+  (`20261008163919_trigger_voice_transcription_n8n.sql`) is applied. The local
+  agent's launchd job (`com.flippengroup.ckh-connect.local-agent`) is stopped and
+  disabled (`launchctl bootout` + `launchctl disable`); to bring it back,
+  `launchctl enable gui/$UID/<label>` and bootstrap the plist. The old community-node
+  workflow (`byHCYGrFpc4LCLQq`) is archived. Not ported from local-agent yet:
+  `unplacedContacts` (the skill returns them; the pipeline ignores them).
   Attendees' voice memos go to OpenAI; confirm that is acceptable first.
 - Shadow-test the two writes that were deliberately never exercised live:
   process-cards' crop upload to Storage, and its `contacts-from-ocr` POST.

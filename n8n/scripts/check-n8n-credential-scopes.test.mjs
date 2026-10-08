@@ -58,7 +58,7 @@ test('reads the MCP get_workflow_details shape too', () => {
 });
 
 test('lets the voice pipeline hold the transcription credential', () => {
-  const { failures } = auditWorkflows([wf('pipeline-voice-transcription', ['Supabase account', 'Supabase DB Webhook Secret', 'OpenAI account 2'])]);
+  const { failures } = auditWorkflows([wf('pipeline-voice-transcription', ['Supabase account', 'Supabase DB Webhook Secret', 'OpenAI account 2', 'FFmpeg Service Key'])]);
   assert.deepEqual(failures, []);
 });
 
@@ -69,5 +69,13 @@ test('fails the transcription credential on any other pipeline or a skill', () =
     const { failures } = auditWorkflows([wf(name, ['OpenAI account 2'])]);
     assert.equal(failures.length, 1, name);
     assert.match(failures[0], /"OpenAI account 2", outside its policy/);
+  }
+});
+
+test('fails the ffmpeg service key on any workflow but the voice pipeline', () => {
+  for (const name of ['pipeline-match-contact', 'pipeline-process-cards-sms', 'skill-attribute-voice-memo']) {
+    const { failures } = auditWorkflows([wf(name, ['FFmpeg Service Key'])]);
+    assert.equal(failures.length, 1, name);
+    assert.match(failures[0], /"FFmpeg Service Key", outside its policy/);
   }
 });

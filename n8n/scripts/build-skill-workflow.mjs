@@ -70,7 +70,11 @@ const ZOHO_READONLY_TOOLS = [
 //   the model (and survive the parser, which drops unknown keys).
 const SKILLS = {
   'extract-note-contacts': { schema: 'note-extraction.schema.json', inputs: [['noteText', 'string']] },
-  'attribute-voice-memo': { schema: 'attribution.schema.json', inputs: [['transcript', 'string'], ['candidates', 'array']] },
+  // extractFallbackContact must reach the model: SKILL.md Step 7 only runs when
+  // it is true, and pipeline-voice-transcription passes it at link attempt 5.
+  // Left out, the skill built from this table never saw the flag, so the
+  // transcript-only contact fallback could never fire.
+  'attribute-voice-memo': { schema: 'attribution.schema.json', inputs: [['transcript', 'string'], ['candidates', 'array'], ['extractFallbackContact', 'boolean']] },
   'research-contact': { schema: 'research.schema.json', objectInput: 'contact', mergeInput: true, tool: 'webSearch', maxIterations: 10 },
   // localAccounts is optional and only read by the no-Zoho fallback branch (see
   // LOCAL_ACCOUNTS_PREAMBLE); the MCP path never looks at it.

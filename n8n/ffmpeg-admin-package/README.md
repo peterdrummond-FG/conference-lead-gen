@@ -1,3 +1,5 @@
+> **Superseded 2026-10-08.** Conversion now runs as a Vercel function (`n8n/ffmpeg-service/`); nothing in this file needs doing.
+
 # Add ffmpeg to n8n (CKH voice memos)
 
 **For:** whoever runs `workflow.flippengroup.com`.
@@ -46,11 +48,13 @@ after each memo.
    unchanged. Read/Write Files from Disk must stay available (it's already on).
    See `docker-compose.example.yml`.
 
-   **Possible extra step:** n8n limits its Read/Write Files node to one folder
-   (`~/.n8n-files` by default, controlled by `N8N_RESTRICT_FILE_ACCESS_TO`).
-   We haven't confirmed this on your instance. If the first test memo fails
-   with a file-access error, add the scratch folder to that variable, keeping
-   any value already there (separate folders with `;`):
+   **Also required (confirmed on your instance, 2026-10-07):** n8n limits its
+   Read/Write Files node to one folder, and `/tmp` is refused with "Access to the
+   file is not allowed". The folder must also already exist (the node does not
+   create it, and n8n's default `/home/node/.n8n-files` does not exist on your
+   server). Create `/tmp/ckh-voice` (the workflow creates it itself once Execute
+   Command is on) and allow it, keeping any value already set (separate folders
+   with `;`):
 
    ```
    N8N_RESTRICT_FILE_ACCESS_TO=/tmp/ckh-voice
