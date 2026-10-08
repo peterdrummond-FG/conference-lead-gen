@@ -71,7 +71,7 @@ const ZOHO_READONLY_TOOLS = [
 const SKILLS = {
   'extract-note-contacts': { schema: 'note-extraction.schema.json', inputs: [['noteText', 'string']] },
   // extractFallbackContact must reach the model: SKILL.md Step 7 only runs when
-  // it is true, and pipeline-voice-transcription passes it at link attempt 5.
+  // it is true, and pipeline-voice-transcription passes it at link attempt 3 (LINK_FALLBACK_ATTEMPT).
   // Left out, the skill built from this table never saw the flag, so the
   // transcript-only contact fallback could never fire.
   'attribute-voice-memo': { schema: 'attribution.schema.json', inputs: [['transcript', 'string'], ['candidates', 'array'], ['extractFallbackContact', 'boolean']] },

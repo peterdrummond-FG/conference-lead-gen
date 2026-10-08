@@ -674,7 +674,7 @@ const LINK_CLAIM_LIMIT = Number(process.env.LINK_CLAIM_LIMIT ?? 3);
 // contacts-from-voice-memo). Deliberately well below LINK_MAX_ATTEMPTS: a
 // memo that will never find a candidate shouldn't sit unresolved for the
 // full retry window when the transcript itself may already be enough.
-const LINK_FALLBACK_ATTEMPT = Number(process.env.LINK_FALLBACK_ATTEMPT ?? 5);
+const LINK_FALLBACK_ATTEMPT = Number(process.env.LINK_FALLBACK_ATTEMPT ?? 3);
 const AUDIO_WORKDIR = path.join(__dirname, '.processing-audio');
 
 // Shared write path for every branch below — append-not-overwrite, same as
