@@ -40,7 +40,7 @@ crop, and any voice memo reached through `source_message_id`.
 
 - `expired_media(p_retention_days, p_limit)` — the single definition of the
   retention rule.
-- `local-agent/purge-expired-media.mjs` — deletes the Storage objects, then
+- `scripts/retention/purge-expired-media.mjs` — deletes the Storage objects, then
   calls `mark_media_purged` to null `storage_path`. Supports `--dry-run` and a
   `RETENTION_DAYS` override. Deliberately does not touch rows, transcripts, or
   the contacts the media produced; `contacts-photo` already returns a clean 404
@@ -57,8 +57,8 @@ crop, and any voice memo reached through `source_message_id`.
 Not yet scheduled — run manually, or add to launchd/cron:
 
 ```bash
-cd local-agent && node --env-file=.env purge-expired-media.mjs --dry-run
-cd local-agent && node --env-file=.env purge-expired-media.mjs
+cd scripts/retention && node --env-file=.env purge-expired-media.mjs --dry-run
+cd scripts/retention && node --env-file=.env purge-expired-media.mjs
 ```
 
 ## Still open

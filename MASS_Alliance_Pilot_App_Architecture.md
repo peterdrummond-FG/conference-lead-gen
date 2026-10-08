@@ -997,7 +997,7 @@ past that threshold.
 - **Kiosk lock is not a security boundary** (audit N2, deferred) — see the end
   of section 8.
 - **`IP_HASH_SALT` unset**, so the rate limiter's IP hash is unsalted.
-- **The retention purge job isn't scheduled.** `local-agent/purge-expired-media.mjs`
+- **The retention purge job isn't scheduled.** `scripts/retention/purge-expired-media.mjs`
   works and is tested; nothing runs it yet, so 90-day retention is a policy and
   a script rather than a guarantee. The window itself should be confirmed
   against what attendees were actually told in the Privacy Policy.

@@ -80,12 +80,11 @@ export function findViolations(files) {
 const SCAN = [
   ['supabase/functions', /\.(ts|mjs|js)$/],
   ['supabase/migrations', /\.sql$/],
-  ['local-agent', /\.(mjs|js)$/],
   ['n8n/pipelines', /\.(ts|mjs|js)$/],
   ['n8n/schemas', /\.(ts|mjs|js)$/],
   ['n8n/scripts', /\.(ts|mjs|js)$/],
   ['n8n/workflows', /\.json$/],
-  ['watcher', /\.(mjs|js|sh|command)$/],
+  ['scripts/retention', /\.(mjs|js)$/],
 ];
 
 function* walk(dir, pattern) {

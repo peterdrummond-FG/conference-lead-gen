@@ -119,9 +119,9 @@ test('"goes to Zoho with the import" is true: export-csv reads interaction_notes
   assert.match(readFileSync(join(REPO, 'supabase/functions/export-csv/index.ts'), 'utf8'), /interaction_notes/);
 });
 
-test('the auto-retry count in the help line is the one the agent and the n8n sweep use', () => {
+test('the auto-retry count in the help line is the one the live n8n pipeline and its sweep use', () => {
   assert.equal(AUTO_ATTEMPTS, 20);
-  assert.match(readFileSync(join(REPO, 'local-agent/agent.mjs'), 'utf8'), /LINK_MAX_ATTEMPTS \?\? 20/);
+  assert.match(readFileSync(join(REPO, 'n8n/pipelines/pipeline-voice-transcription-v3.ts'), 'utf8'), /const LINK_MAX_ATTEMPTS = 20;/);
   assert.match(readFileSync(join(REPO, 'n8n/workflows/pipeline-relink-unlinked-audio.json'), 'utf8'), /claim_unlinked_audio_messages\(50, 20, 3\)/);
 });
 

@@ -12,7 +12,7 @@ test('the real repo has no auto-confirm', () => {
 
 test('a function that writes review_status approved is caught', () => {
   assert.equal(findViolations(f('supabase/functions/some-new-fn/index.ts', 'await s.from("contacts").update({ review_status: "approved" })')).length, 1);
-  assert.equal(findViolations(f('local-agent/agent.mjs', "const row = { review_status: 'approved' };")).length, 1);
+  assert.equal(findViolations(f('scripts/retention/some-job.mjs', "const row = { review_status: 'approved' };")).length, 1);
   assert.equal(findViolations(f('n8n/pipelines/pipeline-match-contact.ts', "const p = { reviewStatus: 'approved' };")).length, 1);
 });
 

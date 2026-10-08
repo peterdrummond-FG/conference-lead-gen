@@ -262,7 +262,6 @@ test('ResearchOutput still passes every input field through (match-contact reads
 
 // ── the JSON Schema (what n8n's parser enforces) says the same as the Zod copies ──
 import { readFileSync } from 'node:fs';
-import { ResearchOutput as LocalAgentResearchOutput } from '../../local-agent/schemas.mjs';
 
 const researchJson = JSON.parse(readFileSync(new URL('./research.schema.json', import.meta.url), 'utf8'));
 const rdDef = researchJson.properties.resolvedDistrict;
@@ -292,17 +291,5 @@ test('research.schema.json agrees with the Zod copy on every resolvedDistrict ca
     // The Zod copy trims before checking (a blank name has no JSON Schema equivalent for
     // trimming); compare on values that are already trimmed, which is what the parser gets.
     assert.equal(jsonSchemaAccepts(c), ResearchOutput.safeParse(research(c)).success, JSON.stringify(c));
-  }
-});
-
-// Two copies of the contract (local-agent for the old loops, n8n for the live pipeline)
-// have to say the same thing; this is what stops one drifting.
-test('the local-agent and n8n ResearchOutput schemas agree on every case', () => {
-  const cases = [null, goodDistrict, { ...goodDistrict, confidence: 'medium' }, ...Object.values(MALFORMED_DISTRICTS)];
-  for (const c of cases) {
-    const a = ResearchOutput.safeParse(research(c));
-    const b = LocalAgentResearchOutput.safeParse(research(c));
-    assert.equal(a.success, b.success, JSON.stringify(c));
-    if (a.success) assert.deepEqual(a.data, b.data);
   }
 });
