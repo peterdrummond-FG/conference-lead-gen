@@ -11,7 +11,6 @@
 | `local-agent/` | Four poll loops (matching, SMS photo, transcription, note extraction). The only caller of `claude -p`. |
 | `watcher/` | Local folder drop → `process-cards` → `contacts-from-ocr`. |
 | `.claude/skills/` | The five skills. |
-| `mcp/` | MCP configs for headless skill runs. Only `zoho-readonly.json` today. |
 | `scripts/` | Repo guards run in CI, plus `deploy-functions.mjs`. |
 
 ## Related docs
@@ -53,8 +52,9 @@ voice (2026-10-08). Texted photos are the intake path now. The launchd job
 thing that lived only there and had no replacement, the **retention purge**, moved
 to `scripts/retention/` (still unscheduled). Where this document says "the agent",
 "`agent.mjs`" or "`claude -p`" below, it describes that retired design; `git log`
-before commit `Remove the local agent and watcher` has the code. The `mcp/` configs
-were the runner's and are unused.
+before commit `Remove the local agent and watcher` has the code. The runner's `mcp/`
+configs (the read-only Zoho MCP config) were deleted the same day: n8n's
+`skill-match-contact` reads the Zoho URL from its own `n8n_config` data table.
 
 ## Conventions
 
