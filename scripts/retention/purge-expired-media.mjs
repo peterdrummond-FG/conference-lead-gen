@@ -11,10 +11,11 @@
 // they produced -- only the bytes in Storage, after which storage_path is
 // nulled. contacts-photo already returns a clean 404 for a missing object.
 //
-// Lives here rather than in scripts/ because it uses the same Supabase client
-// and .env as the agent, and Node resolves node_modules upward from the file.
+// Moved here from local-agent/ (2026-10-08) when the local agent was retired: this
+// was its only job that nothing else replaced, and it is NOT scheduled anywhere,
+// so it must be run by hand or added to cron (see docs/DATA-RETENTION.md).
 //
-// Run from cron/launchd, or by hand (from local-agent/):
+// Run from cron/launchd, or by hand (from scripts/retention/, after npm install):
 //   node --env-file=.env purge-expired-media.mjs --dry-run
 //   node --env-file=.env purge-expired-media.mjs
 //   RETENTION_DAYS=30 node --env-file=.env purge-expired-media.mjs
@@ -23,7 +24,7 @@ import { createClient } from '@supabase/supabase-js';
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) {
-  console.error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set (try --env-file=local-agent/.env).');
+  console.error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set (try --env-file=.env).');
   process.exit(1);
 }
 

@@ -41,13 +41,9 @@ jobs:
       - name: Frontend unit tests
         run: cd frontend && npm test
 
-      - name: Check local-agent parses
+      - name: Check scripts parse
         run: |
-          for f in local-agent/*.mjs; do node --check "$f"; done
-      - name: Check shell scripts parse
-        run: |
-          bash -n watcher/watch-cards.command
-          bash -n local-agent/start-agent.command
+          node --check scripts/retention/purge-expired-media.mjs
           bash -n scripts/check-deployed-functions.sh
 
   tests:
@@ -58,8 +54,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: cd local-agent && npm ci
-      - run: cd local-agent && npm test
+      - run: cd n8n/schemas && npm ci && npm test
+      - run: node --test n8n/scripts/check-n8n-credential-scopes.test.mjs
 
   guards:
     name: Repo guards
@@ -70,9 +66,9 @@ jobs:
         with:
           node-version: '22'
 
-      # audit A1/A2: no skill may run unsandboxed, none may hold a credential.
-      - name: Skill sandboxing
-        run: node scripts/check-skill-profiles.mjs
+      # audit A1/A2 (skills sandboxed, no credentials) was scripts/check-skill-profiles.mjs
+      # for the retired local agent; on n8n it is n8n/scripts/check-n8n-credential-scopes.mjs,
+      # which needs a workflow export and is run by hand (see n8n/README.md).
 
       # One conference everywhere: nothing writes profiles.current_event_id
       # directly, and the webhook re-checks is_active for a bound phone.

@@ -43,6 +43,19 @@ Its CLI tools (`SeedSchoolAccounts`, `SyncCampaigns`, the two backfills) went
 with it; the data they loaded is already in the live project and the source
 JSON is preserved in `supabase/seed/`.
 
+## Removed: the local agent and the card watcher (2026-10-08)
+
+`local-agent/` (four poll loops that ran skills through `claude -p` on a laptop)
+and `watcher/` (a folder-drop script for card photos, last used 2026-09-03) were
+deleted once every pipeline ran on n8n: matching, photos, notes (2026-09-25) and
+voice (2026-10-08). Texted photos are the intake path now. The launchd job
+`com.flippengroup.ckh-connect.local-agent` was booted out and disabled. The one
+thing that lived only there and had no replacement, the **retention purge**, moved
+to `scripts/retention/` (still unscheduled). Where this document says "the agent",
+"`agent.mjs`" or "`claude -p`" below, it describes that retired design; `git log`
+before commit `Remove the local agent and watcher` has the code. The `mcp/` configs
+were the runner's and are unused.
+
 ## Conventions
 
 ### Retiring an Edge Function

@@ -1,0 +1,9 @@
+{
+  "name": "ckh-connect-retention",
+  "private": true,
+  "type": "module",
+  "description": "Data-retention purge for Storage media (audit S12). Run by hand or from cron; see docs/DATA-RETENTION.md.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
