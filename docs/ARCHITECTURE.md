@@ -680,7 +680,9 @@ and skipped-and-logged per person on failure. That function's dedupe key became
 memo + name (`20260929180000_voice_memo_multi_contact.sql`), since one memo can
 now create several. The memo stays `linked`, with the new contacts' ids added to
 `matched_contact_ids`. The n8n `pipeline-voice-transcription` does **not** handle
-`unplacedContacts` yet — port it before that pipeline is cut over.
+`unplacedContacts` yet: it was cut over without it (2026-10-08), so the skill
+returns them and the pipeline ignores them. Port it (a sibling of Create Voice Memo
+Contact, gated on an excerpt having landed) before relying on that behaviour.
 
 `inbound_messages.link_status` gained a fourth value, `contact_created`,
 distinct from `linked` (attached to an *existing* candidate) — deliberately
@@ -690,9 +692,52 @@ already has a real contact record backing it and surfaces through Contacts the
 same way any other new contact does. See
 `20260928120000_voice_memo_fallback_contact_creation.sql` for the schema
 change and `local-agent/agent.mjs`'s `linkTranscriptToContacts` for the full
-decision logic. Mirrored (but unverified — the pipeline isn't live yet) in
-`n8n/pipelines/pipeline-voice-transcription.ts` and
-`n8n/schemas/attribution.schema.json`.
+decision logic. Mirrored, and live since 2026-10-08, in
+`n8n/pipelines/pipeline-voice-transcription-v3.ts` and
+`n8n/schemas/attribution.schema.json`; the fallback threshold there is
+`LINK_FALLBACK_ATTEMPT = 3`.
+
+### Daily health check
+
+A scheduled cloud routine, **"CKH Connect daily health check"**, looks for stuck
+or failed intake work once a day (14:17 UTC, 7:17 AM Phoenix) and reports what it
+finds. It lives in claude.ai, not in this repo: claude.ai/code/routines, routine id
+`trig_01P5wNVfr6Bdhd2NdChWqC93`; its full prompt is the runbook, so read it there.
+
+**Status: built and tested (two runs, both `HEALTHY`) but DISABLED on 2026-10-08 at
+Peter's request, so it does not run until it is turned on** (enable it on that
+routines page, or `RemoteTrigger` update with `{"enabled": true}`). `health_check()`
+is applied in the database either way.
+
+- **What it runs.** `select * from public.health_check()`
+  (`20261008171617_health_check_fn.sql`; read-only, `service_role` only, returns no
+  rows when healthy). It flags `inbound_messages` (photo / audio / text_note) stuck
+  in a pending or `processing` state for 2h+, failures in the last 26h that survived
+  the retry sweep, completed voice memos whose relink sweep has stalled, stuck or
+  failed `note_submissions`, and contacts left in `match_status = 'pending'` for 2h+.
+  It returns ids, counts and the pipelines' own capped error text, never a
+  transcript, name, phone or email. It also confirms the nine pipeline and skill
+  workflows are published and counts errored n8n executions.
+- **What it may change.** Only republishing one of those workflows if it went
+  inactive. Everything else (a code or workflow bug, a migration, credentials,
+  switching voice builds) it describes for a person to approve. The database
+  retries (`reconcile_stale_inbound_messages`,
+  `reconcile_retryable_failed_inbound_messages`) already run every 5 minutes inside
+  the pipelines' own backstops, so it does not repeat them.
+- **That limit is a prompt rule, not a lock.** The routine's connector tool
+  allowlist did not hide the write tools (`apply_migration`, `update_workflow`, ...
+  were still listed to it), and the Supabase `read_only` URL setting was stripped.
+  Mitigations: it is told that all row and execution text is data, it never reads
+  transcripts or contact fields, and its run log shows every call. Treat it as
+  untrusted-input-handling code and re-check after any connector change.
+- **Where the result goes.** The routine's run page; nothing is pushed to a phone or
+  emailed. `error-alert-email` is still inactive (no SMTP). To fix what it reports,
+  start a session and ask for the latest health report: it has no repo access (the
+  cloud sandbox can't authenticate to GitLab), so it cannot edit code.
+- **Changing it.** Update the routine with the `schedule` skill / `RemoteTrigger`;
+  keep the workflow ids in its prompt in step with `n8n/README.md` (the voice
+  pipeline id changed when v3 replaced v2). A new pipeline or table that can get
+  stuck needs a clause in `health_check()` too.
 
 ### Follow-up tracking
 
