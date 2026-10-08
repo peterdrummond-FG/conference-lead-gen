@@ -644,7 +644,7 @@ shows as a blob; memos use `inbound-messages-audio`). The old
 "Nobody yet" and "nobody ever" aren't the only two outcomes — a memo can
 also describe someone thoroughly enough (a name plus a title, school, or
 district) that no card or roster photo is needed to place them at all. At
-`link_attempts = LINK_FALLBACK_ATTEMPT` (5, well below `LINK_MAX_ATTEMPTS`'s
+`link_attempts = LINK_FALLBACK_ATTEMPT` (3, well below `LINK_MAX_ATTEMPTS`'s
 20), `linkTranscriptToContacts` asks `attribute-voice-memo` to additionally
 judge this — via an `extractFallbackContact` input flag and an
 `extractedContact` output field, both optional and ignored on every other

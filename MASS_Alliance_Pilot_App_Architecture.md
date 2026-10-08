@@ -634,7 +634,7 @@ conversations onto real contacts' notes (see `docs/ENGINEERING-LESSONS.md`
 
 **Fallback contact creation (added 2026-09-28).** "Nobody yet" and "nobody
 ever" used to be the only two outcomes for a memo with no matching candidate.
-Now, at `LinkAttempts = LINK_FALLBACK_ATTEMPT` (5, well short of
+Now, at `LinkAttempts = LINK_FALLBACK_ATTEMPT` (3, well short of
 `LINK_MAX_ATTEMPTS`'s 20), `attribute-voice-memo` is additionally asked
 (`extractFallbackContact: true` in its input) whether the transcript alone —
 a name plus a title, school, or district — is independently enough to create
@@ -856,7 +856,7 @@ past that threshold.
   Previously a memo about someone never photographed at all could only ever
   retry candidate-matching up to `LINK_MAX_ATTEMPTS` and land on
   `no_candidate_found` — a human had nothing but a raw transcript to work
-  from. At a lower attempt threshold (`LINK_FALLBACK_ATTEMPT = 5`;
+  from. At a lower attempt threshold (`LINK_FALLBACK_ATTEMPT = 3`;
   `LINK_MAX_ATTEMPTS` also lowered 50 → 20), `attribute-voice-memo` now
   additionally judges whether the transcript alone (name + title/school/
   district) justifies creating a contact outright, via a new
