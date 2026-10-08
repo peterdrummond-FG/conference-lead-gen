@@ -117,25 +117,27 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
   allows it). The build found n8n refuses an unpublished sub-workflow more
   than one manual hop deep. Production calls haven't been tested, so publish
   first, then confirm the first live run.
-- Voice memos: transcription is OpenAI (the built-in node), after an AMR to M4A
-  conversion (phones send AMR, which OpenAI rejects). The n8n host's admin
-  couldn't add ffmpeg, so conversion is a Vercel function: `ffmpeg-service/`
-  (project `audio-convert-ffmpeg`, https://audio-convert-ffmpeg.vercel.app/api/convert),
-  called by the pipeline's `Convert Audio` node. It needs no admin involvement and
-  leaves no files on the n8n host; `ffmpeg-admin-package/` and `ffmpeg/` are
-  superseded. Before `pipeline-voice-transcription` can run: create a
-  **"FFmpeg Service Key"** Header Auth credential (name `Authorization`, value
-  `Bearer <key>`; the key is in the macOS Keychain as `FFMPEG_SERVICE_KEY`) and
-  attach it to Convert Audio, and create an **"OpenAI account 2"** credential. The
-  pipeline is live as `pipeline-voice-transcription` (`kYKg80yktf4QKljI`,
-  published 2026-10-08); `skill-attribute-voice-memo` was regenerated and
-  republished the same day, and the DB trigger
-  (`20261008163919_trigger_voice_transcription_n8n.sql`) is applied. The local
-  agent's launchd job (`com.flippengroup.ckh-connect.local-agent`) is stopped and
-  disabled (`launchctl bootout` + `launchctl disable`); to bring it back,
-  `launchctl enable gui/$UID/<label>` and bootstrap the plist. The old community-node
-  workflow (`byHCYGrFpc4LCLQq`) is archived. Not ported from local-agent yet:
-  `unplacedContacts` (the skill returns them; the pipeline ignores them).
+- Voice memos: transcription is OpenAI (the built-in node), after an AMR to MP3
+  conversion (phones send AMR, which OpenAI rejects). Live since 2026-10-08 as
+  `pipeline-voice-transcription` (`YSXgBGZQg6x2oDeZ`, source
+  `pipelines/pipeline-voice-transcription-v3.ts`): conversion is the
+  `n8n-nodes-ffmpeg-audio` community node the n8n admin installed, so it needs
+  no credential, no external service and no files on the host. Its `m4a` output
+  fails ("Output format m4a is not available"), hence MP3, and it returns the file
+  in binary property `data`. Standby: v2 (`kYKg80yktf4QKljI`,
+  `pipelines/pipeline-voice-transcription.ts`) converts through the Vercel function
+  `ffmpeg-service/` (https://audio-convert-ffmpeg.vercel.app/api/convert, key in the
+  macOS Keychain as `FFMPEG_SERVICE_KEY`); to roll back, unpublish v3 and publish v2
+  (both use webhook path `ckh-voice-transcription`; `skill-attribute-voice-memo`'s
+  callerIds allow both). `ffmpeg-admin-package/` and `ffmpeg/` are superseded.
+  `skill-attribute-voice-memo` was regenerated and republished 2026-10-08, the DB
+  trigger (`20261008163919_trigger_voice_transcription_n8n.sql`) is applied, and the
+  local agent's launchd job (`com.flippengroup.ckh-connect.local-agent`) is stopped
+  and disabled (`launchctl bootout` + `launchctl disable`; bring it back with
+  `launchctl enable gui/$UID/<label>` and bootstrap the plist). The old
+  community-node workflow (`byHCYGrFpc4LCLQq`) is archived. Not ported from
+  local-agent yet: `unplacedContacts` (the skill returns them; the pipeline ignores
+  them).
   Attendees' voice memos go to OpenAI; confirm that is acceptable first.
 - Shadow-test the two writes that were deliberately never exercised live:
   process-cards' crop upload to Storage, and its `contacts-from-ocr` POST.
