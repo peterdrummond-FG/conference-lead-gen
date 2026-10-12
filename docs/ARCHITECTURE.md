@@ -730,12 +730,18 @@ is applied in the database either way.
   the retry sweep, completed voice memos whose relink sweep has stalled, stuck or
   failed `note_submissions`, and contacts left in `match_status = 'pending'` for 2h+.
   It returns ids, counts and the pipelines' own capped error text, never a
-  transcript, name, phone or email. It also confirms the nine pipeline and skill
-  workflows are published and counts errored n8n executions.
-- **What it may change.** Only republishing one of those workflows if it went
-  inactive. Everything else (a code or workflow bug, a migration, credentials,
-  switching voice builds) it describes for a person to approve. The database
-  retries (`reconcile_stale_inbound_messages`,
+  transcript, name, phone or email.
+- **It no longer checks n8n (2026-10-08).** It used to: workflows published, no
+  errored or stuck executions, a run in the last 15 minutes. n8n's editor moved to
+  `workflow.flippencodes.com` behind Cloudflare Access and is now run by someone
+  else, so the routine's n8n connector was removed and its prompt is
+  database-only. Its failure mode is that a stopped pipeline shows up only as rows
+  stuck pending for 2h+; the prompt tells it to say the n8n admin must look. If n8n
+  checks come back, they need an Access service token for the connector and the
+  prompt's workflow ids (see `n8n/README.md`).
+- **What it may change.** Nothing: it is read-only, with no n8n connector and so
+  no `publish_workflow`. It describes every fix for a person to approve. The
+  database retries (`reconcile_stale_inbound_messages`,
   `reconcile_retryable_failed_inbound_messages`) already run every 5 minutes inside
   the pipelines' own backstops, so it does not repeat them.
 - **That limit is a prompt rule, not a lock.** The routine's connector tool

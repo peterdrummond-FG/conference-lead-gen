@@ -2,9 +2,14 @@
 
 Conference lead capture for The Flippen Group. Four intake paths feed one
 Supabase database; contacts are researched and matched against Zoho CRM by
-skills run as n8n workflows (`workflow.flippengroup.com`), reviewed by a human,
-then exported as CSV for Zoho import. The local agent and card watcher that used
+skills run as n8n workflows, reviewed by a human, then exported as CSV for Zoho import. The local agent and card watcher that used
 to do this on a laptop were retired 2026-10-08.
+
+n8n has two hostnames (admin, 2026-10-08): the editor/UI is
+`workflow.flippencodes.com`, behind Cloudflare Access (sign-in required); webhooks
+stay on `workflow.flippengroup.com/webhook/`, which is what `notify_n8n()` posts to.
+Don't point `notify_n8n` at the new host: Access would redirect its posts to a login
+page and every pipeline trigger would stop.
 
 Read `docs/ARCHITECTURE.md` for the component map and
 `MASS_Alliance_Pilot_App_Architecture.md` for the full design rationale.
