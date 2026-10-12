@@ -1,0 +1,13 @@
+# Who to ask for what. TBD by the receiving team.
+#
+# This file is deliberately all comments: it names no owners yet, so neither GitHub
+# nor GitLab will request a review from anyone. When the team knows who owns what,
+# replace each "TBD" with a handle or group (GitHub and GitLab both read this root
+# file) and delete this notice.
+#
+#   /frontend/             TBD   the Quasar/Vue app on Vercel
+#   /supabase/functions/   TBD   the Edge Functions: the only server-side API
+#   /supabase/migrations/  TBD   the schema; append-only (see supabase/migrations/README.md)
+#   /n8n/ and /.claude/skills/   TBD   the pipelines, skill workflows and output schemas
+#   /scripts/              TBD   repo guards, deploy script, media purge
+#   /docs/                 TBD   documentation

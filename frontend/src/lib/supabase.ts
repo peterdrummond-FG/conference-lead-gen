@@ -6,8 +6,10 @@
 // live access token to attach to every request.
 import { createClient } from '@supabase/supabase-js';
 
-// Audit S8. No production fallback: a missing or misspelled env var must fail
-// the build, not silently point a dev or staging bundle at the live project.
+// No production fallback: a missing or misspelled env var must fail loudly, not
+// silently point a dev or staging bundle at the live project (the old defaults did
+// exactly that). Note it fails when the page loads in the browser (a blank app and
+// this error in the console), not at `npm run build`, which succeeds without a .env.
 export function requireEnv(name: string): string {
   const value = import.meta.env[name] as string | undefined;
   if (!value) {

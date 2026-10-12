@@ -2,8 +2,11 @@
 .thumbs.db
 node_modules
 
-# .env files
+# .env files (the example file is the one place a new developer learns the
+# variable names, so it must stay tracked; it was ignored by this very pattern
+# until 2026-10-12, which left a fresh clone with nothing to copy)
 .env*
+!.env.example
 
 # Quasar core related directories
 .quasar

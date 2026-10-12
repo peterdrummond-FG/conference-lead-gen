@@ -13,30 +13,21 @@ __pycache__/
 # OS
 .DS_Store
 
-# Card-photo watcher — real photos and run state, never version-controlled.
-# The script itself and this .gitignore's own placeholders stay tracked.
-watcher/inbox/*
-!watcher/inbox/.gitkeep
-watcher/.processing/*
-!watcher/.processing/.gitkeep
-watcher/processed/*
-!watcher/processed/.gitkeep
-watcher/failed/*
-!watcher/failed/.gitkeep
-watcher/logs/*
-!watcher/logs/.gitkeep
-
-# Local matching-poll agent (Stage 11) — run state, never version-controlled.
-local-agent/logs/*
-!local-agent/logs/.gitkeep
-
-# Stage 13/14 scratch dirs — downloaded SMS photos/audio, purely transient
-# (the durable copy is always Supabase Storage), cleaned up after each run.
+# The card watcher and local agent were retired 2026-10-08 and their folders are
+# gone from the repo, but an old checkout or a laptop that ran them can still hold
+# real card photos, voice memos and run state under these paths. The ignores stay so
+# that material can never be committed by accident.
+watcher/inbox/
+watcher/.processing/
+watcher/processed/
+watcher/failed/
+watcher/logs/
+local-agent/logs/
 local-agent/.processing-sms/
 local-agent/.processing-audio/
 
-# Local scratch — denoising comparisons for the Stage 14 voice-memo work.
-# Real recordings of real people, kept only to A/B whisper input quality.
+# Local scratch — denoising comparisons for the old voice-memo transcription work.
+# Real recordings of real people; never commit them.
 audio check/
 
 # Local security/quality audit write-up. Notes about this repo rather than
