@@ -67,17 +67,50 @@ Deno.serve(async (req) => {
   if (repError) return errorResponse(req, 500, repError.message);
   if (!rep) return jsonResponse(req, []);
 
-  const { data: contacts, error: contactsError } = await supabase
+  // "This rep's contacts" is two sets, not one. contacts.rep_id is only set for a
+  // *sales* profile (contacts-from-note / contacts-from-ocr), so everything an admin
+  // or manager captures by text has rep_id NULL -- filtering on rep_id alone made
+  // the picker say "No contacts captured by this rep" while the contact sat in the
+  // same conference, created from that same phone's earlier memo (Peter Drummond,
+  // 2026-10-08). The other set is every contact whose source memo was texted from
+  // this phone, which is the scope the automatic matcher already uses.
+  const select = "id, first_name, last_name, email, title, rep_id, created_at";
+  const { data: ownContacts, error: ownError } = await supabase
     .from("contacts")
-    .select("id, first_name, last_name, email, title")
+    .select(select)
     .eq("event_id", message.event_id)
-    .eq("rep_id", rep.id)
-    .order("created_at", { ascending: false });
-  if (contactsError) return errorResponse(req, 500, contactsError.message);
+    .eq("rep_id", rep.id);
+  if (ownError) return errorResponse(req, 500, ownError.message);
+
+  const { data: phoneMessages, error: phoneError } = await supabase
+    .from("inbound_messages")
+    .select("id")
+    .eq("from_phone", message.from_phone)
+    .eq("event_id", message.event_id);
+  if (phoneError) return errorResponse(req, 500, phoneError.message);
+  const messageIds = (phoneMessages ?? []).map((m) => m.id);
+  let textedContacts: typeof ownContacts = [];
+  if (messageIds.length) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select(select)
+      .eq("event_id", message.event_id)
+      .in("source_message_id", messageIds);
+    if (error) return errorResponse(req, 500, error.message);
+    textedContacts = data ?? [];
+  }
+
+  const byId = new Map<string, NonNullable<typeof ownContacts>[number]>();
+  for (const c of [...(ownContacts ?? []), ...textedContacts]) byId.set(c.id, c);
+  // A sales rep may only assign onto their own leads (inbound-messages-assign
+  // enforces rep_id === user.id), so don't offer one it would then refuse.
+  const contacts = [...byId.values()]
+    .filter((c) => user.role !== "sales" || c.rep_id === user.id)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
   return jsonResponse(
     req,
-    (contacts ?? []).map((c) => ({
+    contacts.map((c) => ({
       id: c.id,
       firstName: c.first_name,
       lastName: c.last_name,
