@@ -48,6 +48,7 @@
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { clientIp } from "../_shared/clientIp.ts";
 import { isUuid, LIMITS, optionalEmail, optionalString, requiredString } from "../_shared/validate.ts";
 import { VALID_US_STATES } from "../_shared/usStates.ts";
 import {
@@ -69,8 +70,20 @@ const RATE_WINDOW_MINUTES = Number(Deno.env.get("INTAKE_RATE_WINDOW_MINUTES") ??
 const QUEUE_IP_CAP = Number(Deno.env.get("INTAKE_QUEUE_IP_CAP") ?? 300);
 const QUEUE_TOTAL_CAP = Number(Deno.env.get("INTAKE_QUEUE_TOTAL_CAP") ?? 3000);
 
+// Said once per function instance, not per request: the public form can be busy.
+let warnedNoSalt = false;
+
 async function hashIp(ip: string): Promise<string> {
   const salt = Deno.env.get("IP_HASH_SALT") ?? "";
+  if (!salt && !warnedNoSalt) {
+    warnedNoSalt = true;
+    // Loud, but the form keeps working (the same choice as an unset ALLOWED_ORIGINS):
+    // refusing leads at a live conference over a missing setting would be worse. With no
+    // salt the stored value is a plain SHA-256 of the address, which can be reversed by
+    // trying every IPv4 address. Set IP_HASH_SALT (a long random value) in the Supabase
+    // dashboard, Edge Functions, Secrets.
+    console.error("IP_HASH_SALT is not set: visitor addresses are hashed with no salt. Set it as an Edge Function secret.");
+  }
   const bytes = new TextEncoder().encode(ip + salt);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -137,7 +150,8 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  // Not the first x-forwarded-for entry: a visitor can set that (see _shared/clientIp.ts).
+  const ip = clientIp(req.headers);
   const ipHash = await hashIp(ip);
   const { data: allowed, error: rateError } = await supabase.rpc("check_submission_rate", {
     p_ip_hash: ipHash,
