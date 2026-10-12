@@ -32,6 +32,7 @@
 import twilioPkg from "npm:twilio@5";
 import { serviceClient } from "../_shared/supabase-client.ts";
 import { US_STATE_BY_ABBREVIATION, VALID_US_STATES } from "../_shared/usStates.ts";
+import { NOTE_NOT_SAVED_REPLY, NOTE_SAVED_REPLY, saveTextNote } from "../_shared/textNoteSave.ts";
 
 const { validateRequest } = twilioPkg;
 
@@ -769,22 +770,14 @@ Deno.serve(async (req) => {
         // write, not after — otherwise a retry (Twilio resends on a slow ack
         // or non-2xx) would create a second note_submissions row, and a
         // second contact, for the same text.
-        const { error: logError } = await supabase.from("inbound_messages").insert({
-          twilio_message_sid: sid,
-          from_phone: from,
-          to_phone: to,
-          event_id: binding.event_id,
-          kind: "text_note",
-          status: "completed",
-          body,
-        });
-        if (logError) {
-          if (logError.code !== "23505") console.error("insert inbound_messages failed", logError);
-          return twiml("Got it — that contact's logged and will show up in Contacts in a few minutes.");
-        }
-
-        await supabase.from("note_submissions").insert({ event_id: binding.event_id, from_phone: from, body });
-        return twiml("Got it — that contact's logged and will show up in Contacts in a few minutes.");
+        //
+        // Both writes live in saveTextNote (_shared/textNoteSave.ts), which tries each
+        // twice and tells us if the note did NOT save. It used to ignore a failed
+        // note_submissions insert and reply "logged" anyway, so the note was lost
+        // while the rep was told it was kept. A duplicate (a Twilio retry of a text
+        // already saved) still gets the normal reply.
+        const saved = await saveTextNote(supabase, { sid, from, to, eventId: binding.event_id, body });
+        return twiml(saved === "failed" ? NOTE_NOT_SAVED_REPLY : NOTE_SAVED_REPLY);
       }
 
       background("audit row", () =>
