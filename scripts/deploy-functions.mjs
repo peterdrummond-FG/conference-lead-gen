@@ -7,7 +7,7 @@
 // _shared/ changes, since every consumer must be redeployed to pick it up.
 // A change to _shared/auth.ts or _shared/http.ts that is only partially
 // deployed leaves functions running different versions of the security
-// helpers, which is exactly the drift audit N1 was about.
+// helpers, which is exactly the drift the September 2026 audit found.
 //
 // The token comes from $SUPABASE_ACCESS_TOKEN if set, otherwise (macOS) from
 // the login Keychain item "SUPABASE_ACCESS_TOKEN". Save it there once with

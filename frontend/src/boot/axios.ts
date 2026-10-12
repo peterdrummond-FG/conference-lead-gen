@@ -17,7 +17,7 @@ declare module 'vue' {
 // — the real privilege boundary is requireUser()/role checks inside each
 // function, not this key), and the functions URL is just a public HTTPS
 // endpoint.
-// Audit S8. These used to fall back to the PRODUCTION project when the env
+// Found in the September 2026 audit: These used to fall back to the PRODUCTION project when the env
 // var was missing or misspelled, so a dev or staging build silently wrote into
 // the live pilot database instead of failing. The anon key itself is safe to
 // publish -- the real boundary is requireUser()/role checks server-side -- but

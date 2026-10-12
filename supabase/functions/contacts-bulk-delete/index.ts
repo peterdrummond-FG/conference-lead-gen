@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   }
 
   if (toDelete.length > 0) {
-    // Audit S12. Deleting the row used to leave the card photo and any voice
+    // Found in the September 2026 audit: Deleting the row used to leave the card photo and any voice
     // memo in Storage forever, so "delete this contact" did not actually
     // delete the contact's most identifying data. Remove the media first: if
     // that fails we still have the rows to retry from, whereas the reverse

@@ -1,5 +1,5 @@
 // POST { batchId } -> { marked: number }. Staff-gated, same roles as
-// export-csv. Phase 2 of the two-phase export (audit Q2).
+// export-csv. Phase 2 of the two-phase export (September 2026 audit).
 //
 // export-csv reserves a batch and returns its id in X-Export-Batch-Id without
 // stamping synced_at. The client calls this once the CSV blob is actually in

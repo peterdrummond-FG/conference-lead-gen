@@ -20,9 +20,9 @@ Deno.serve(async (req) => {
     return errorResponse(req, 400, "code must be a string");
   }
 
-  // Constant-time (audit S4) -- the same defect as isServiceRoleCall, repeated
+  // Constant-time (September 2026 audit) -- the same defect as isServiceRoleCall, repeated
   // here. Note this does NOT make the kiosk lock a security boundary: it is
   // still enforced client-side and still brute-forceable without a lockout.
-  // See audit N2, deferred.
+  // A server-side lock (lockout, hashed PIN) was considered in the September 2026 audit and deferred.
   return jsonResponse(req, { valid: await timingSafeEqual(body.code, user.kioskPin) });
 });

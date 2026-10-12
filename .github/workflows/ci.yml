@@ -1,4 +1,4 @@
-# Audit Q1. This repo had zero tests, zero lint config and zero CI across four
+# Found in the September 2026 audit: This repo had zero tests, zero lint config and zero CI across four
 # runtimes; every fix in its history is a narrowly-scoped post-incident fix,
 # which is the signature of a codebase with no regression net.
 #
@@ -66,7 +66,7 @@ jobs:
         with:
           node-version: '22'
 
-      # audit A1/A2 (skills sandboxed, no credentials) was scripts/check-skill-profiles.mjs
+      # September 2026 audit: "skills sandboxed, no credentials" was scripts/check-skill-profiles.mjs
       # for the retired local agent; on n8n it is n8n/scripts/check-n8n-credential-scopes.mjs,
       # which needs a workflow export and is run by hand (see n8n/README.md).
 
@@ -81,7 +81,7 @@ jobs:
       - name: Check nothing signs an account out of every device
         run: node scripts/check-auth-signout.mjs
 
-      # audit N1: a deployed function with no source in the repo, or a
+      # September 2026 audit: a deployed function with no source in the repo, or a
       # "retired" one that doesn't actually answer 410.
       - name: Deployed-function drift
         env:
@@ -90,13 +90,13 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: bash scripts/check-deployed-functions.sh
 
-      # audit Q9: retired concepts should not linger as live CODE. Prose that
+      # September 2026 audit: retired concepts should not linger as live CODE. Prose that
       # explains what replaced the staff PIN is fine and expected -- this
       # looks for actual usage (a call, or the header being read/sent).
       - name: No live staff-PIN code
         run: |
           if git grep -nE 'requireStaffPin\(|headers\[.x-staff-pin|get\(.x-staff-pin' \
                -- ':!supabase/migrations' ':!audit' ':!docs' ':!*.md'; then
-            echo "Live staff-PIN code outside migrations/docs (audit Q9)" >&2
+            echo "Live staff-PIN code outside migrations/docs (September 2026 audit)" >&2
             exit 1
           fi

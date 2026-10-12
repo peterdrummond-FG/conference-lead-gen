@@ -59,7 +59,7 @@ const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 const PAUSE_IDLE_MS = 120 * 60 * 1000;
 const PENDING_STATUSES = new Set(["pending_ocr", "pending_transcription", "processing"]);
 // Hard ceilings on a code path that spends money and is subject to carrier
-// compliance rules (audit N3). MAX_SENDS_PER_TICK bounds a runaway sweep;
+// compliance rules (September 2026 audit). MAX_SENDS_PER_TICK bounds a runaway sweep;
 // OUTBOUND_SMS_ENABLED is a kill switch that needs no redeploy or cron edit.
 const MAX_SENDS_PER_TICK = Number(Deno.env.get("MAX_SMS_PER_TICK") ?? 25);
 
@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
 
     if (sent >= MAX_SENDS_PER_TICK) break;
 
-    // CLAIM BEFORE SENDING (audit N3). pg_cron fires every 60s without
+    // CLAIM BEFORE SENDING (September 2026 audit). pg_cron fires every 60s without
     // waiting for the previous run, and this sweep does slow per-binding HTTP
     // work, so overlapping ticks are expected. Reading a set and writing the
     // watermark afterwards meant the next tick re-read the same rows and
@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
 
   // Return non-200 on any failure so Supabase's own function-error metrics
   // (and any uptime check on the cron) actually fire -- previously every
-  // failure was a console.error nobody was watching (audit Q8).
+  // failure was a console.error nobody was watching (September 2026 audit).
   if (failures > 0) {
     console.error(JSON.stringify({ event: "session_notifications.partial_failure", sent, failures }));
     return new Response(JSON.stringify({ ok: false, sent, failures }), {

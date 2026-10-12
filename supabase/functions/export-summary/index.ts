@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       .eq("review_status", "needs_review"),
     supabase.from("contacts").select("*", { count: "exact", head: true })
       .eq("review_status", "approved").is("matched_zoho_account_id", null).is("synced_at", null),
-    // Audit A10. Auto-approval used to send a lead to Zoho with no human ever seeing
+    // Found in the September 2026 audit: Auto-approval used to send a lead to Zoho with no human ever seeing
     // it, so how much of the pending export got there that way was worth showing.
     // Nothing auto-confirms any more (2026-10-06, and the database refuses
     // auto_approved = true), so this is 0 and stays 0; kept so the response shape

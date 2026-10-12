@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deployed Edge Functions must be accounted for in supabase/functions/.
 #
-# Why this exists (audit N1): on 2026-09-14 the project had eleven deployed
+# Why this exists (September 2026 audit): on 2026-09-14 the project had eleven deployed
 # functions with no source in the repo. Nine were already 410 stubs -- the
 # project's own retirement convention, correctly applied -- but two
 # (districts-create, schools-create) were still fully live, public,
@@ -69,7 +69,7 @@ status=0
 if [[ -n "$deployed" ]]; then
 undeclared=$(comm -23 <(echo "$deployed") <(echo "$expected") || true)
 if [[ -n "$undeclared" ]]; then
-  echo "FAIL: deployed but neither in supabase/functions/ nor RETIRED (audit N1):" >&2
+  echo "FAIL: deployed but neither in supabase/functions/ nor RETIRED (September 2026 audit):" >&2
   echo "$undeclared" | sed 's/^/  - /' >&2
   status=1
 fi
@@ -94,7 +94,7 @@ if [[ -n "$anon" ]]; then
       -H "Authorization: Bearer ${anon}" \
       -H 'Content-Type: application/json' -d '{}' --max-time 20 || echo 000)
     if [[ "$code" != "410" ]]; then
-      echo "FAIL: '$fn' is listed as RETIRED but answered HTTP $code, not 410 (audit N1)" >&2
+      echo "FAIL: '$fn' is listed as RETIRED but answered HTTP $code, not 410 (September 2026 audit)" >&2
       status=1
     fi
   done

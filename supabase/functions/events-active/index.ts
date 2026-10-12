@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
   // holding it can text the Twilio number, bind a phone to this event and push
   // photos and voice memos into the intake pipeline), and for a long time this
   // response handed it to staff and linked reps so Admin could show a "Show
-  // conference code" link (audit S11, and its 2026-09-16 regression where any
+  // conference code" link (September 2026 audit, and its 2026-09-16 regression where any
   // authenticated user could read another conference's code by passing its public
   // slug). The Admin link is gone and nothing in the browser reads the field, so
   // the safest way to keep the token private is to not send it at all. n8n reads

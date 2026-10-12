@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
   if (inFlightError) return errorResponse(req, 500, inFlightError.message);
   if (inFlight) return errorResponse(req, 409, "Contacts are still being created from this memo. Try again in a minute.");
 
-  // Audit S12 pattern (see contacts-bulk-delete): remove the media before
+  // September 2026 audit pattern (see contacts-bulk-delete): remove the media before
   // the row, not after -- if Storage cleanup fails we still have the row to
   // retry from, whereas deleting the row first orphans the object with
   // nothing left pointing at it. A missing object is the desired end state

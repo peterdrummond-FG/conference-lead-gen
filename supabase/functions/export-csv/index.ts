@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  // Two-phase (audit Q2): RESERVE the exportable set here, and stamp
+  // Two-phase (September 2026 audit): RESERVE the exportable set here, and stamp
   // synced_at only once the client confirms it actually received the blob
   // (export-confirm). Marking first meant a timeout or a dropped download
   // silently removed those leads from every future export, with no record of

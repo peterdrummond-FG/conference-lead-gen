@@ -30,7 +30,7 @@
       </div>
     </q-card-section>
 
-    <!-- Two-phase export (audit Q2): the server reserves the leads when the file
+    <!-- Two-phase export (September 2026 audit): the server reserves the leads when the file
          is generated and only marks them synced once we confirm. The page used
          to confirm the instant it clicked the download link, with no idea
          whether the file was actually saved — a blocked or dropped download

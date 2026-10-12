@@ -58,8 +58,8 @@ import {
 } from "../_shared/intakeDestination.ts";
 
 // Generous on purpose: conference wifi is usually one NAT, so this has to
-// bound automation without policing a booth queue. See audit S2 and
-// check_submission_rate.
+// bound automation without policing a booth queue. See check_submission_rate
+// and the September 2026 audit's note on the public form's abuse limits.
 const RATE_MAX = Number(Deno.env.get("INTAKE_RATE_MAX") ?? 20);
 const RATE_WINDOW_MINUTES = Number(Deno.env.get("INTAKE_RATE_WINDOW_MINUTES") ?? 10);
 

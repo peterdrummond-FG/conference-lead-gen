@@ -121,7 +121,7 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Audit A9/S7. This used to return an arbitrary substring of the handset-
+// Found in the September 2026 audit: This used to return an arbitrary substring of the handset-
 // supplied content type, which then became part of a Storage object key
 // (`sms/<id>.<ext>`, with upsert:true) and, downstream, was read back out of
 // that key and interpolated into a model prompt by the local agent that then ran

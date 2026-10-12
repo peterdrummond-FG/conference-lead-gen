@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   }
 
   let query = supabase.from("schools").select("*").eq("district_id", districtId).order("name").limit(50);
-  // Audit S11. These are public (the attendee typeahead needs them without a
+  // Found in the September 2026 audit: These are public (the attendee typeahead needs them without a
   // login), so: escape LIKE metacharacters, or a caller can turn a scoped
   // lookup into a full unanchored scan; and require two characters before
   // returning anything, so a bare call can't page the whole reference table.

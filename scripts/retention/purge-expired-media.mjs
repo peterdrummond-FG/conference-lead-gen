@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deletes Storage media past the retention window (audit S12).
+// Deletes Storage media past the retention window (September 2026 audit).
 //
 // Card photos and voice memos are source media: once OCR'd or transcribed,
 // their content lives in contacts/inbound_messages and the media itself is

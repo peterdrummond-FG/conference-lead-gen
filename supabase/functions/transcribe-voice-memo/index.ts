@@ -1,5 +1,5 @@
 // ┌──────────────────────────────────────────────────────────────────────┐
-// │ RETIRED 2026-09-14 (audit S1/N1). This is the deployed 410 stub.     │
+// │ RETIRED 2026-09-14 (September 2026 audit). This is the deployed 410 stub.     │
 // └──────────────────────────────────────────────────────────────────────┘
 //
 // Voice-memo transcription is very much alive; it just doesn't run here
