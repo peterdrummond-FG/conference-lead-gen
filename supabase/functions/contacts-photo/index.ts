@@ -1,5 +1,6 @@
 // GET ?id=<contactId>&full=true -> 302 redirect to a short-lived signed
-// Storage URL. Staff-gated (for consistency with the rest of /review).
+// Storage URL. Who: any signed-in staff role (a sales rep's own contacts only). Read-only:
+// it signs a URL and writes nothing.
 // source_image_path/cropped_image_path are Supabase Storage object paths in
 // the 'contact-photos' bucket (uniform for texted photos and for the folder-dropped
 // ones the retired watcher produced).

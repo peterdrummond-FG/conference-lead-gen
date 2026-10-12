@@ -2,6 +2,9 @@
 // profiles only (the accounts they're allowed to manage). Used by Setup's
 // user-management screen, the booth/session rep-assignment picker, and
 // MainLayout's admin-only user switcher.
+// Who: admin and solutionsSuccess only.
+// Writes: normally nothing; it self-heals a sales profile that has no rep_slug (see the
+// comment on that step below).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

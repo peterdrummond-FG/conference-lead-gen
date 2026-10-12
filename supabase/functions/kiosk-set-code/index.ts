@@ -2,6 +2,8 @@
 // sets the caller's OWN kiosk PIN (profiles.kiosk_pin), never a
 // body-supplied target. Kept short and numeric-ish on purpose: it has to be
 // quick to type on a shared device, unlike a real account password.
+// Writes: profiles.kiosk_pin for the caller only. Pairs with kiosk-verify-code (the unlock
+// check) and `me` (which tells the app whether to show "Set PIN").
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

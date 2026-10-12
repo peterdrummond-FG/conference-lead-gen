@@ -1,6 +1,9 @@
 // POST { repId, eventId: string | null } -> the updated Profile.
 // admin/solutionsSuccess only -- a manager linking a rep to whichever
 // event they're working, on that rep's behalf.
+// Writes: only through the profile_set_current_event RPC, the single writer of
+// profiles.current_event_id (it also moves the rep's bound phone; see CLAUDE.md, "One
+// conference everywhere").
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

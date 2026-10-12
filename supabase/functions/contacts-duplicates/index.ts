@@ -1,6 +1,7 @@
 // GET ?id=<contactId> -> ContactListItem[] (the whole duplicate group).
-// Staff-gated. A gap caught during Stage 15's frontend wiring — this
-// endpoint (backing DuplicateResolutionDialog.vue) was missed in Stage 10.
+// Who: any signed-in staff role; a sales rep sees only their own rows within the group
+// (a group can include a card another rep captured). Read-only: writes nothing.
+// Backs DuplicateResolutionDialog.vue.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

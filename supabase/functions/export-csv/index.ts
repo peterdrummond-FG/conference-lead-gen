@@ -1,9 +1,14 @@
-// GET -> text/csv attachment. Staff-gated. Port of ExportEndpoints.cs's
-// GET /api/export — another Stage 10 gap caught during Stage 15's
-// frontend wiring. Fetched via the normal authenticated axios instance
-// (responseType: 'blob') rather than a plain <a href> navigation, since a
-// browser navigation can't carry the staff-PIN header or the anon-key
-// bearer token this function needs — see ExportPage.vue.
+// GET -> text/csv attachment, the Zoho import file. Who: admin and solutionsSuccess only.
+// Port of the retired .NET backend's GET /api/export (deleted 2026-09-14).
+// Writes: phase 1 of the two-phase export. It releases batches reserved more than 30
+// minutes ago (export_release_stale), then reserves the exportable leads (export_reserve)
+// and returns the batch id in X-Export-Batch-Id; it does NOT mark them synced. The client
+// calls export-confirm once the file is really downloaded. What this emits is a promise to
+// users (Contacts' "included in the Zoho import" tooltips): see CLAUDE.md before changing
+// the columns.
+// Fetched via the normal authenticated axios instance (responseType: 'blob') rather than a
+// plain <a href> navigation, since a browser navigation can't carry the Supabase Auth bearer
+// token this function needs — see ExportPage.vue.
 import { corsHeaders, handlePreflight } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

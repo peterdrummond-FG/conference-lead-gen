@@ -1,5 +1,11 @@
 // POST { ids: string[] } -> { approved: string[], skipped: {id, reason}[] }
-// Staff-gated.
+// Who: any signed-in staff role (admin, solutionsSuccess, sales); a sales rep can act only
+// on their own contacts (anyone else's id is reported as "not found").
+// Writes: contacts.review_status = 'approved' (and auto_approved = false) for the ids a
+// person selected, except contacts whose match is still 'pending'. Called by "Confirm all N"
+// on Contacts. This and contacts-patch (one lead's Confirm) are the ONLY writers of
+// 'approved': nothing is ever auto-confirmed, and scripts/check-no-auto-confirm.mjs fails
+// CI if any other code writes it.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

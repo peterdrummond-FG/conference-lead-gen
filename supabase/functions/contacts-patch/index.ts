@@ -1,7 +1,13 @@
-// PATCH { ...any subset of updatable fields... } -> { id, createdAt }
-// Staff-gated. Uses `'key' in body` (not `body.key !== undefined`) to tell
-// "key omitted" from "key present as null" apart — the same semantic gap
-// backend/Common/Optional.cs closed in C#.
+// PATCH ?id=<contactId> { ...any subset of updatable fields... } -> { id, createdAt }
+// Who: any signed-in staff role; a sales rep can edit only their own contacts (another rep's
+// id answers 404, so it cannot be probed).
+// Writes: the contacts row's edited fields. This is also how one lead's Confirm, Reject and
+// Undo are saved: reviewStatus comes from the person's request (there is no literal
+// 'approved' here), and with contacts-bulk-approve it is the only place that may write
+// 'approved' (scripts/check-no-auto-confirm.mjs).
+// Uses `'key' in body` (not `body.key !== undefined`) to tell "key omitted" from "key
+// present as null" apart — the same semantic gap the retired .NET backend's Optional.cs
+// closed in C#.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

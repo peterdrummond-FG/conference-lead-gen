@@ -3,6 +3,9 @@
 // can create 'sales' only. The admin/manager sets a temporary password
 // directly here (no invite-email flow) -- the new user can change it later
 // via the normal Supabase Auth password-reset flow.
+// Writes: a Supabase Auth user (auth.users) and its profiles row (a sales rep also gets a
+// generated rep_slug, and must have a phone number). If the profile insert fails the new
+// login is deleted again, so no login is left without a profile.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

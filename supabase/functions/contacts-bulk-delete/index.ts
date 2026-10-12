@@ -1,5 +1,8 @@
 // POST { ids: string[] } -> { deleted: string[], skipped: {id, reason}[] }
-// Staff-gated. Scoped to review_status='rejected' server-side (not just the
+// Who: any signed-in staff role; a sales rep can act only on their own contacts.
+// Writes: deletes the contacts rows, after removing their card photos, crops and voice-memo
+// audio from Storage and nulling inbound_messages.storage_path (see docs/DATA-RETENTION.md).
+// Called by Contacts' delete of rejected leads. Scoped to review_status='rejected' server-side (not just the
 // UI only showing this on the Rejected tab) so a stale client selection can
 // never delete a live row.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
