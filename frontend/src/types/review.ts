@@ -188,16 +188,3 @@ export interface Profile {
   email: string | null;
 }
 
-export interface MergeDuplicatesPayload {
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  phone: string | null;
-  title: string | null;
-  state: string | null;
-  schoolDistrictId: string | null;
-  schoolDistrictNameRaw: string | null;
-  schoolId: string | null;
-  schoolNameRaw: string | null;
-  discardContactIds: string[];
-}

@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, watch, nextTick, onMounted } from 'vue';
+import { reactive, ref, computed, nextTick, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';

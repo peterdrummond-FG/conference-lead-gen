@@ -257,12 +257,6 @@ function repCount(eventId: string): number {
   return profiles.value.filter((p) => p.role === 'sales' && p.currentEventId === eventId).length;
 }
 
-function roleLabel(role: Role) {
-  if (role === 'admin') return 'Admin';
-  if (role === 'solutionsSuccess') return 'Solutions Success';
-  return 'Sales';
-}
-
 async function loadProfiles() {
   try {
     const { data } = await api.get<Profile[]>('/profiles-list');

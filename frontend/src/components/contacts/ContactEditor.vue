@@ -241,7 +241,6 @@
 <script setup lang="ts">
 import { reactive, computed, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
-import { api } from '@/boot/axios';
 import LeadChip from '@/components/contacts/LeadChip.vue';
 import ProcessingBar from '@/components/contacts/ProcessingBar.vue';
 import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
