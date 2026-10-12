@@ -14,8 +14,18 @@
           :conference-line="conferenceText"
           :rejected="showRejected"
           :rejected-count="rejectedMatching.length"
+          :search-waiting="partial && !tooMany && !loadError"
           @open-filter="openFilter"
           @back-to-contacts="filters = { ...filters, show: 'contacts' }"
+        />
+
+        <!-- A long list loads 100 at a time: the first page is here at once and this says the
+             rest is on its way (or did not all arrive). Nothing is drawn for a short list. -->
+        <ContactsLoadStrip
+          v-if="partial"
+          :kind="tooMany ? 'too-many' : loadError ? 'failed' : 'loading'"
+          :loaded="loadedCount"
+          :total="totalCount"
         />
 
         <!-- Scans nobody could place under a conference. Real role, not effectiveRole,
@@ -54,7 +64,7 @@
         <!-- With Ready selected, everything listed is ready, so one button confirms
              the lot (the same dialog and request as ever). It acts only on what is
              on screen. -->
-        <ContactsConfirmAll v-if="showConfirmAll" :count="readyCount" @click="confirmApproveReady" />
+        <ContactsConfirmAll v-if="showConfirmAll" :count="readyCount" :waiting="confirmAllWaiting" @click="confirmApproveReady" />
 
         <!-- A rep who picked Earlier or All conferences: one section per conference,
              so a big history stays tidy. -->
@@ -212,6 +222,8 @@ import UnassignedScansBanner from '@/components/UnassignedScansBanner.vue';
 import ContactsHeader from '@/components/ContactsHeader.vue';
 import ContactsFilter from '@/components/ContactsFilter.vue';
 import ContactsConfirmAll from '@/components/ContactsConfirmAll.vue';
+import ContactsLoadStrip from '@/components/ContactsLoadStrip.vue';
+import { CONFIRM_ALL_FAILED, CONFIRM_ALL_TOO_MANY, CONFIRM_ALL_WAITING } from '@/utils/contactsPaging';
 import ContactList from '@/components/contacts/ContactList.vue';
 import ContactEditor from '@/components/contacts/ContactEditor.vue';
 import AddNoteDialog from '@/components/contacts/AddNoteDialog.vue';
@@ -229,7 +241,7 @@ import {
 const $q = useQuasar();
 const router = useRouter();
 const sessionStore = useSessionStore();
-const { buckets, loaded, busy, serverFilters, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useContacts();
+const { buckets, loaded, busy, serverFilters, loadError, tooMany, loadedCount, totalCount, partial, load: loadLeads, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete } = useContacts();
 
 const isSales = computed(() => sessionStore.effectiveRole === 'sales');
 
@@ -310,9 +322,17 @@ function reorder() {
   rank.value = buildRank(buckets, { needs_review: filters.value.sort, approved: DEFAULT_SORT.approved, rejected: DEFAULT_SORT.rejected });
 }
 async function load(opts: { keepOrder?: boolean } = {}) {
-  await loadLeads({ quiet: Boolean(opts.keepOrder) });
+  // onComplete: a long list's later pages arrive after this returns and are not in the
+  // frozen order above, so rank the whole list once they are all in.
+  await loadLeads({ quiet: Boolean(opts.keepOrder), onComplete: opts.keepOrder ? undefined : reorder });
   if (!opts.keepOrder) reorder();
 }
+
+// Confirm all acts on what is on screen, so it waits until everything is (see useContacts).
+const confirmAllWaiting = computed(() => {
+  if (!partial.value) return undefined;
+  return tooMany.value ? CONFIRM_ALL_TOO_MANY : loadError.value ? CONFIRM_ALL_FAILED : CONFIRM_ALL_WAITING;
+});
 
 // ── Which conference ─────────────────────────────────────────────────────
 

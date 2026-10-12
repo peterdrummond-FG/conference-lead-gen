@@ -7,13 +7,17 @@
     no-caps
     color="positive"
     icon="done_all"
-    :label="`Confirm all ${count}`"
+    :label="waiting ?? `Confirm all ${count}`"
+    :disable="Boolean(waiting)"
     class="rs-confirm-all"
   />
 </template>
 
 <script setup lang="ts">
-defineProps<{ count: number }>();
+// waiting: words to show instead, and the button is off, while the rest of a long list is
+// still loading (or could not be): Confirm all acts on what is on screen, and the
+// screen must hold everything first. Left out by the onboarding tour, which draws this too.
+defineProps<{ count: number; waiting?: string | undefined }>();
 </script>
 
 <style scoped>

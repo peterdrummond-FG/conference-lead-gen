@@ -890,6 +890,18 @@ Rules worth knowing before changing Contacts:
   confirm / reject / undo move a contact between the lists locally. No backend change was
   needed. `contacts-list` carries no event date, so section order uses the event whose most
   recent contact is newest, computed over every status.
+- **Each list is loaded 100 at a time** (2026-10-12). The database answers at most 1000
+  rows per request, and the old single request silently dropped the rest of a long list.
+  `contacts-list` now takes `?page=&pageSize=` (default and maximum 100) and returns
+  `{ items, page, pageSize, total }`; with no `page` it returns the whole list as a plain
+  array, read page by page and refused past 5,000 rows. The page (`utils/contactsLoader.ts`,
+  tested; wired in `useContacts.ts`) shows the first 100 of each list at once and loads the
+  rest behind it, under a one-line "Loading all contacts: 100 of 342" strip
+  (`ContactsLoadStrip.vue`). While that is going on **Search and Confirm all wait**, because
+  both act on what is on screen and must not act on part of the list. The quiet 8-second
+  refresh loads every page before it replaces anything, and a half-loaded list is never
+  refreshed under someone. Over 5,000 contacts in one list the page shows its first 100 and
+  says to narrow the list. Words: `utils/contactsPaging.ts`.
 - Empty states are deliberate: nothing matches (clear search and filters), no contacts yet
   (or "choose a conference in Setup" for a rep with none), and nothing rejected.
 - Reps get "New / Existing school / district" and the contact-already-in-Zoho

@@ -1,9 +1,11 @@
-import { reactive, ref } from 'vue';
+import { computed, reactive, toRefs } from 'vue';
 import { Notify } from 'quasar';
 import { api } from '@/boot/axios';
 import { useSessionStore } from '@/stores/session-store';
 import type { ContactListItem, UpdateContactPayload } from '@/types/review';
 import { REVIEW_STATUSES, fullName, type ReviewStatus } from '@/utils/contactsList';
+import { CONTACTS_PAGE_SIZE, skippedSummary } from '@/utils/contactsPaging';
+import { createContactsLoader, type LoaderJob, type LoaderState } from '@/utils/contactsLoader';
 
 // Display-only fields the list item carries next to the ids the PATCH writes
 // (schoolDistrictId → districtName). A save only sends the ids, so without
@@ -16,9 +18,14 @@ const UNDO_MS = 6000;
 // All three review statuses are held at once. That is what gives the status bar
 // live counts, lets an approve/reject move a lead between the unconfirmed,
 // confirmed and rejected lists locally (no refetch, no flicker, no lost place),
-// and makes Undo a plain PATCH back. A rep's contacts are a few hundred rows of JSON at
-// most — the card photos are separate requests, and only the open lead's is
-// ever fetched.
+// and makes Undo a plain PATCH back. The card photos are separate requests, and only
+// the open lead's is ever fetched.
+//
+// Each list is requested CONTACTS_PAGE_SIZE (100) at a time. The first page of every list
+// shows at once; the rest load behind it (`loadingMore`), and the page keeps anything that
+// acts on the whole list (Confirm all, search) waiting until they are in (`partial`). This
+// replaced one unpaged request that the database cut off at 1000 rows without saying so.
+// See utils/contactsPaging.ts.
 export function useContacts() {
   const sessionStore = useSessionStore();
 
@@ -27,14 +34,28 @@ export function useContacts() {
     approved: [],
     rejected: [],
   });
-  const loading = ref(false);
-  const loaded = ref(false);
+  // What the page watches while it loads (see utils/contactsLoader.ts).
+  const state = reactive<LoaderState>({
+    loading: false,
+    loaded: false,
+    // More pages are still arriving behind the first one.
+    loadingMore: false,
+    // Some pages could not be loaded.
+    loadError: false,
+    // A list above the 5,000 ceiling: only its first page is shown, and the page says so.
+    tooMany: false,
+    loadedCount: 0,
+    totalCount: 0,
+  });
+  const { loading, loaded, loadingMore, loadError, tooMany, loadedCount, totalCount } = toRefs(state);
+  // True while the lists on screen are not the whole of what the server holds. Anything
+  // that acts on "everything shown" (Confirm all) must wait for this to be false.
+  const partial = computed(() => state.loadingMore || state.loadError || state.tooMany);
   const busy = reactive(new Set<string>());
 
   // Admin / Solutions Success only — the server slices by these.
   const serverFilters = reactive<{ repId: string | null; synced: string | null }>({ repId: null, synced: null });
 
-  let loadSeq = 0;
   // Bumped when a write starts and again when it ends. A background refresh
   // that straddles either is a snapshot of the server from before the write
   // landed; applying it would put the old values back under the rep (the
@@ -51,50 +72,36 @@ export function useContacts() {
     return params;
   }
 
-  async function fetchList(status: ReviewStatus, extra: Record<string, string>) {
-    const { data } = await api.get<ContactListItem[]>('/contacts-list', {
-      params: { ...baseParams(), reviewStatus: status, ...extra },
+  interface Paged { items: ContactListItem[]; page: number; pageSize: number; total: number }
+
+  async function fetchPage(job: LoaderJob, page: number): Promise<Paged> {
+    const { data } = await api.get<Paged>('/contacts-list', {
+      params: { ...baseParams(), reviewStatus: job.status, ...job.extra, page, pageSize: CONTACTS_PAGE_SIZE },
     });
     return data;
   }
 
-  // quiet: the page's own background refresh (processing poll, tab refocus).
-  // It yields to any write that overlaps it; the next tick fetches again.
-  async function load(opts: { quiet?: boolean } = {}) {
-    // Two overlapping loads (a filter change during the first fetch) must not
-    // let the older, slower response overwrite the newer one.
-    const seq = ++loadSeq;
-    const writesAtStart = writes;
-    const writingAtStart = busy.size > 0;
-    loading.value = true;
-    try {
-      const sales = isSales();
-      const jobs = REVIEW_STATUSES.flatMap((status) => {
-        if (sales) {
-          return [
-            // contacts-list splits a rep's leads into their current conference and the
-            // rest; the page wants all of them (it filters by conference itself).
-            fetchList(status, { scope: 'current' }).then((rows) => ({ status, rows })),
-            fetchList(status, { scope: 'past' }).then((rows) => ({ status, rows })),
-          ];
-        }
-        const extra: Record<string, string> = {};
-        if (serverFilters.repId) extra.repId = serverFilters.repId;
-        if (serverFilters.synced) extra.synced = serverFilters.synced;
-        return [fetchList(status, extra).then((rows) => ({ status, rows }))];
-      });
-      const results = await Promise.all(jobs);
-      if (seq !== loadSeq) return;
-      if (opts.quiet && (writes !== writesAtStart || writingAtStart || busy.size > 0)) return;
-
-      const next: Record<ReviewStatus, ContactListItem[]> = { needs_review: [], approved: [], rejected: [] };
-      for (const r of results) next[r.status].push(...r.rows);
-      for (const status of REVIEW_STATUSES) buckets[status] = next[status];
-      loaded.value = true;
-    } finally {
-      if (seq === loadSeq) loading.value = false;
+  function buildJobs(): LoaderJob[] {
+    if (isSales()) {
+      // contacts-list splits a rep's leads into their current conference and the
+      // rest; the page wants all of them (it filters by conference itself).
+      return REVIEW_STATUSES.flatMap((status) => [
+        { status, extra: { scope: 'current' } },
+        { status, extra: { scope: 'past' } },
+      ]);
     }
+    const extra: Record<string, string> = {};
+    if (serverFilters.repId) extra.repId = serverFilters.repId;
+    if (serverFilters.synced) extra.synced = serverFilters.synced;
+    return REVIEW_STATUSES.map((status) => ({ status, extra }));
   }
+
+  // The fetching, paging and "never show a wrong half-picture" rules live in
+  // utils/contactsLoader.ts, where they are tested with a fake server.
+  const loader = createContactsLoader<ContactListItem>({
+    buildJobs, fetchPage, buckets, state, writes: () => writes, busyCount: () => busy.size,
+  });
+  const load = loader.load;
 
   function find(id: string): ContactListItem | undefined {
     for (const status of REVIEW_STATUSES) {
@@ -215,14 +222,11 @@ export function useContacts() {
       Notify.create({ type: 'positive', message: `Confirmed ${n} contact${n === 1 ? '' : 's'}.` });
       return;
     }
-    const stillMatching = data.skipped.filter((s) => s.reason === 'still pending').length;
-    const parts: string[] = [];
-    if (stillMatching) parts.push(`${stillMatching} still matching`);
-    if (skippedCount - stillMatching) parts.push(`${skippedCount - stillMatching} not found`);
+    const summary = skippedSummary(data.skipped);
     Notify.create({
       type: 'warning',
       timeout: 8000,
-      message: `Confirmed ${n}, skipped ${skippedCount} (${parts.join(', ')}). Skipped contacts stay unconfirmed.`,
+      message: `Confirmed ${n}, skipped ${skippedCount} (${summary}). Skipped contacts stay as they were.`,
     });
   }
 
@@ -243,6 +247,7 @@ export function useContacts() {
 
   return {
     buckets, loading, loaded, busy, serverFilters,
+    loadingMore, loadError, tooMany, loadedCount, totalCount, partial,
     load, find, approve, reject, restore, update, retryMatch, bulkApprove, bulkDelete,
   };
 }

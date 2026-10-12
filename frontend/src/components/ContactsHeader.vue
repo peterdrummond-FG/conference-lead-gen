@@ -13,7 +13,8 @@
         clearable
         debounce="150"
         class="rs-search"
-        placeholder="Search contacts"
+        :disable="searchWaiting"
+        :placeholder="searchWaiting ? 'Loading contacts…' : 'Search contacts'"
         aria-label="Search contacts"
         enterkeyhint="search"
       >
@@ -92,7 +93,10 @@ withDefaults(defineProps<{
   // The Rejected view: a slim bar replaces the status bar and the conference line.
   rejected?: boolean;
   rejectedCount?: number;
-}>(), { filterCount: 0, rejected: false, rejectedCount: 0 });
+  // While the rest of a long list loads, a search would only look through what has
+  // arrived and could say "no match" for a contact that is still on its way.
+  searchWaiting?: boolean;
+}>(), { filterCount: 0, rejected: false, rejectedCount: 0, searchWaiting: false });
 
 defineEmits<{ openFilter: [section: 'conference' | null]; backToContacts: [] }>();
 

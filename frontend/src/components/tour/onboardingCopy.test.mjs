@@ -18,7 +18,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', '..');
 const REPO = join(SRC, '..', '..');
 const read = (...p) => readFileSync(join(...p), 'utf8');
-const webhook = read(REPO, 'supabase/functions/twilio-webhook/index.ts');
+// The webhook's own source, plus the saved-note replies it imports from _shared (moved there
+// when saving a texted note became testable: a failed save is now told to the rep).
+const webhook = read(REPO, 'supabase/functions/twilio-webhook/index.ts')
+  + '\n' + read(REPO, 'supabase/functions/_shared/textNoteSave.ts');
 
 function files(dir) {
   return readdirSync(dir).flatMap((n) => {
