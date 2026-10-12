@@ -15,8 +15,10 @@ been replaced, the replacement is noted here instead of rewriting history.
 
 - **`20260902232500_audio_transcription_trigger.sql`** — the Edge-Function
   transcription path it creates was dropped three days later in
-  `20260903000000` and replaced by a local Whisper CLI step in
-  `local-agent/`. The Edge Function itself stayed deployed and callable for
+  `20260903000000` and replaced by a local Whisper CLI step in the local agent
+  (deleted 2026-10-08; its code is in git history before commit `1cb0ea2`).
+  Transcription is now OpenAI, run by an n8n pipeline. The Edge Function itself
+  stayed deployed and callable for
   three months afterwards; it is now a 410 stub.
 
 - **`20260911101500_export_and_mark_synced_fn.sql`** and
@@ -27,7 +29,7 @@ been replaced, the replacement is noted here instead of rewriting history.
   `..._export_two_phase_batches`. The old function is left in place but is no
   longer called by `export-csv`.
 
-- **`20260915060514_auto_approve_requires_matched_account.sql`**, **`20260923180000_finalize_contact_match_account_level_and_glance_summary.sql`** and **`20260925221637_finalize_contact_match_requires_pending.sql`** — describe and implement `finalize_contact_match` auto-approving a high-confidence match. Removed by `20261007110000_no_auto_confirm.sql` (Peter, 2026-10-06): a match result now always leaves the lead in `needs_review`. The old comments stay as history.
+- **`20260915060514_auto_approve_requires_matched_account.sql`** (applied to the live database under that version; its file is not in this directory), **`20260923180000_finalize_contact_match_account_level_and_glance_summary.sql`** and **`20260925221637_finalize_contact_match_requires_pending.sql`** — describe and implement `finalize_contact_match` auto-approving a high-confidence match. Removed by `20261007110000_no_auto_confirm.sql` (Peter, 2026-10-06): a match result now always leaves the lead in `needs_review`. The old comments stay as history.
 
 - **`insert_contact_with_duplicate_check`** — recreated several times to thread
   new columns through (`qr_channel`, `rep_id`, `source_note_id`, and now
@@ -80,12 +82,11 @@ been replaced, the replacement is noted here instead of rewriting history.
   history was incomplete relative to the deployed schema. This migration
   backfills them verbatim (pulled via `pg_get_functiondef` against the live
   project); it changes nothing about current behavior.
-- **`20260922100100_n8n_circuit_breaker.sql`** — adds `circuit_breaker` (a
+- **`20260922152624_n8n_circuit_breaker.sql`** — adds `circuit_breaker` (a
   shared rate-limit cooldown row n8n's skill sub-workflows check/trip, since
-  n8n executions don't share process memory the way `local-agent`'s single
-  Node process did) and a narrowly-scoped `n8n_circuit_breaker` role. Purely
-  additive; does not touch `local-agent`/`watch-cards.command`, which remain
-  the live system until the n8n migration's later phases cut over.
+  n8n executions don't share process memory the way the retired `local-agent`'s
+  single Node process did) and a narrowly-scoped `n8n_circuit_breaker` role. Purely
+  additive when it was written (the local agent was still the live system then).
   **Dead as of 2026-09-24.** Only the archived first n8n build ever used it;
   `local-agent` never did. The rebuild dropped circuit breakers: n8n calls the
   Anthropic API with a key, so a 429 lasts seconds, not the hours a Claude
@@ -142,7 +143,7 @@ been replaced, the replacement is noted here instead of rewriting history.
   permanently unattached or attaching to the wrong contact, and photo OCR
   having no retry at all — see `docs/ARCHITECTURE.md`'s "Claim-based retry"
   convention and `docs/ENGINEERING-LESSONS.md` #14 for the full incident.
-  Schema-only: `local-agent/agent.mjs` was updated in the same change to
+  Schema-only: the local agent's `agent.mjs` (retired 2026-10-08) was updated in the same change to
   actually use the new columns/functions, so there's no gap where the schema
   exists but nothing reads or writes it.
 
@@ -156,7 +157,7 @@ been replaced, the replacement is noted here instead of rewriting history.
   Also adds a partial unique index on `contacts(source_message_id) WHERE
   source = 'voice_memo'` so `contacts-from-voice-memo` can dedupe a retried
   create the same way `contacts-from-ocr` dedupes on `source_image_hash`.
-  Schema-only, same shape as the 2026-09-22 entry above: `local-agent/agent.mjs`
+  Schema-only, same shape as the 2026-09-22 entry above: the local agent's `agent.mjs`
   and the new `contacts-from-voice-memo` Edge Function were added in the same
   change. See `docs/ARCHITECTURE.md`'s "Voice-memo fallback contact creation".
 
@@ -199,3 +200,38 @@ been replaced, the replacement is noted here instead of rewriting history.
   `20260922110000_voice_memo_link_state_and_ocr_retry.sql`) so it skips a memo with a
   create-contacts submission in flight. The older migration's definition is no longer
   the live one; read this one.
+
+## This directory versus the live database
+
+The live database records its migrations under the version (timestamp) they were
+applied with. For most files here that is **not** the timestamp in the filename, so
+match a file to the database by **name**, never by version. As of
+2026-10-08, 67 of the 77 files carry a different version from the one recorded live
+(for example `20260902203000_initial_schema` is recorded as `20260902220850`).
+
+Things to know before trusting that "this directory equals production":
+
+- **Applied live, but no file here.** Nine migrations recorded in the live database
+  have no file in this directory: `contact_photos_bucket`,
+  `add_zoho_account_id_unique_constraints`, `duplicate_check_exact_and_scoped`,
+  `auto_approve_requires_matched_account`, `export_two_phase_batches`,
+  `public_submission_rate_limit`, `claim_contacts_needing_intent`,
+  `media_retention_window` and `bound_conference_search_date_window`. They created
+  among other things the `contact-photos` storage bucket, the `export_batches` and
+  `public_submission_log` tables, and the two-phase export functions.
+  `20260922100000_backfill_undocumented_functions.sql` re-records some of the function
+  bodies, not the tables or the bucket. To see what the database actually holds, read
+  it (`docs/DATABASE.md` lists the tables, jobs and triggers; the Supabase MCP tool
+  `list_migrations` lists what was applied).
+- **A file here that was not applied.** `20260922210000_claim_undownloaded_media.sql`
+  was written for a media-download retry workflow of the archived first n8n build and
+  is not in the live database (the function `claim_undownloaded_media` does not exist
+  there). Nothing in the live pipelines calls it.
+- **Two files share a version prefix**, `20260928120000_events_complete_fn.sql` and
+  `20260928120000_voice_memo_fallback_contact_creation.sql`. They touch different
+  objects; apply them in either order.
+- **A fresh environment has not been rebuilt from this directory.** Because of the
+  first point, replaying these files into an empty project is untested and would not
+  recreate every object. Production schema changes are made with the Supabase MCP
+  `apply_migration` tool (never `supabase db push`, which would replay everything
+  against production), and the file is then added here under the recorded version.

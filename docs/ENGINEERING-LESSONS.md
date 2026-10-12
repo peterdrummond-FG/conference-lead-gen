@@ -53,7 +53,7 @@ The instinct was right. The scope was one instance of a general problem.
 **The rule.** When something malformed reaches persistence, ask: *what is the
 full contract this should have satisfied?* Then enforce the contract.
 
-- Model output → a schema (`local-agent/schemas.mjs`), not a field check.
+- Model output → a schema (`n8n/schemas/*.schema.json`), not a field check.
 - A request body → a validator (`_shared/validate.ts`), not three `typeof`
   tests.
 - If you find yourself writing a second ad-hoc check next to a first one,
@@ -125,7 +125,9 @@ Had I trusted the name, the sandbox would have looked correct in review and
 been porous in production.
 
 **The rule.** For any security-relevant flag, config or API, prove the
-behaviour once and record the result next to the code:
+behaviour once and record the result next to the code. (The mechanism below, a
+laptop `claude -p` runner, was retired on 2026-10-08 and skills now run as n8n
+workflows holding only the model credential. The lesson is unchanged.)
 
 ```js
 //   * --allowedTools does NOT restrict BUILT-IN tools under
@@ -245,7 +247,7 @@ per poll; log file growth; media retention.
 
 Each one is individually reasonable at pilot scale and individually a problem
 at event scale or under abuse — and several multiply, because a row inserted
-here costs two `claude -p` calls downstream.
+here costs two model calls downstream (research, then match).
 
 **The rule.** For every new input or loop, write down the cap before shipping:
 batch size, concurrency, field length, per-actor rate, retention. If the honest
@@ -289,8 +291,8 @@ normal path was broken. Found only by running a real extraction end to end.
 - the thing you blocked is actually blocked, **and**
 - the thing you intended to keep working still works.
 
-For this repo that means running a real skill invocation after touching
-`skill-runner.mjs`, `skill-profiles.mjs`, or anything under `_shared/`.
+For this repo that means running a real skill invocation after touching a skill
+workflow, `n8n/scripts/build-skill-workflow.mjs`, or anything under `_shared/`.
 
 Related: understand your test harness before trusting a red result. A Postgres
 CTE test looked like it failed because all CTEs in one statement share a
@@ -463,7 +465,7 @@ rendering", open it before theorising about accounts or roles.
 
 ## Checklist before shipping a feature
 
-- [ ] Any new skill has a profile in `skill-profiles.mjs`, minimum tools
+- [ ] Any new skill has an entry in `WORKFLOW_CREDENTIAL_POLICY` (`n8n/scripts/check-n8n-credential-scopes.mjs`) allowing only the model credential
 - [ ] Any new skill's SKILL.md has the data-vs-instructions anchor
 - [ ] No skill is given a credential — the caller does the writing
 - [ ] Model output is schema-validated before persistence
@@ -474,7 +476,7 @@ rendering", open it before theorising about accounts or roles.
 - [ ] New Edge Function: `verify_jwt` correct; added to the repo AND deployed
 - [ ] Retired endpoint: 410 stub deployed + added to `RETIRED`
 - [ ] Defaults fail closed and loudly
-- [ ] `node scripts/check-skill-profiles.mjs && cd local-agent && npm test`
+- [ ] `node n8n/scripts/check-n8n-credential-scopes.mjs <export-dir>` (an export of the live workflows) and `cd n8n/schemas && npm test`
 - [ ] Ran the real happy path once, not just the unit tests
 - [ ] Grepped for other places the same pattern applies
 - [ ] Any "can't confidently resolve this" path leaves an explicit, visible

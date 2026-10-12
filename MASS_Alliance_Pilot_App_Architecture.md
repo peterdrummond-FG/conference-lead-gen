@@ -1,5 +1,12 @@
 # App architecture — MASS/Alliance contact capture (Supabase/Vercel pilot)
 
+> **HISTORICAL.** Written during the Supabase migration (Stages 8-17, September 2026).
+> The local agent, card watcher, local Whisper and `claude -p` described below were
+> retired on 2026-10-08; AI steps now run as n8n workflows. For how the system works
+> today read `README.md`, `docs/ARCHITECTURE.md` and `n8n/README.md`. Sections 3 (data
+> model), 6 (matching rules) and 8 (security) are still broadly accurate; treat any
+> description of a laptop process, a watch folder or "the agent" as the old design.
+
 ## 1. Overview
 
 **Four intake paths feed one database**: a kiosk form/QR code, a local

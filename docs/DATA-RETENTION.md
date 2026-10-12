@@ -1,6 +1,6 @@
 # Data retention
 
-Audit S12. Written because nothing was deleting anything, ever.
+Written (September 2026 audit) because nothing was deleting anything, ever.
 
 ## What this system holds about people who never signed up for it
 
@@ -19,12 +19,21 @@ that produces:
 The voice-memo line is the one that matters most. The skill's own example is
 *"he doesn't fit the job description"* and *"her school district is going to
 purchase every single product"* — opinions about identifiable people, recorded
-without their knowledge, stored against their record and fed to a classifier.
+without their knowledge and stored against their record.
+
+## Who else processes it
+
+Voice memo audio is sent to OpenAI for transcription. Card photos, transcripts and
+typed notes are sent to Anthropic (the AI model behind the skills), and the match
+step reads Zoho. Texts travel through Twilio. These are the pipelines described in
+`n8n/README.md`; the audio and photos are not kept by the pipelines themselves, only
+in the Supabase Storage buckets above.
 
 ## Policy
 
-**Source media: 90 days.** Card photos and voice-memo audio are deleted from
-Storage 90 days after arrival. Their extracted content (the contact fields, the
+**Source media: 90 days.** The original card photos and voice-memo audio (the files
+stored against a texted message, `inbound_messages.storage_path`) are meant to be
+deleted from Storage 90 days after arrival. Their extracted content (the contact fields, the
 transcript) has long since been written to the database; the media itself is
 only ever re-read for a manual "view full sheet" check, which is a
 days-to-weeks need, not a years one.
@@ -54,12 +63,21 @@ crop, and any voice memo reached through `source_message_id`.
 
 ### Running it
 
-Not yet scheduled — run manually, or add to launchd/cron:
+Not scheduled anywhere: someone runs it by hand. It needs the Supabase URL and a
+service-role key in `scripts/retention/.env` (copy `.env.example`; use the key format
+that matches what is deployed, see `CLAUDE.md`, "Gotchas"). Optional settings:
+`RETENTION_DAYS` (default 90) and `PURGE_BATCH` (default 500 objects per run). A run
+handles one batch, so repeat it until it reports nothing left to delete.
 
 ```bash
+cd scripts/retention && npm install
 cd scripts/retention && node --env-file=.env purge-expired-media.mjs --dry-run
 cd scripts/retention && node --env-file=.env purge-expired-media.mjs
 ```
+
+To schedule it, it needs an owner and a host that can run Node on a timer (an n8n
+schedule workflow calling a Supabase function, or `pg_cron` plus an Edge Function,
+are the obvious options). Nothing in the repo does this today.
 
 ## Still open
 
