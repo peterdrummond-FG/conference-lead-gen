@@ -1,125 +1,122 @@
 # CKH Connect
 
-Conference lead capture for The Flippen Group. Reps collect contacts at a
-booth; the system researches each one, matches them against Zoho CRM, shows
-them to a human for review, and exports approved leads as a Zoho-ready CSV.
+Conference lead capture for The Flippen Group. Reps and attendees put contacts
+into the system at a conference. It researches each one, matches them against
+Zoho CRM, shows them to a person to confirm, and exports the confirmed leads as a
+CSV that Zoho imports.
+
+**New to this repo? Start with [`docs/HANDOFF.md`](docs/HANDOFF.md).** It is the
+five-minute orientation, the access list, and the index of every other document.
+
+## Who uses it
+
+| Role | What they do |
+|---|---|
+| `sales` (a rep) | Collects contacts at a conference, then confirms or edits them in **Contacts**. Sees only their own. |
+| `solutionsSuccess` | Starts and ends conferences, creates and manages `sales` accounts, files scans that could not be placed, runs the **Export**. |
+| `admin` | Everything above, and can also create `solutionsSuccess` accounts. |
+| An attendee | Fills in the public form (the **Kiosk** or a QR code). Has no account. |
 
 ## How a lead gets in
 
-Four intake paths, all landing in the same `contacts` table and all going
-through the same downstream pipeline:
+Four ways in, all ending up in one `contacts` table and one shared pipeline:
 
-| Path | How | Processed |
+| Way in | How | Where it goes |
 |---|---|---|
-| **Kiosk form / QR** | Attendee fills in a form on an iPad, or scans a booth/session QR code | Live, during the event |
-| **Card photo — texted** | Rep texts a photo of a business card (and optionally a voice memo) to a Twilio number | After the event |
-| **Card photo — dropped** | Rep drops photos into `watcher/inbox/<event-code>/` | After the event |
-| **Pasted note** | Rep pastes a whole typed note covering several people into `/notes` | After the event |
+| **Public form** | An attendee fills in the form on a Kiosk tablet or after scanning a rep's, booth's or session's QR code (`/connect`). | `contacts-create`. If a scan cannot be placed (no conference chosen, the conference ended) it waits in `unassigned_submissions` for Solutions Success to file. |
+| **Texted photo or voice memo** | A rep texts a business-card photo, a photo of a printed attendee list, or a voice memo to the Twilio number. | `twilio-webhook` stores it in `inbound_messages`; an n8n pipeline reads the card or transcribes the memo. |
+| **Texted note** | A rep texts a note about one person. | `twilio-webhook` stores it in `note_submissions`; an n8n pipeline turns it into a contact. |
+| **Pasted note** | A rep pastes a note covering several people into the **Notes** page. | `notes-submit`, then the same pipeline. |
 
-Everything after intake is shared: research the person and resolve their real
-district → match against Zoho Accounts/Contacts → flag duplicates → human
-review → export.
+## What happens to a lead
 
-## What happens to it
-
-1. **OCR / extraction** — `process-cards` reads a card photo;
-   `extract-note-contacts` splits a pasted note into people. Both return JSON;
-   the caller does the writing.
-2. **Research** — `research-contact` resolves the real district name and
-   corroborates the person, via web search. No Zoho access.
-3. **Match** — `match-contact` classifies against live Zoho data:
-   `existing_contact` / `new_contact_existing_account` / `new_account` /
-   `ambiguous`. Read-only; it never creates a Zoho record.
-4. **Contacts** — a human confirms, edits or rejects on `/contacts` (flagged rows,
-   ready / incomplete / processing filters, one-tap confirm, search, a desktop
-   split pane; newest first, and saving never moves a lead).
-   Nothing is ever auto-confirmed: a match always leaves the lead for a person to
-   confirm (decision 2026-10-06; `scripts/check-no-auto-confirm.mjs` guards it). A
+1. **Read it.** A card photo is OCR'd; a pasted or texted note is split into one
+   contact per person; a voice memo is transcribed and attributed to the right
+   contact or contacts.
+2. **Research** (`research-contact`): confirm who the person is and resolve the real
+   school district name, by web search. It has no Zoho access.
+3. **Match** (`match-contact`): classify against live Zoho data as
+   `existing_contact`, `new_contact_existing_account`, `new_account` or `ambiguous`.
+   It only reads Zoho; it never creates a record there.
+4. **Confirm.** A person confirms, edits or rejects each lead on **Contacts**.
+   **Nothing is ever auto-confirmed**: a match always leaves the lead for a person.
+   (Decision of 2026-10-06; `scripts/check-no-auto-confirm.mjs` enforces it.) A
    rep's notes travel with the lead into the CSV's Description column.
-5. **Export** — `/export` produces a CSV. The server reserves the leads when the
-   file is generated and marks them synced only after the person exporting
-   confirms the file downloaded ("Did the file download?"); "Download again"
-   reuses the same file from memory until they do.
+5. **Export.** `/export` produces the CSV. The server reserves the leads when the
+   file is made and marks them synced only after the person exporting confirms the
+   download worked ("Did the file download?").
 
-Voice memos are transcribed locally (Whisper CLI) and attributed to the right
-contact(s) — a memo can cover more than one person. Attribution and OCR both retry automatically against a
-persisted attempt/cooldown state (not a fixed time window) until the person
-they're about actually exists as a contact; a memo or photo that never
-resolves surfaces in `/contacts` instead of silently disappearing or
-attaching to the wrong person. See `docs/ARCHITECTURE.md`'s "Claim-based
-retry" convention.
+Steps 1 to 3 are five **skills**, each one AI call, run as n8n workflows. They
+return JSON and are never given a credential; the pipeline that calls them does the
+database writing and checks everything the model returned before using it
+([`n8n/README.md`](n8n/README.md)).
 
-## Stack
+## What it is made of
 
-- **Frontend** — Vue 3 + Quasar, deployed on Vercel
-- **Backend** — Supabase Edge Functions (Deno), one per route. The only
-  server-side API.
-- **Database** — Supabase Postgres. RLS enabled with **zero policies** on every
-  table; all access goes through Edge Functions using the service-role key.
-- **Storage** — Supabase Storage (`contact-photos`, `voice-memos`)
-- **AI steps** — Claude Code skills invoked headlessly by `local-agent/` on a
-  Mac. Deliberately local: no metered API key, no cloud dependency.
-- **SMS** — Twilio (A2P 10DLC)
+| Part | Where | Notes |
+|---|---|---|
+| Web app | [`frontend/`](frontend/README.md) | Vue 3 + Quasar single-page app on Vercel. Talks only to Edge Functions. |
+| API | [`supabase/functions/`](supabase/functions) | Supabase Edge Functions (Deno), one per route. The only server-side API. |
+| Database and storage | [`supabase/migrations/`](supabase/migrations/README.md) | Supabase Postgres. Row-level security (RLS) is on with **no policies**, so nothing is readable except through an Edge Function. Photos and voice memos are in Supabase Storage (`contact-photos`, `voice-memos`). |
+| Pipelines and AI skills | [`n8n/`](n8n/README.md), [`.claude/skills/`](.claude/skills) | n8n workflows run by the n8n admin. `.claude/skills/<name>/SKILL.md` is the source of each skill's live prompt. |
+| Text messages | Twilio | One number, registered for business texting (A2P 10DLC, which needs the public Privacy and Terms pages). Receives photos, memos and notes; sends confirmations. |
+| CRM | Zoho | Read through a read-only connector; leads go in by CSV import. |
+| Guards and scripts | [`scripts/`](scripts) | Repo checks run in CI, the deploy script, and the media purge. |
 
-## Repository
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the detailed component map and the
+reasoning behind each design choice.
 
-| Path | What |
-|---|---|
-| `frontend/` | The SPA |
-| `supabase/functions/` | Edge Functions — the API |
-| `supabase/migrations/` | Schema and stored functions (append-only) |
-| `local-agent/` | Four poll loops; the only caller of `claude -p` |
-| `watcher/` | Folder-drop card pipeline |
-| `.claude/skills/` | The seven skills |
-| `scripts/` | Deploy script and CI guards |
-| `docs/` | Architecture, data retention |
+## Running and testing it
 
-## Running it
-
-Two long-running processes on a Mac, both installable as macOS Login Items:
+Nothing runs on a laptop except the web app. The pipelines exist only in n8n.
 
 ```bash
-local-agent/start-agent.command    # matching, SMS photos, transcription, notes
-watcher/watch-cards.command        # folder-drop card photos
-```
-
-They need `claude`, `whisper`, `ffmpeg` and `sips` on `PATH`, plus
-`local-agent/.env` and `watcher/.env` (see the `.env.example` next to each).
-
-Frontend:
-
-```bash
+# The web app (needs frontend/.env; see frontend/README.md)
 cd frontend && npm install && npm run dev
+
+# The checks CI runs
+cd frontend && npm run typecheck && npm test
+cd n8n/schemas && npm ci && npm test
+node --test n8n/scripts/check-n8n-credential-scopes.test.mjs
+node scripts/check-conference-writers.mjs
+node scripts/check-no-auto-confirm.mjs && node --test scripts/check-no-auto-confirm.test.mjs
+node scripts/check-auth-signout.mjs
+deno lint supabase/functions && deno test --no-lock supabase/functions/_shared/
 ```
 
-Deploying Edge Functions needs a Supabase Management API token:
-
-```bash
-export SUPABASE_ACCESS_TOKEN=sbp_...
-node scripts/deploy-functions.mjs
-```
+Deploying and the other recurring jobs (functions, migrations, n8n, credentials) are
+in [`docs/RUNBOOKS.md`](docs/RUNBOOKS.md). Where each secret lives (names and
+places, never values) is in [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md).
 
 ## Security posture
 
-- Real per-user auth (Supabase Auth) with three roles: `admin`,
-  `solutionsSuccess`, `sales`. A sales rep only ever sees their own contacts,
-  enforced server-side.
-- RLS deny-all; nothing is reachable except through an Edge Function.
-- Skills run sandboxed — an explicit tool allowlist and `--strict-mcp-config`,
-  so a prompt injected via a business card or voice memo cannot reach the
-  operator's connected accounts. Skills are never given credentials.
-- Model output is schema-validated before anything is persisted.
-- Source media (card photos, voice memos) is purged after 90 days; see
-  `docs/DATA-RETENTION.md`.
+- Real per-user sign-in (Supabase Auth) with the three roles above. A `sales`
+  rep only ever sees their own contacts, enforced on the server.
+- RLS on with no policies; all access goes through Edge Functions.
+- A skill is allowed to hold only the AI model credential, never a database or Zoho
+  write credential. It is enforced by a credential audit you run by hand after any
+  workflow change ([`n8n/README.md`](n8n/README.md), Rule 5).
+- Everything a model returns is checked against a schema before anything is saved.
+- Photos and voice memos are meant to be deleted after 90 days
+  ([`docs/DATA-RETENTION.md`](docs/DATA-RETENTION.md)).
 
-See `CLAUDE.md` for the rules that are load-bearing and why.
+The rules that must not be broken, and the incident behind each, are in
+[`CLAUDE.md`](CLAUDE.md) (written for an AI coding assistant, but the content is for
+everyone) and explained in plain language in [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 ## Documentation
 
-| Doc | Covers |
-|---|---|
-| `CLAUDE.md` | Working rules, gotchas, common commands |
-| `docs/ARCHITECTURE.md` | Component map and conventions |
-| `docs/DATA-RETENTION.md` | What's held about whom, and for how long |
-| `MASS_Alliance_Pilot_App_Architecture.md` | Full design rationale and history |
-| `supabase/migrations/README.md` | Notes on superseded migrations |
+| Doc | What it is for | Source of truth for |
+|---|---|---|
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | Orientation, access, plain-language rules, glossary, open items | The index |
+| [`docs/RUNBOOKS.md`](docs/RUNBOOKS.md) | How to do the recurring jobs | Procedures |
+| [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | Every secret, setting and credential: where it is set and what breaks without it | Configuration |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | Tables, scheduled jobs, triggers and who calls the stored functions | The schema's purpose |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How each part works and why | Behaviour of the app and API |
+| [`n8n/README.md`](n8n/README.md) | The pipelines and skill workflows: ids, triggers, rollback | The pipelines |
+| [`CLAUDE.md`](CLAUDE.md) | The load-bearing rules and gotchas | The rules |
+| [`docs/ENGINEERING-LESSONS.md`](docs/ENGINEERING-LESSONS.md) | The September 2026 audit's bugs, turned into things to avoid, plus a pre-ship checklist | The checklist |
+| [`docs/DATA-RETENTION.md`](docs/DATA-RETENTION.md) | What is held about whom, and for how long | Retention |
+| [`supabase/migrations/README.md`](supabase/migrations/README.md) | Which old migrations were superseded | Migration history notes |
+| [`MASS_Alliance_Pilot_App_Architecture.md`](MASS_Alliance_Pilot_App_Architecture.md) | The original design, written during the Supabase migration. **Historical**: parts describe a retired design. | Why it was first built this way |
+| [`CODEOWNERS`](CODEOWNERS) | Who to ask for what. To be filled in by the receiving team. | Ownership |
