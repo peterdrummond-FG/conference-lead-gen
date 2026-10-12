@@ -1,12 +1,13 @@
 // Output contracts for every skill, enforced before anything is persisted.
 //
-// Ported near-verbatim from local-agent/schemas.mjs as part of the n8n
-// migration (see the migration plan, "Output validation") — this module has
-// no dependency on local-agent's runtime (no Supabase client, no
-// filesystem), so it's copied rather than reimplemented, specifically to
-// avoid silently dropping one of MatchOutput's five .refine() invariants in
-// translation. Inlined into an n8n Code node (NODE_FUNCTION_ALLOW_EXTERNAL
-// includes zod — see n8n/infra/Dockerfile).
+// Ported near-verbatim from the retired local agent's schemas.mjs (deleted
+// 2026-10-08; see git history before commit 1cb0ea2), specifically to avoid
+// silently dropping one of MatchOutput's five .refine() invariants in
+// translation. These Zod copies are NOT what runs in production: the live check
+// is the n8n Structured Output Parser, which is built from the *.schema.json files
+// next to this one. These copies are the test oracle in schemas.test.mjs, so a
+// change to a contract has to be made in the JSON file AND here; only the
+// research schema's resolvedDistrict is compared across the two by a test.
 //
 // Model output reaches CRM-bound columns: contacts.match_* feeds the Zoho
 // export CSV, contacts.interaction_notes feeds the

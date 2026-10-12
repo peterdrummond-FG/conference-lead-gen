@@ -102,10 +102,15 @@ been replaced, the replacement is noted here instead of rewriting history.
   notes grow long. The append is also atomic and idempotent, so it can't lose a
   reviewer's concurrent edit. Nothing calls either function until the n8n
   pipelines are cut over.
-- **Not yet applied:** `n8n/cutover-migrations/` holds the Database Webhook
-  triggers and a `finalize_contact_match` guard (`match_status = 'pending'`).
-  They're kept out of this directory so nothing applies them early. When each
-  one is applied, move it here under its recorded version.
+- **Applied 2026-09-25 (and 2026-10-08 for voice):** the Database Webhook
+  function `notify_n8n()` (`20260925221629_notify_n8n_function.sql`), the
+  `finalize_contact_match` guard (`match_status = 'pending'`,
+  `20260925221637_finalize_contact_match_requires_pending.sql`) and one trigger
+  migration per pipeline. They were staged in an `n8n/cutover-migrations/` folder
+  first so nothing applied them early; that folder is gone now, and its procedures
+  (the webhook secret, switching a trigger off) are in `n8n/README.md`. The note in
+  the comment of `20260925221629_notify_n8n_function.sql` pointing at that folder is
+  history.
 
 ## match-contact without Zoho (2026-09-29)
 

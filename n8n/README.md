@@ -1,40 +1,53 @@
-# n8n rebuild (built, NOT live)
+# n8n: the pipelines and the skill workflows
 
-The n8n replacement for `local-agent/` and `watcher/`. Everything described
-here exists on `workflow.flippengroup.com`, **inactive**. `local-agent` and
-`watcher` remain the system of record until each pipeline has passed shadow
-testing and been cut over (`cutover-migrations/README.md`).
+Everything that reads a card photo, transcribes a voice memo, splits a pasted note
+into people, researches a contact or matches it against Zoho runs here, as n8n
+workflows. This replaced the local Mac agent and card watcher, which were retired
+on 2026-10-08. The workflows are live. The sections below say what each one is,
+how the database starts it, what the n8n host has to provide, and how to change
+or roll back each part.
 
-Design rationale lives in the plan of record
-(`~/.claude/plans/n8n-rework-migration.md`). This file describes what was
-built and the rules it depends on.
+**Two hostnames (set up by the n8n admin, 2026-10-08).** The editor is at
+`workflow.flippencodes.com`, behind Cloudflare Access (sign-in required). Webhooks
+stay on `workflow.flippengroup.com/webhook/`, which is where the database's
+`notify_n8n()` posts. Never point `notify_n8n` at the editor host: Access would
+answer with a login redirect and every pipeline trigger would stop.
+
+The n8n instance is run by the n8n admin, not by this team. Anything that changes
+a workflow, a credential, the community node or the host is a request to them.
+
+Design history and the reasoning behind the shape live in
+`MASS_Alliance_Pilot_App_Architecture.md` (historical) and `docs/ARCHITECTURE.md`
+(current).
 
 ## What exists
 
-| Workflow | n8n id | Source |
-|---|---|---|
-| skill-extract-note-contacts | `QSxeSjcQaEtnw5LI` | generated |
-| skill-attribute-voice-memo | `k1LFHrmVYBqDV4bT` | generated |
-| skill-research-contact | `llARky9YWlgXdU5z` | generated |
-| skill-match-contact | `qTr3bwVAAYBdHHyq` | generated |
-| skill-process-cards | `fiHwr67Yn3jH5JRj` | generated |
-| pipeline-note-extraction | `vZU7o9pk5JLmJdzT` | `pipelines/` |
-| pipeline-voice-transcription | `byHCYGrFpc4LCLQq` | `pipelines/` |
-| pipeline-process-cards-sms | `YfY73SMTSAkUjLL6` | `pipelines/` |
-| pipeline-match-contact | `lTgZMxZMmzPjvkSH` | `pipelines/` |
-| error-alert-email | `WMyujD4QbMKZwozf` | `pipelines/` |
+State below is as last checked on 2026-10-08.
 
-Plus the `n8n_config` data table (`GwOKrjqFHDaGzH8q`), which holds
-`ZOHO_MCP_URL`.
+| Workflow | n8n id | Source | State |
+|---|---|---|---|
+| skill-extract-note-contacts | `QSxeSjcQaEtnw5LI` | generated | published |
+| skill-attribute-voice-memo | `k1LFHrmVYBqDV4bT` | generated | published |
+| skill-research-contact | `llARky9YWlgXdU5z` | generated | published |
+| skill-match-contact | `qTr3bwVAAYBdHHyq` | generated | published |
+| skill-process-cards | `fiHwr67Yn3jH5JRj` | generated | published |
+| pipeline-note-extraction | `vZU7o9pk5JLmJdzT` | `pipelines/pipeline-note-extraction.ts` | published |
+| pipeline-voice-transcription (v3, live) | `YSXgBGZQg6x2oDeZ` | `pipelines/pipeline-voice-transcription-v3.ts` | published |
+| pipeline-voice-transcription v2 (standby) | `kYKg80yktf4QKljI` | `pipelines/pipeline-voice-transcription.ts` | inactive, rollback target |
+| pipeline-process-cards-sms | `YfY73SMTSAkUjLL6` | `pipelines/pipeline-process-cards-sms.ts` | published |
+| pipeline-match-contact | `lTgZMxZMmzPjvkSH` | `pipelines/pipeline-match-contact.ts` | published |
+| error-alert-email | `WMyujD4QbMKZwozf` | `pipelines/error-alert-email.ts` | **inactive** (see "Not done yet") |
+
+Plus the `n8n_config` data table (`GwOKrjqFHDaGzH8q`), which holds `ZOHO_MCP_URL`.
+Treat that value as a secret.
 
 | Path | What it is |
 |---|---|
 | `schemas/` | JSON Schema output contracts, one per skill, and the encoding rules (`schemas/README.md`). |
 | `scripts/build-skill-workflow.mjs` | Generates each `skill-*` workflow from `.claude/skills/<skill>/SKILL.md` and its schema. |
-| `pipelines/` | Workflow SDK source for the pipelines and the error workflow, kept in step with what's deployed. |
-| `scripts/check-n8n-credential-scopes.mjs` | Credential-policy audit (see below). |
-| `cutover-migrations/` | SQL that switches pipelines on. Not applied yet. |
-| `workflows/`, `infra/` | The archived first build (commit `32c457f`). Kept as a record only; nothing there runs. |
+| `pipelines/` | Workflow SDK source for the pipelines and the error workflow, kept in step with what is deployed. |
+| `scripts/check-n8n-credential-scopes.mjs` | Credential-policy audit (see Rule 5 below). |
+| `ffmpeg-service/` | The Vercel function behind the v2 voice pipeline. Standby only. |
 
 ## Shape
 
@@ -42,17 +55,66 @@ Plus the `n8n_config` data table (`GwOKrjqFHDaGzH8q`), which holds
   Output Parser holding the skill's schema, and returns `{success, data}` or
   `{success: false, errorKind: 'transient' | 'permanent', message}`. They hold
   only the Anthropic credential. Each one can be called only by its own
-  pipeline (`callerPolicy`).
+  pipeline (n8n's `callerPolicy` workflow setting).
 - **Pipelines** own everything else: triggers, claims, database writes, Storage,
   and Edge Function calls. Each has two triggers. A header-authenticated
   Database Webhook is the fast path. A 5-minute schedule backstop catches
   anything the webhook missed and runs the reconcile sweeps.
 - **error-alert-email** sends a plain-text email for any production failure
-  (Fail Loudly nodes and unhandled node errors).
+  (Fail Loudly nodes and unhandled node errors). It is built but not switched on.
+
+## How the database starts a pipeline
+
+A trigger on a table calls the stored function `notify_n8n()`, which posts the row
+id to the pipeline's webhook path. Four triggers exist, all enabled:
+
+| Trigger | Table | Pipeline | Webhook path |
+|---|---|---|---|
+| `contacts_notify_n8n_match` | `contacts` | pipeline-match-contact | `ckh-match-contact` |
+| `inbound_messages_notify_n8n_cards` | `inbound_messages` (photos) | pipeline-process-cards-sms | `ckh-process-cards-sms` |
+| `inbound_messages_notify_n8n_voice` | `inbound_messages` (audio) | pipeline-voice-transcription | `ckh-voice-transcription` |
+| `note_submissions_notify_n8n` | `note_submissions` | pipeline-note-extraction | `ckh-note-extraction` |
+
+They come from `20260925221629_notify_n8n_function.sql` (the function), the
+`trigger_note_extraction`, `trigger_match_contact` and `trigger_process_cards_sms`
+migrations of 2026-09-25, and `20261008163919_trigger_voice_transcription_n8n.sql`.
+(A fifth trigger, for a "contact intent" classifier, was retired on 2026-10-05.)
+
+**The shared secret.** `notify_n8n()` sends the header `x-ckh-webhook-secret`. Its
+value is the Supabase Vault secret `n8n_webhook_secret`; n8n checks it with the
+Header Auth credential **"Supabase DB Webhook Secret"**, attached to each
+pipeline's webhook trigger node. If the two ever differ, webhooks answer 403 and
+the pipelines fall back to their 5-minute backstop (rows are still caught, up to
+five minutes late). To read the current value when creating or rotating the
+credential:
+
+```sql
+select decrypted_secret from vault.decrypted_secrets where name = 'n8n_webhook_secret';
+```
+
+**Switching one pipeline's trigger off.** Dropping its trigger stops the fast path
+(`drop trigger contacts_notify_n8n_match on public.contacts;`, and so on).
+Deactivating only the workflow also stops it, but the webhook then answers 404 and
+the backstop no longer runs, while `pg_net` keeps logging a failed request every
+time a row changes. Activate a workflow before applying its trigger, never the
+other way round.
+
+## What the n8n host must provide
+
+- The community node `n8n-nodes-ffmpeg-audio`, installed by the admin. The live
+  voice pipeline (v3) needs it. Without it, voice memos fail transiently and wait.
+- Five credentials, by these names: **Anthropic account 2** (the five skills),
+  **Supabase account** (the pipelines; service role), **Supabase DB Webhook
+  Secret**, **OpenAI account 2** (voice transcription only), and **FFmpeg Service
+  Key** (the v2 standby only). A sixth, **Alert SMTP**, is needed for
+  error-alert-email and does not exist yet.
+- The `n8n_config` data table with a `ZOHO_MCP_URL` row (see "Match without Zoho").
+- Webhooks reachable at `workflow.flippengroup.com/webhook/` (see the hostname note).
 
 ## Rules the pipelines depend on
 
-These are the local-agent rules, carried over. See `CLAUDE.md`.
+These began as the rules of the retired local agent and were carried over. See
+`CLAUDE.md`.
 
 1. **Only a UUID-validated id is taken from a webhook.** The row is re-read
    with the pipeline's own credential, and its eligibility is re-checked before
@@ -71,8 +133,12 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
    update. Notes, voice and cards are sent back to their queue with a bounded
    retry count.
 5. **Skills never hold write credentials. Pipelines never hold the model
-   credential.** Enforced by `scripts/check-n8n-credential-scopes.mjs`. Run it
-   against an export of the live workflows before any cutover:
+   credential.** Enforced by `scripts/check-n8n-credential-scopes.mjs`, which is
+   not run in CI because it needs an export of the live workflows. Run it after
+   any workflow or credential change, against an export of every workflow (every
+   `skill-`, `pipeline-` and `error-` workflow in the export needs an entry in the
+   script's `WORKFLOW_CREDENTIAL_POLICY`; add one first when you add a workflow or
+   a credential):
 
    ```bash
    node n8n/scripts/check-n8n-credential-scopes.mjs <dir-of-exported-workflow-json>
@@ -85,10 +151,15 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
 
 ## Changing things
 
-- **A skill:** edit its `SKILL.md` or schema, run
-  `node n8n/scripts/build-skill-workflow.mjs <skill>`, then update the
-  existing workflow **in place**. Pipelines reference skills by workflow id, so
-  deleting and recreating a skill breaks them.
+- **A skill:** edit its `SKILL.md` body or its schema, run
+  `node n8n/scripts/build-skill-workflow.mjs <skill>`, then update the existing
+  workflow **in place** and republish. Pipelines reference skills by workflow id,
+  so deleting and recreating a skill breaks them. Two settings are made in n8n by
+  hand and are not produced by the generator, so check them after any update: the
+  workflow's `callerPolicy` (which pipelines may call it) and its execution
+  timeout. Then run the credential audit above. Editing only a SKILL.md's
+  frontmatter (the lines between the first two `---`) changes nothing live: the
+  generator strips it.
 - **A pipeline:** edit it in n8n or through the SDK, then update its file in
   `pipelines/` to match. Validate SDK code with the n8n MCP `validate_workflow`
   before every create or update. The validator rejects helper functions,
@@ -100,47 +171,58 @@ These are the local-agent rules, carried over. See `CLAUDE.md`.
   re-encodes the image. A node with two incoming IF branches runs once per
   branch, so use a Merge (append) before any "tally everything" step.
 
-## Before activating anything
+## The voice pipeline: live version and rollback
 
-- `ZOHO_MCP_URL` row in `n8n_config`, holding the real endpoint URL (32-hex key
-  in the path). Without a usable one, match-contact no longer stops: it falls
-  back to the local Accounts copy (see "Match without Zoho" below). A masked
-  value such as `.../mcp/redacted-.../message` counts as unusable. The first
-  post-cutover contacts hit exactly that: Zoho answered "APIKey parsing
-  Exception", the failure was classed permanent, and all three attempts were
-  spent.
-- "Supabase DB Webhook Secret" credential (`cutover-migrations/README.md`).
-- "Alert SMTP" credential and addresses on error-alert-email. Then publish it
-  and set it as every workflow's error workflow. n8n refuses to set an
-  unpublished error workflow.
-- Publish the skill workflows (they have no external trigger, and the plan
-  allows it). The build found n8n refuses an unpublished sub-workflow more
-  than one manual hop deep. Production calls haven't been tested, so publish
-  first, then confirm the first live run.
-- Voice memos: transcription is OpenAI (the built-in node), after an AMR to MP3
-  conversion (phones send AMR, which OpenAI rejects). Live since 2026-10-08 as
-  `pipeline-voice-transcription` (`YSXgBGZQg6x2oDeZ`, source
-  `pipelines/pipeline-voice-transcription-v3.ts`): conversion is the
-  `n8n-nodes-ffmpeg-audio` community node the n8n admin installed, so it needs
-  no credential, no external service and no files on the host. Its `m4a` output
-  fails ("Output format m4a is not available"), hence MP3, and it returns the file
-  in binary property `data`. Standby: v2 (`kYKg80yktf4QKljI`,
-  `pipelines/pipeline-voice-transcription.ts`) converts through the Vercel function
-  `ffmpeg-service/` (https://audio-convert-ffmpeg.vercel.app/api/convert, key in the
-  macOS Keychain as `FFMPEG_SERVICE_KEY`); to roll back, unpublish v3 and publish v2
-  (both use webhook path `ckh-voice-transcription`; `skill-attribute-voice-memo`'s
-  callerIds allow both). `ffmpeg-admin-package/` and `ffmpeg/` are superseded.
-  `skill-attribute-voice-memo` was regenerated and republished 2026-10-08, the DB
-  trigger (`20261008163919_trigger_voice_transcription_n8n.sql`) is applied, and the
-  local agent's launchd job (`com.flippengroup.ckh-connect.local-agent`) is stopped
-  and disabled (`launchctl bootout` + `launchctl disable`; bring it back with
-  `launchctl enable gui/$UID/<label>` and bootstrap the plist). The old
-  community-node workflow (`byHCYGrFpc4LCLQq`) is archived. Not ported from
-  local-agent yet: `unplacedContacts` (the skill returns them; the pipeline ignores
-  them).
-  Attendees' voice memos go to OpenAI; confirm that is acceptable first.
-- Shadow-test the two writes that were deliberately never exercised live:
-  process-cards' crop upload to Storage, and its `contacts-from-ocr` POST.
+Voice memos are transcribed by OpenAI (the built-in node) after an AMR to MP3
+conversion: phones send AMR, which OpenAI rejects.
+
+- **Live (v3):** `pipeline-voice-transcription`, id `YSXgBGZQg6x2oDeZ`, source
+  `pipelines/pipeline-voice-transcription-v3.ts`, live since 2026-10-08. It converts
+  with the `n8n-nodes-ffmpeg-audio` community node, so it needs no credential, no
+  external service and no files on the host. The node's `m4a` output fails ("Output
+  format m4a is not available"), hence MP3, and it returns the file in binary
+  property `data`.
+- **Standby (v2):** id `kYKg80yktf4QKljI`, source
+  `pipelines/pipeline-voice-transcription.ts`. It converts through the Vercel function
+  in `ffmpeg-service/` (`https://audio-convert-ffmpeg.vercel.app/api/convert`) and
+  returns M4A in binary property `audio`. The two pipelines are otherwise identical.
+
+**Rolling back to v2:**
+
+1. Unpublish v3.
+2. Publish v2. Both listen on the webhook path `ckh-voice-transcription`, so never
+   have both active; the database trigger posts to that path either way, so no SQL
+   changes.
+3. `skill-attribute-voice-memo` already allows both pipelines to call it
+   (`callerPolicy`), so nothing to change there.
+4. Confirm the Vercel project `audio-convert-ffmpeg` is up and its
+   `FFMPEG_SERVICE_KEY` environment variable equals the n8n credential **FFmpeg
+   Service Key**. (The key is also saved in the macOS Keychain item of the same name.)
+5. Run the credential audit; the standby workflow's n8n name differs from the
+   policy's name for it, so update the policy entry first if the audit complains.
+6. Update the health routine's prompt with the live workflow id
+   (`docs/ARCHITECTURE.md`, "Daily health check").
+
+A memo in flight during the switch is safe: every write re-asserts its claim, and a
+memo left mid-processing is reclaimed by `reconcile_stale_inbound_messages` after 30
+minutes.
+
+Voice memo audio goes to OpenAI; card photos, transcripts and notes go to Anthropic.
+`docs/DATA-RETENTION.md` lists what is held and for how long.
+
+## Not done yet
+
+- **Failure alerting is not switched on.** `error-alert-email` is built but
+  inactive: it needs an "Alert SMTP" credential and addresses, then to be published
+  and set as every workflow's error workflow (n8n refuses to set an unpublished
+  error workflow). Until then a Fail Loudly node or an unhandled node error
+  notifies nobody; a stopped pipeline shows up as rows stuck pending.
+- **`unplacedContacts` is not ported from the old local agent.** The
+  `attribute-voice-memo` skill returns people the rep met and spoke about but did
+  not photograph; the voice pipeline validates them and then ignores them, so no
+  contact is created for them (the attributed contacts are unaffected). The
+  database side (`20260929180000_voice_memo_multi_contact.sql`) is ready.
+- **The credential audit is not in CI** (see Rule 5).
 
 ## Match without Zoho
 
@@ -155,6 +237,10 @@ is usable (https, not masked):
   `schools` copy of Zoho Accounts) and passes in. The skill session holds only
   the model credential, per the scopes policy.
 
+A masked value such as `.../mcp/redacted-.../message` counts as unusable. The first
+live contacts hit exactly that: Zoho answered "APIKey parsing Exception", the
+failure was classed permanent, and all three attempts were spent.
+
 The local path can only answer the Account half of the question. Zoho Contacts
 and Deals are not copied, so it never returns `existing_contact`, never sets an
 active-opportunity flag, and caps confidence at `medium`, which keeps every row
@@ -164,8 +250,7 @@ prompt; the same node rejects any Account id that was not in the list it was
 given. Its `notes` always open with a line saying Contacts and Deals were not
 checked, and it carries through to the CSV export.
 
-Known gaps in the copy: Accounts Zoho tags with the wrong state (South Central
-Service Cooperative is tagged Arkansas) still miss, exactly as they do in Zoho;
-88 districts have no `zoho_account_id` and are never offered; and one district
-row stores its state as `MN` rather than `Minnesota`, so a lookup by full state
-name will not see it.
+The copy is incomplete in two ways: Accounts Zoho tags with the wrong state
+(South Central Service Cooperative is tagged Arkansas) still miss, exactly as they
+do in Zoho, and about 87 districts (as of 2026-10-12) have no `zoho_account_id`
+and are never offered.

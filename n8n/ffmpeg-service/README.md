@@ -1,10 +1,16 @@
 # ffmpeg-service (Vercel project `audio-convert-ffmpeg`)
 
-One Vercel function that converts a voice memo from AMR to M4A, so the n8n
-voice pipeline (`pipeline-voice-transcription`) can send it to OpenAI. Phones
-send AMR; OpenAI rejects it. The n8n host has no ffmpeg and its admin couldn't
-add one, so conversion runs here instead. Stateless: bytes in, bytes out,
-nothing stored or logged.
+**STANDBY: used only if the live voice pipeline (v3) is rolled back to v2.** Live
+voice memos are converted by the `n8n-nodes-ffmpeg-audio` community node inside n8n
+and never call this function. See `n8n/README.md`, "The voice pipeline: live version
+and rollback", for the switch. Nothing here is covered by CI (`convert.test.mjs`
+runs by hand).
+
+One Vercel function that converts a voice memo from AMR to M4A, so the v2 n8n
+voice pipeline (`pipelines/pipeline-voice-transcription.ts`) can send it to OpenAI.
+Phones send AMR; OpenAI rejects it. Before the community node was installed, the
+n8n host had no ffmpeg, so conversion ran here instead. Stateless: bytes in, bytes
+out, nothing stored or logged.
 
 `POST /api/convert` with the raw AMR bytes and `Authorization: Bearer <key>`.
 Returns `audio/mp4` (200), or a JSON error: 401 bad key, 405 not POST, 413 over
@@ -50,5 +56,5 @@ Local: `npm install && npm test` (runs the real handler with the bundled ffmpeg)
 - The ffmpeg binary comes from `ffmpeg-static` and is bundled by
   `includeFiles` in `vercel.json`. If a deploy answers 502 "ENOENT", that
   bundle step failed.
-- Not connected to n8n yet. Wiring is `pipeline-voice-transcription`'s
-  `Convert Audio` node and the `FFmpeg Service Key` credential.
+- Connected to n8n only through the v2 standby pipeline: its `Convert Audio` node
+  and the `FFmpeg Service Key` credential. The live v3 pipeline does not use either.

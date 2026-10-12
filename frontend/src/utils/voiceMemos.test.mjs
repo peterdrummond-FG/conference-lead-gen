@@ -122,7 +122,10 @@ test('"goes to Zoho with the import" is true: export-csv reads interaction_notes
 test('the auto-retry count in the help line is the one the live n8n pipeline and its sweep use', () => {
   assert.equal(AUTO_ATTEMPTS, 20);
   assert.match(readFileSync(join(REPO, 'n8n/pipelines/pipeline-voice-transcription-v3.ts'), 'utf8'), /const LINK_MAX_ATTEMPTS = 20;/);
-  assert.match(readFileSync(join(REPO, 'n8n/workflows/pipeline-relink-unlinked-audio.json'), 'utf8'), /claim_unlinked_audio_messages\(50, 20, 3\)/);
+  // The sweep's own claim (max attempts, minutes between tries, rows per run). This
+  // used to read the archived first-build workflow, which said 50 attempts, so it
+  // passed for the wrong reason and disagreed with AUTO_ATTEMPTS above.
+  assert.match(readFileSync(join(REPO, 'n8n/pipelines/pipeline-voice-transcription-v3.ts'), 'utf8'), /max_attempts: LINK_MAX_ATTEMPTS, retry_delay_minutes: 20, claim_limit: 3/);
 });
 
 test('Create contacts files people as voice memos and only marks the memo done once someone exists', () => {

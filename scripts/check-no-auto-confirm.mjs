@@ -56,6 +56,11 @@ export function findViolations(files) {
       continue;
     }
     if (path.endsWith('.json')) {
+      // No directory of workflow JSON is scanned today: the first-build exports that
+      // lived in n8n/workflows/ were deleted 2026-10-12 (the pipelines' source is the
+      // .ts under n8n/pipelines). The branch stays so an export can be checked by
+      // adding its directory to SCAN below. A missing SCAN directory is skipped
+      // silently, so a typo there scans nothing: confirm a new entry with a test.
       // Sticky notes are prose (the pipeline's own description still says "auto-approve"
       // until its next redeploy); only nodes that DO something can write.
       let doc;
@@ -83,7 +88,6 @@ const SCAN = [
   ['n8n/pipelines', /\.(ts|mjs|js)$/],
   ['n8n/schemas', /\.(ts|mjs|js)$/],
   ['n8n/scripts', /\.(ts|mjs|js)$/],
-  ['n8n/workflows', /\.json$/],
   ['scripts/retention', /\.(mjs|js)$/],
 ];
 
