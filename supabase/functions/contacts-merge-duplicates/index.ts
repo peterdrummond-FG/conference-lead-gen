@@ -1,8 +1,11 @@
 // POST ?id=<keeperId> { firstName, lastName, email, phone, title, state,
 //   schoolDistrictId, schoolDistrictNameRaw, schoolId, schoolNameRaw,
 //   discardContactIds } -> { id, createdAt }
-// Staff-gated. Port of DuplicateDetection.FindDuplicateGroupAsync + the
-// merge-duplicates endpoint in ContactEndpoints.cs.
+// Staff-gated. Port of the .NET DuplicateDetection.FindDuplicateGroupAsync and
+// merge-duplicates endpoint (the .NET backend was deleted 2026-09-14; git history
+// at ebd5bba). Writes: the keeper contact's edited fields, and marks each contact
+// named in discardContactIds review_status 'rejected' with a note saying it was
+// merged into the keeper (no row is deleted).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

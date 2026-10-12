@@ -8,13 +8,13 @@
 // exists specifically so a card OCR genuinely can't read isn't retried
 // automatically forever. A human might still want another attempt anyway
 // (a re-crop, or just because the classifier guessed wrong), the same way
-// contacts-retry-match is the human override once matchingLoop's own
+// contacts-retry-match is the human override once pipeline-match-contact's own
 // attempts/cooldown has given up on a contact.
 //
 // Resetting processing_attempts/status/error/error_class is the entire
 // mechanism -- being pending_ocr (or pending_transcription) again with a
-// fresh attempt count is sufficient for the local agent's own poll loop to
-// pick it up on its next tick; there's no separate queue to enqueue onto
+// fresh attempt count is sufficient for the n8n pipeline's own claim (webhook or
+// 5-minute backstop) to pick it up on its next run; there's no separate queue to enqueue onto
 // (same pattern as contacts-retry-match).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";

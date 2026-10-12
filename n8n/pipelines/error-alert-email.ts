@@ -1,3 +1,17 @@
+// error-alert-email: the error workflow that emails when a pipeline fails.
+//
+// BUILT BUT NOT SWITCHED ON. In n8n it is `error-alert-email` (id WMyujD4QbMKZwozf) and is
+// inactive. To turn it on it needs an "Alert SMTP" credential and real sender and recipient
+// addresses (placeholders below), then to be published and set as the error workflow of every
+// `skill-` and `pipeline-` workflow (n8n refuses to set an unpublished one). See n8n/README.md,
+// "Not done yet". Until then a Fail Loudly node or an unhandled node error notifies nobody.
+//
+//   Trigger   n8n's Error Trigger: a production execution of a workflow that names this as its
+//             error workflow failed. Manual and test runs never fire it.
+//   Writes    nothing in the database; it only sends one plain-text email.
+//   Never     render anything as HTML: error text can quote model output or OCR'd text from an
+//             outsider, so it is plain text and each field is length-bounded.
+
 import { workflow, node, trigger, sticky, newCredential, placeholder, expr } from '@n8n/workflow-sdk';
 
 const errorTrigger = trigger({

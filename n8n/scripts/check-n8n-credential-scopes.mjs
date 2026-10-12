@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// n8n-side successor to scripts/check-skill-profiles.mjs.
+// Audits an export of the live n8n workflows against the credential policy below.
 //
-// That script enforced "a skill's claude -p session may only reach the tools
-// its profile declares". n8n has no runtime equivalent: nothing stops someone
+// It replaced scripts/check-skill-profiles.mjs (deleted 2026-10-08 with the local agent),
+// which enforced "a skill's claude -p session may only reach the tools its profile declares".
+// n8n has no runtime equivalent: nothing stops someone
 // attaching the Supabase service-role credential to a node inside a skill
 // workflow, whose whole job is reading attacker-supplied text and photos. This
 // audit is the mechanical check that takes its place.
@@ -23,8 +24,9 @@
 //     a skill workflow, whose output is schema-validated before a pipeline can
 //     act on it (CLAUDE.md rule 3).
 //
-// NOT WIRED INTO CI YET: it becomes a required step when local-agent is
-// decommissioned and scripts/check-skill-profiles.mjs retires with it.
+// NOT RUN IN CI: it needs an export of the live workflows, which CI does not have. Run it by
+// hand after any workflow or credential change (n8n/README.md, Rule 5). Its unit test
+// (check-n8n-credential-scopes.test.mjs) does run in CI.
 //
 // Usage:
 //   node n8n/scripts/check-n8n-credential-scopes.mjs <dir-of-exported-workflow-json>

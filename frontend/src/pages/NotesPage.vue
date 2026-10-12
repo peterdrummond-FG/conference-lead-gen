@@ -30,10 +30,11 @@ interface NoteStatus {
 // convenience for the person typing.
 const MAX_NOTE_CHARS = 20_000;
 const POLL_INTERVAL_MS = 2_000;
-// Extraction is one `claude -p` call on the local agent (5 min ceiling) plus
-// that loop's own poll interval. Past this, stop asking and tell the rep
-// where to look instead of spinning forever — most often this means the
-// local agent isn't running at all.
+// Extraction is one skill-extract-note-contacts call inside the n8n
+// pipeline-note-extraction (picked up by a database webhook, or at worst by the
+// pipeline's 5-minute backstop). Past this, stop asking and tell the rep where to
+// look instead of spinning forever — most often this means the pipeline isn't
+// running.
 const POLL_TIMEOUT_MS = 5 * 60_000;
 
 const sessionStore = useSessionStore();

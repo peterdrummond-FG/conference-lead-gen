@@ -1,4 +1,5 @@
-// Ported from local-agent/skill-runner.mjs as part of the n8n migration.
+// Ported from the retired local agent's skill-runner.mjs (git history before commit 1cb0ea2).
+// Nothing in production uses it now; schemas.test.mjs is its only importer.
 //
 // Fallback JSON extraction for whenever a sub-workflow can't use Anthropic's
 // native structured output / forced tool-use (see the migration plan,

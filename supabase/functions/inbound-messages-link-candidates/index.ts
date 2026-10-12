@@ -2,12 +2,13 @@
 //
 // Backs the manual "Assign to contact" action on an unmatched voice memo in
 // Review (inbound-messages-unresolved-list's audio list) -- a human override
-// for exactly the case linkTranscriptToContacts leaves alone on purpose (see
-// 20260922110000_voice_memo_link_state_and_ocr_retry.sql and agent.mjs's
-// findCandidateContacts): nobody the skill could confidently place, or the
+// for exactly the case the voice pipeline's automated link step leaves alone on
+// purpose (see 20260922110000_voice_memo_link_state_and_ocr_retry.sql and the
+// candidate lookup in n8n/pipelines/pipeline-voice-transcription-v3.ts, formerly
+// agent.mjs's findCandidateContacts): nobody the skill could confidently place, or the
 // mentioned person's card genuinely never got photographed.
 //
-// Deliberately broader than findCandidateContacts' own candidate query: that
+// Deliberately broader than the pipeline's own candidate query: that
 // one is scoped to VOICE_CANDIDATE_SOURCES (card_photo/directory_photo) so
 // the *automated* pass never guesses across a form/note submission. A human
 // picking a contact by name has no such failure mode, so every contact this

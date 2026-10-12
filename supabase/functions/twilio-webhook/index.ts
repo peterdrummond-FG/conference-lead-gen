@@ -124,7 +124,8 @@ function escapeXml(s: string): string {
 // Audit A9/S7. This used to return an arbitrary substring of the handset-
 // supplied content type, which then became part of a Storage object key
 // (`sms/<id>.<ext>`, with upsert:true) and, downstream, was read back out of
-// that key and interpolated into a `claude -p` prompt by local-agent. A
+// that key and interpolated into a model prompt by the local agent that then ran
+// the skills (retired 2026-10-08). A
 // subtype containing `/` or `..` wrote outside the sms/ prefix; one containing
 // whitespace or a newline became a prompt-framing primitive.
 //
@@ -874,8 +875,8 @@ Deno.serve(async (req) => {
   // the rep that — they'd just see the same generic "Got it" reply as a
   // brand-new card and assume the pipeline was broken. Checked here,
   // synchronously, so the very first reply already says so — this can't
-  // wait for local-agent's background OCR pass, which may run minutes
-  // later or not be running at all.
+  // wait for the card pipeline's background OCR pass (n8n), which may run
+  // minutes later.
   const noteworthy: string[] = [];
 
   for (let i = 0; i < numMedia; i++) {

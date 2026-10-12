@@ -1,8 +1,7 @@
-// Ported from local-agent/schemas.test.mjs as part of the n8n migration (see
-// the migration plan, "Output validation" — this test suite is the gate that
-// must pass before the schema port counts as done). Drops the skill-profile
-// tests from the original file: those covered local-agent's `claude -p`
-// sandboxing model (skill-profiles.mjs / --strict-mcp-config), which no
+// Ported from the retired local agent's schemas.test.mjs (git history before commit
+// 1cb0ea2). It is the gate that must pass before a schema change counts as done. It
+// drops the skill-profile tests from the original file: those covered the local
+// agent's `claude -p` sandboxing model (skill-profiles.mjs / --strict-mcp-config), which no
 // longer exists once skills are direct Anthropic Messages API calls — the
 // n8n-side successor to that sandboxing is credential scoping per
 // sub-workflow, audited by n8n/scripts/check-n8n-credential-scopes.mjs, not

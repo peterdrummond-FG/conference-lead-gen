@@ -1,9 +1,9 @@
 // POST ?id=<contactId> -> { id, createdAt }
-// Staff-gated. Manual escape hatch once the local agent's own stuck-Pending
-// retry cap (Stage 11) has given up. Resetting match_attempts/
-// last_match_attempt_at is the entire mechanism — being 'pending' with a
-// fresh attempt window is sufficient for the poller to pick it up on its
-// next tick; there's no separate queue to enqueue onto.
+// Staff-gated. Manual escape hatch once pipeline-match-contact's own
+// stuck-Pending retry cap (match_attempts) has given up. Resetting
+// match_attempts/last_match_attempt_at is the entire mechanism — being 'pending'
+// with a fresh attempt window is sufficient for the pipeline's 5-minute backstop
+// to pick it up on its next run; there's no separate queue to enqueue onto.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

@@ -1,3 +1,25 @@
+// pipeline-process-cards-sms: reads a texted card or roster photo and creates contacts.
+//
+// LIVE in n8n as `pipeline-process-cards-sms` (id YfY73SMTSAkUjLL6); see n8n/README.md.
+// This file is the SDK source kept in step with the deployed workflow: edit it and the
+// workflow together. Editing only this file changes nothing in production.
+//
+//   Trigger   a Database Webhook on inbound_messages INSERT *and UPDATE* (path
+//             ckh-process-cards-sms; twilio-webhook sets storage_path in a second UPDATE after
+//             uploading), plus a 5-minute backstop that resets stale claims, resurrects transient
+//             failures and picks up pending photos.
+//   Claim     optimistic update (processing_attempts + 1); storage_path is re-checked against
+//             twilio-webhook's own key pattern before it reaches a URL (a mismatch is terminal).
+//   Calls     skill-process-cards (vision, no credentials), then per person a padded crop upload
+//             to Storage (multi-person photos) and one contacts-from-ocr POST, which is
+//             idempotent on sourceImageHash so a retry does not duplicate.
+//   Writes    inbound_messages status; Storage crops; contacts, through contacts-from-ocr.
+//   Failure   partial success is 'completed' with the failures recorded; every card failing is
+//             'failed' (transient, retried); a permanent skill failure or unsafe path is terminal
+//             and ends in a Fail Loudly node.
+//   Note      the skill sees a vision copy of the photo (JPEG, long edge <= 2000 px; this also
+//             converts HEIC), not the stored original. See the sticky note at the end of this file.
+
 import { workflow, node, trigger, sticky, newCredential, ifElse, merge, expr } from '@n8n/workflow-sdk';
 
 const SUPABASE_URL = 'https://yrvppufkerbjpvrxniot.supabase.co';
@@ -347,7 +369,7 @@ const downloaded = ifElse({
   }
 });
 
-// A real content hash of the bytes as received, same as local-agent's -- lets
+// A real content hash of the bytes as received, same as the retired local agent's -- lets
 // the same photo texted twice dedup through contacts-from-ocr's hash check.
 // (Crypto's hash drops the binary; Restore Photo puts it back.)
 const hashPhoto = node({

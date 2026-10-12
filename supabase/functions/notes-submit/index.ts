@@ -1,9 +1,9 @@
 // Stage 17 — POST { text } -> { id, eventName, alreadySubmitted }.
 // The staff-facing half of pasted-note intake: a logged-in rep pastes a
 // whole typed note (usually covering several people) and this records it
-// for local-agent's noteLoop to extract. Extraction itself happens there,
-// not here — every LLM call in this project runs through the local
-// `claude -p` agent, never a metered API key inside an Edge Function.
+// for the n8n pipeline-note-extraction to extract. Extraction itself happens
+// there, not here — every LLM call in this project runs inside an n8n skill
+// workflow that holds only the model credential, never inside an Edge Function.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

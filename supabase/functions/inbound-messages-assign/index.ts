@@ -2,8 +2,9 @@
 //
 // Manual override for a voice memo attribute-voice-memo left unlinked (or
 // gave up on -- link_status='no_candidate_found') -- the human-in-the-loop
-// counterpart to relinkUnlinkedAudioMessages in local-agent/agent.mjs. Same
-// write shape as that loop's attachExcerpts/recordLinkResult (see
+// counterpart to the link sweep in n8n/pipelines/pipeline-voice-transcription-v3.ts
+// (formerly relinkUnlinkedAudioMessages in the retired local-agent/agent.mjs). Same
+// write shape as that sweep's attach/record-result steps (see
 // 20260922110000_voice_memo_link_state_and_ocr_retry.sql): append the
 // transcript to the contact's interaction_notes, record the match, flip
 // link_status to 'linked'. A human assigning by hand has already read the

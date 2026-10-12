@@ -1,6 +1,6 @@
 ---
 name: process-cards
-description: OCR one conference photo — which may show one business card filling the frame, several cards laid out together on a table, or a printed directory/roster page listing several people (e.g. a conference attendee book) — extract fields exactly as printed/written per person, assign one overall extraction confidence per person, crop multi-person photos so each contact gets its own image, and hand off to the existing intake pipeline via the contacts-from-ocr Supabase Edge Function. Use when invoked headlessly by watcher/watch-cards.command on a single new photo.
+description: OCR one conference photo — which may show one business card filling the frame, several cards laid out together on a table, or a printed directory/roster page listing several people (e.g. a conference attendee book) — extract fields exactly as printed/written per person, assign one overall extraction confidence per person, crop multi-person photos so each contact gets its own image, and hand off to the existing intake pipeline via the contacts-from-ocr Supabase Edge Function. Use when invoked by the n8n pipeline-process-cards-sms (through the skill-process-cards workflow) on a single new photo. (It was invoked by the folder watcher until 2026-10-08.)
 ---
 
 # Process cards

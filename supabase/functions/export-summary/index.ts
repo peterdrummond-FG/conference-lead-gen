@@ -1,10 +1,10 @@
 // GET -> { readyToExport, newAccountsToExport, needsReview, autoApprovedToExport }.
 // Staff-gated.
-// Port of ExportEndpoints.cs's GET /api/export/summary — another Stage 10
-// gap caught during Stage 15's frontend wiring.
+// Port of the .NET ExportEndpoints.cs's GET /api/export/summary (backend deleted
+// 2026-09-14). Read-only: it counts, it reserves and writes nothing.
 //
 // readyToExport and newAccountsToExport are both exported by the next
-// export-csv click (see export_and_mark_synced) — the split just tells the
+// export-csv click (see export_reserve, which replaced export_and_mark_synced) — the split just tells the
 // admin how many rows will go out already matched to a real Zoho Account
 // vs. flagged as a brand-new one to create.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
@@ -22,7 +22,8 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
 
   const [ready, needsReview, newAccounts, autoApproved] = await Promise.all([
-    // Must match export_and_mark_synced's own selection criteria exactly —
+    // Must match the selection criteria of export_reserve (and the retired
+    // export_and_mark_synced before it) exactly —
     // otherwise this count would keep including contacts that a previous
     // export already sent and marked synced_at, even though the next
     // export-csv click won't actually pick them up again.

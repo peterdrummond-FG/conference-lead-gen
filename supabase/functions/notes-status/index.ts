@@ -1,8 +1,9 @@
 // Stage 17 — GET ?id=<note submission id> -> the submission's current state
 // plus whatever contacts it has produced so far. Polled by NotesPage.vue
-// while extraction runs (local-agent picks the row up on its own poll, then
-// a `claude -p` call runs), so the rep sees what was actually pulled out of
-// their note instead of having to go hunting in Review for it.
+// while extraction runs (the n8n pipeline-note-extraction picks the row up from
+// a database webhook or its 5-minute backstop, then runs the
+// skill-extract-note-contacts workflow), so the rep sees what was actually pulled
+// out of their note instead of having to go hunting in Contacts for it.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { hasRole, requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

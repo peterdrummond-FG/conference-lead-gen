@@ -7,9 +7,10 @@
 // against the Edge Functions' source.
 import type { FailedIntakeMessage, LinkCandidateContact, UnresolvedAudioMemo } from '@/types/review';
 
-// How many automatic attempts the agent makes before a memo becomes "Needs review"
-// (LINK_MAX_ATTEMPTS in local-agent/agent.mjs and the 20 the n8n sweep passes to
-// claim_unlinked_audio_messages). Shown only in the pane's help line.
+// How many automatic attempts the pipeline makes before a memo becomes "Needs review"
+// (LINK_MAX_ATTEMPTS in n8n/pipelines/pipeline-voice-transcription-v3.ts, which is also
+// the max_attempts its sweep passes to claim_unlinked_audio_messages; voiceMemos.test.mjs
+// checks the two agree). Shown only in the pane's help line.
 export const AUTO_ATTEMPTS = 20;
 // inbound-messages-create-contacts' MAX_ATTEMPTS. After this many the button is gone
 // and the card says to assign or delete, instead of offering a run that is refused.

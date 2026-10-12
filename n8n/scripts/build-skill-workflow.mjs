@@ -54,7 +54,8 @@ const PROCESS_CARDS_PREAMBLE = [
   '',
 ].join('\n');
 
-// Mirrors local-agent/skill-profiles.mjs ZOHO_READONLY_TOOLS, minus the CLI's
+// Mirrors the retired local agent's skill-profiles.mjs ZOHO_READONLY_TOOLS (git history before
+// commit 1cb0ea2), minus the CLI's
 // mcp__zoho_readonly__ prefix. An allowlist, not a denylist: a tool Zoho adds
 // to the server later is not exposed until someone adds it here on purpose.
 const ZOHO_READONLY_TOOLS = [

@@ -1,8 +1,8 @@
 // GET ?id=<contactId>&full=true -> 302 redirect to a short-lived signed
 // Storage URL. Staff-gated (for consistency with the rest of /review).
 // source_image_path/cropped_image_path are Supabase Storage object paths in
-// the 'contact-photos' bucket (uniform for both the local watcher and
-// SMS-sourced photos, per Stage 12).
+// the 'contact-photos' bucket (uniform for texted photos and for the folder-dropped
+// ones the retired watcher produced).
 import { corsHeaders, errorResponse, handlePreflight } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";

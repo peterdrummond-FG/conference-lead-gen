@@ -2,9 +2,9 @@
 //        districtName?, schoolName?, extractionConfidence,
 //        sourceImageHash, sourceImagePath, croppedImagePath?,
 //        inboundMessageId? (Stage 13), source? (one of ALLOWED_SOURCES) }
-// -> { id, alreadyProcessed, createdAt }. Called only by process-cards
-// (watcher) and, later, the local agent's SMS-photo poll loop — never a
-// browser. Authenticated via the service-role key, not a logged-in user.
+// -> { id, alreadyProcessed, createdAt }. Called only by the n8n
+// pipeline-process-cards-sms (before 2026-10-08, also the folder watcher and the
+// local agent's SMS-photo poll loop) — never a browser. Authenticated via the service-role key, not a logged-in user.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { isServiceRoleCall } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
   if (!targetEvent) return errorResponse(req, 404, `No event with folder code '${body.eventFolderCode}'.`);
 
   // A repeat is a no-op, not a duplicate contact — defense-in-depth behind
-  // the watcher's own local archive-hash check.
+  // the caller's own duplicate check (the retired watcher kept a local archive hash).
   const { data: existingByHash, error: existingError } = await supabase
     .from("contacts")
     .select("id, created_at")

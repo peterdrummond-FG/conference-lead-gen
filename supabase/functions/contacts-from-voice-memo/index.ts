@@ -1,7 +1,8 @@
 // POST { inboundMessageId, firstName, lastName, email?, phone?, title?,
 //        districtName?, schoolName?, interactionNotes?, extractionConfidence }
-// -> { id, alreadyProcessed, createdAt }. Called only by local-agent's
-// transcription/relink loop in two situations: (1) attribute-voice-memo judged
+// -> { id, alreadyProcessed, createdAt }. Called only by the n8n
+// pipeline-voice-transcription (formerly the local agent's transcription/relink
+// loop) in two situations: (1) attribute-voice-memo judged
 // (with extractFallbackContact: true) that a transcript alone names someone
 // clearly enough to create a contact, after ordinary candidate-matching has
 // repeatedly found no one this memo could be about; (2) the memo matched some

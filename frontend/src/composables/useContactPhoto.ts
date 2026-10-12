@@ -1,11 +1,10 @@
 import { onUnmounted, ref, watchEffect } from 'vue';
 import { api } from '@/boot/axios';
 
-// Stage 15: contacts-photo (the Edge Function) requires the caller's own
-// Supabase Auth access token as a bearer — a plain <img src="..."> can't
-// attach that, since img tags can't carry custom headers. The old .NET
-// version could just be a same-origin <img src> because there was no auth
-// on it at all.
+// contacts-photo (the Edge Function) requires the caller's own Supabase Auth
+// access token as a bearer — a plain <img src="..."> can't attach that, since img
+// tags can't carry custom headers. The old .NET version (deleted 2026-09-14) could
+// just be a same-origin <img src> because there was no auth on it at all.
 //
 // Rather than put the access token in a query string (readable in browser
 // history/server logs, which the general "never put sensitive data in a

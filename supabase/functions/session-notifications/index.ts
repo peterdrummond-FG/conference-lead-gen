@@ -178,7 +178,8 @@ Deno.serve(async (req) => {
     // 10DLC campaign is a carrier-filtering risk, not just an annoyance.
     // So advance the high-water mark conditional on it still holding the
     // value this tick read; an overlapping tick then finds nothing to do.
-    // This is the same optimistic claim photoLoop/transcriptionLoop use.
+    // This is the same optimistic claim the n8n pipelines use (and the retired
+    // local agent's photoLoop/transcriptionLoop did).
     const { data: claimedConfirm } = await supabase
       .from("phone_event_bindings")
       .update({ contacts_confirmed_through: newest.received_at })

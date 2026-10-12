@@ -1,3 +1,25 @@
+// pipeline-match-contact: researches a new contact and matches it against Zoho.
+//
+// LIVE in n8n as `pipeline-match-contact` (id lTgZMxZMmzPjvkSH); see n8n/README.md.
+// This file is the SDK source kept in step with the deployed workflow: edit it and the
+// workflow together. Editing only this file changes nothing in production.
+//
+//   Trigger   a Database Webhook on contacts INSERT (path ckh-match-contact), plus a 5-minute
+//             backstop calling claim_pending_contacts(MAX_MATCH_ATTEMPTS, RETRY_DELAY_MINUTES, 3).
+//   Claim     match_attempts is spent at claim time (crash-safe); on the webhook path an optimistic
+//             update WHERE match_status = 'pending' AND match_attempts = the value read.
+//   Calls     skill-research-contact, then skill-match-contact (read-only Zoho connector, or the
+//             local Accounts copy when ZOHO_MCP_URL is missing or masked), then the
+//             finalize_contact_match RPC, which applies the result atomically.
+//   Writes    only through finalize_contact_match: match fields, and a district found by research
+//             if the lead still has none. It never confirms a lead: nothing is auto-confirmed.
+//   Failure   transient: the attempt is refunded and the backstop retries after the cooldown.
+//             permanent: the attempt stays spent and a Fail Loudly node raises it. Nothing is
+//             written on failure.
+//   Never     treat a skill's account or contact id as real until it is checked against the
+//             candidates it was given (Enforce Local Limits does this on the local path).
+//             See the sticky note at the end of this file.
+
 import { workflow, node, trigger, sticky, newCredential, ifElse, expr } from '@n8n/workflow-sdk';
 
 const SUPABASE_URL = 'https://yrvppufkerbjpvrxniot.supabase.co';
@@ -225,7 +247,7 @@ const loadContact = node({
   output: [{ id: SAMPLE_ID, first_name: 'Dana', last_name: 'Whitfield', match_attempts: 1, source: 'card_photo', extraction_confidence: 'high', event: { state: 'TN' }, school_district: null, school_district_name_raw: 'Maple Ridge SD', school: null, school_name_raw: null }]
 });
 
-// Unlike local-agent, an unresolved district/school falls back to the name as
+// Unlike the retired local agent, an unresolved district/school falls back to the name as
 // captured (school_district_name_raw) instead of reaching research as null.
 const researchInput = node({
   type: 'n8n-nodes-base.set',

@@ -1,3 +1,31 @@
+// pipeline-voice-transcription (v2, STANDBY): transcribes a texted voice memo and attributes it.
+//
+// STANDBY: n8n workflow id kYKg80yktf4QKljI, inactive. The rollback target if v3 is switched off: see n8n/README.md. Its live n8n name is
+// 'pipeline-voice-transcription v2 (Vercel conversion, standby)', not the name in the workflow() call below.
+// This file is the SDK source kept in step with the deployed workflow: edit it and the
+// workflow together. Editing only this file changes nothing in production. v2 and v3 are
+// identical except for audio conversion (see n8n/README.md, "The voice pipeline: live version
+// and rollback"); both listen on the webhook path ckh-voice-transcription, so only one may be
+// published at a time.
+//
+//   Trigger   a Database Webhook on inbound_messages INSERT *and UPDATE* (audio rows), plus a
+//             5-minute backstop that resets stale claims, resurrects transient failures, picks up
+//             pending memos and runs the relink sweep (claim_unlinked_audio_messages).
+//   Claim     optimistic update to 'processing' (processing_attempts + 1); storage_path and the id
+//             are re-checked before they reach a URL or a row filter (a mismatch is terminal).
+//   Calls     AMR conversion (an HTTP call to the Vercel function in n8n/ffmpeg-service, to M4A), OpenAI transcription, then skill-attribute-voice-memo, then
+//             append_contact_interaction_notes per attributed contact, and contacts-from-voice-memo
+//             when the transcript alone justifies a new contact (at link attempt LINK_FALLBACK_ATTEMPT).
+//   Writes    inbound_messages (transcript, status, link state); contacts' interaction_notes
+//             (atomic and idempotent); a new contact only through contacts-from-voice-memo.
+//   Failure   a failed conversion or transcription marks the memo 'failed' with an error class;
+//             transient ones are retried by the backstop; permanent ones end in a Fail Loudly node.
+//             A memo no one can place waits as 'unlinked' for the sweep, then for a person
+//             (Contacts, "Unlinked Voice Memos / Errors").
+//   Known limit  `unplacedContacts` (people the rep spoke about but did not photograph) is
+//             returned by the skill and ignored here, so no contact is created for them.
+//   The sticky note at the end of this file is the long description.
+
 import { workflow, node, trigger, sticky, newCredential, ifElse, expr } from '@n8n/workflow-sdk';
 
 const SUPABASE_URL = 'https://yrvppufkerbjpvrxniot.supabase.co';
@@ -18,7 +46,7 @@ const FFMPEG_SERVICE_URL = 'https://audio-convert-ffmpeg.vercel.app/api/convert'
 // attribute-voice-memo to additionally judge whether the transcript alone
 // justifies creating a brand-new contact (see Attribution Input,
 // Has Candidates?, and Create Voice Memo Contact below) — mirrors
-// LINK_FALLBACK_ATTEMPT in local-agent/agent.mjs.
+// LINK_FALLBACK_ATTEMPT in the retired local agent (agent.mjs, in git history before commit 1cb0ea2).
 const LINK_FALLBACK_ATTEMPT = 3;
 
 
@@ -33,7 +61,7 @@ const TALLY_LINKS_JS = "// A memo is 'linked' only when every excerpt it produce
 // sufficient (Has Extracted Contact? = true). A create failure (network,
 // validation) must not be silently swallowed as 'handled' -- it falls back to
 // the same unmatched/no_candidate_found choice as any other unmatched attempt,
-// same reasoning as local-agent's postVoiceMemoContact catch.
+// same reasoning as the retired local agent's postVoiceMemoContact catch.
 const CONTACT_CREATED_ROW_JS = "const ctx = $('Attribution Input').item.json;\nconst res = $json;\nconst ok = typeof res.statusCode === 'number' && res.statusCode >= 200 && res.statusCode < 300 && res.body?.id;\nif (!ok) {\n  const atCap = ctx.linkAttempts >= " + LINK_MAX_ATTEMPTS + ";\n  return { json: { messageId: ctx.messageId, linkAttempts: ctx.linkAttempts, matched_contact_ids: [], link_status: atCap ? 'no_candidate_found' : 'unlinked' } };\n}\nreturn { json: { messageId: ctx.messageId, linkAttempts: ctx.linkAttempts, matched_contact_ids: [res.body.id], link_status: 'contact_created' } };";
 
 // ---------------------------------------------------------------- triggers
@@ -588,8 +616,9 @@ const claimUnlinked = node({
 });
 
 // claim_unlinked_audio_messages doesn't look at status, so it can claim a memo
-// that hasn't been transcribed yet. That spends one of its 50 link attempts
-// (bounded by the ~50-minute transcription retry horizon) -- skip it here.
+// that hasn't been transcribed yet. That spends one of its LINK_MAX_ATTEMPTS (20) link
+// attempts (bounded by the ~50-minute transcription retry horizon: 10 tries x 5 minutes)
+// -- skip it here.
 const claimedWithTranscript = node({
   type: 'n8n-nodes-base.filter',
   version: 2.3,
@@ -694,7 +723,7 @@ const fetchOk = node({
 // Also true once extractFallbackContact is set, even with zero candidates --
 // there's still a real question worth asking the model at that point (does
 // the transcript alone name someone?), matching linkTranscriptToContacts'
-// same early-return skip in local-agent/agent.mjs.
+// same early-return skip in the retired local agent's agent.mjs.
 const hasCandidates = ifElse({
   version: 2.3,
   config: {
@@ -902,7 +931,7 @@ const tallyLinks = node({
 
 // No candidates at all, or the skill placed nothing: stay unlinked for the
 // retry sweep -- or, at the cap, hand to a human (Review's unmatched list).
-// Unlike local-agent, a no-candidates run at the cap is also surfaced; before,
+// Unlike the retired local agent, a no-candidates run at the cap is also surfaced; before,
 // such a memo sat 'unlinked' forever once the claim function stopped picking it.
 const unmatchedRow = node({
   type: 'n8n-nodes-base.set',

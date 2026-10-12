@@ -3,16 +3,19 @@
 // └──────────────────────────────────────────────────────────────────────┘
 //
 // Voice-memo transcription is very much alive; it just doesn't run here
-// anymore. It runs in `transcriptionLoop` in local-agent/agent.mjs, calling a
-// LOCAL Whisper CLI via local-agent/whisper-runner.mjs — no OpenAI key, no
-// metered API, same reasoning as every other `claude -p` step in that file.
+// anymore. Today it runs in the n8n pipeline-voice-transcription (OpenAI
+// transcription after an ffmpeg AMR -> MP3 conversion; see n8n/README.md). From
+// 2026-09-03 to 2026-10-08 it ran in the local agent's `transcriptionLoop`,
+// calling a local Whisper CLI. NOTE: the 410 message returned below still says
+// "locally in local-agent": that text predates n8n and was left unchanged so this
+// function's response does not change. Nothing calls this endpoint.
 //
 // History: this was the original Stage 14 implementation, an OpenAI Whisper
 // API call fired by a Postgres trigger. That trigger was dropped on 2026-09-03
 // (20260903000000_drop_audio_transcription_trigger.sql), but the function was
 // never undeployed — so for three months it stayed live and callable by anyone
 // holding the published anon key, able to spend OPENAI_API_KEY, write into
-// contacts.interaction_notes, and race local-agent's own claim on the same
+// contacts.interaction_notes, and race the then-live local agent's own claim on the same
 // inbound_messages row (regressing attribution to the pre-Stage-14 logic).
 //
 // The original source is recoverable from git history at ebd5bba. It is NOT

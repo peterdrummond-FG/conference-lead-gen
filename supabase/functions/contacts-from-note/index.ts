@@ -1,8 +1,8 @@
 // Stage 17 — POST { noteSubmissionId, firstName, lastName, email?, phone?,
 //        title?, districtName?, schoolName?, interactionNotes?,
 //        extractionConfidence }
-// -> { id, createdAt }, 201. Called only by local-agent's noteLoop (and the n8n
-// note pipeline) once
+// -> { id, createdAt }, 201. Called only by the n8n pipeline-note-extraction
+// (the local agent's noteLoop did this until 2026-10-08) once
 // extract-note-contacts has split a pasted note into people — never a
 // browser. Authenticated via the service-role key, not a logged-in user.
 //

@@ -129,8 +129,8 @@ Deno.serve(async (req) => {
   // conference code" link (audit S11, and its 2026-09-16 regression where any
   // authenticated user could read another conference's code by passing its public
   // slug). The Admin link is gone and nothing in the browser reads the field, so
-  // the safest way to keep the token private is to not send it at all. n8n and
-  // local-agent read folder_code straight from the database. slug is not
+  // the safest way to keep the token private is to not send it at all. n8n reads
+  // folder_code straight from the database (as the retired local agent did). slug is not
   // sensitive (it is the whole point of a public QR), so it stays: SetupPage
   // needs it to build the /connect/<slug>/<repId> URL.
   return jsonResponse(req, {

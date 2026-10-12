@@ -1,6 +1,6 @@
 ---
 name: extract-note-contacts
-description: Split one block of rep-typed conference notes — which usually covers several people at once — into one structured contact per person, copying fields verbatim and keeping each person's own commentary as their interaction notes. Use when invoked headlessly by local-agent's noteLoop for a pasted note submission.
+description: Split one block of rep-typed conference notes — which usually covers several people at once — into one structured contact per person, copying fields verbatim and keeping each person's own commentary as their interaction notes. Use when invoked by the n8n pipeline-note-extraction (through the skill-extract-note-contacts workflow) for a pasted or texted note submission.
 ---
 
 # Extract note contacts

@@ -1,3 +1,24 @@
+// pipeline-note-extraction: turns a note (note_submissions row) into contacts.
+//
+// LIVE in n8n as `pipeline-note-extraction` (id vZU7o9pk5JLmJdzT); see n8n/README.md.
+// This file is the SDK source kept in step with the deployed workflow: edit it and the
+// workflow together. Editing only this file changes nothing in production.
+//
+//   Trigger   a Database Webhook on note_submissions INSERT (path ckh-note-extraction,
+//             header-authenticated), plus a 5-minute backstop that resets stale claims and
+//             picks up pending rows. Only a UUID-validated id is taken from either; the row is
+//             re-read.
+//   Claim     optimistic update to 'processing' WHERE status = 'pending_extraction'; attempts
+//             is spent at claim time, and every later write re-asserts the claim.
+//   Calls     skill-extract-note-contacts (one model call, no credentials), then one
+//             contacts-from-note POST per person returned.
+//   Writes    note_submissions status, via the claim; contacts, through contacts-from-note.
+//   Failure   a transient skill failure returns the row to the queue (up to MAX_NOTE_ATTEMPTS);
+//             anything permanent marks it 'failed' and ends in a Fail Loudly node, which hands the
+//             failure to the error workflow (error-alert-email, not switched on yet).
+//   Never     a skill output is trusted: the parser enforces the schema and the contact
+//             POSTs re-check it. The full description is the sticky note at the end of this file.
+
 import { workflow, node, trigger, sticky, newCredential, ifElse, expr } from '@n8n/workflow-sdk';
 
 const SUPABASE_URL = 'https://yrvppufkerbjpvrxniot.supabase.co';

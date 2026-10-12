@@ -14,9 +14,13 @@ human (CLAUDE.md rule 3).
 | `match.schema.json` | match-contact |
 | `card-vision.schema.json` | process-cards (vision call) |
 
-Translated from the Zod schemas in `schemas.mjs` (the archived build's copy of
-`local-agent/schemas.mjs`). The same 64 fixtures run through both agree on
-every case but one, which is deliberate (see attribution below).
+Translated from the Zod schemas in `schemas.mjs` (ported from the retired local
+agent's `schemas.mjs`). The JSON files are what production enforces (the n8n
+Structured Output Parser is built from them); the Zod copies are the oracle the tests
+use, so a contract change is made in both. When the JSON files were written, 64 fixtures
+run through both agreed on every case but one, which is deliberate (see attribution
+below). Today `schemas.test.mjs` compares the two files only for the research schema's
+`resolvedDistrict`; for the others, check both by hand when you change one.
 
 ## Encoding rules — these are not style, they are what n8n's parser honours
 
@@ -71,12 +75,14 @@ the control; it just isn't the only thing shaping the output.
   rule: it lists people the rep met and said something about who matched no
   captured contact. A name mentioned only in relation to a lead is not listed.
   Every entry must carry `spokeWithRep: true`, `detailsStated: true` and a
-  non-empty `interactionNotes`. Only the local-agent uses it so far;
-  `pipeline-voice-transcription` and the deployed `skill-attribute-voice-memo`
-  workflow predate it and must be regenerated and ported before voice cuts over.
-- `extractedContact`'s "title, districtName, or schoolName must be non-blank"
-  rule (mirroring the Zod `.refine()` in `schemas.mjs`) is encoded as
-  `anyOf: [{required:['title'], properties:{title:{minLength:1}}}, ...]` per
+  non-empty `interactionNotes`. The deployed
+  `skill-attribute-voice-memo` workflow has been regenerated and returns it, but
+  `pipeline-voice-transcription` does not use it yet (see `n8n/README.md`, "Not done
+  yet").
+- `extractedContact`'s "phone, email, title, districtName, or schoolName must be
+  non-blank" rule (phone and email were added 2026-10-08: a name plus a way to reach
+  them is enough; mirroring the Zod `.refine()` in `schemas.mjs`) is encoded as
+  `allOf: [{anyOf: [{required:['title'], properties:{title:{minLength:1}}}, ...]}]` per
   the `anyOf`/`allOf` rule above — **unverified against the live parser**,
   unlike every other rule on this page. The "Defaults" caveat means a field
   the model never mentions may still arrive as `""` from the parser's own

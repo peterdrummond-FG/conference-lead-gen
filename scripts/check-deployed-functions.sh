@@ -18,9 +18,9 @@
 # URL) -- ten stubs with no such references (auth-*, bootstrap-admins-
 # oneoff, debug-embed, districts-create, reps-*, schools-create) were
 # deleted 2026-09-22. `transcribe-voice-memo` stays as a stub instead: it's
-# referenced by name in docs/ARCHITECTURE.md and README.md as the
-# now-retired precursor to local-agent's Whisper-CLI transcription path,
-# and keeping it 410ing is what makes that history checkable rather than
+# referenced by name in docs/ARCHITECTURE.md, CLAUDE.md and the migrations README as
+# the now-retired precursor to the voice transcription that later ran in the
+# local agent and now runs in n8n, and keeping it 410ing is what makes that history checkable rather than
 # just asserted. Anything deployed that is neither in supabase/functions/
 # nor in RETIRED is a finding.
 set -euo pipefail

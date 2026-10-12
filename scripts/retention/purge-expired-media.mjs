@@ -15,7 +15,8 @@
 // was its only job that nothing else replaced, and it is NOT scheduled anywhere,
 // so it must be run by hand or added to cron (see docs/DATA-RETENTION.md).
 //
-// Run from cron/launchd, or by hand (from scripts/retention/, after npm install):
+// Run by hand (from scripts/retention/, after npm install), or from a scheduler once
+// someone sets one up:
 //   node --env-file=.env purge-expired-media.mjs --dry-run
 //   node --env-file=.env purge-expired-media.mjs
 //   RETENTION_DAYS=30 node --env-file=.env purge-expired-media.mjs
