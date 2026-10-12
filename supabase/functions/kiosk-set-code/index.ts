@@ -6,6 +6,7 @@
 // check) and `me` (which tells the app whether to show "Set PIN").
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
+import { validateNewKioskPin } from "../_shared/kioskPin.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
 
 Deno.serve(async (req) => {
@@ -17,9 +18,8 @@ Deno.serve(async (req) => {
   if (!user) return errorResponse(req, 401, "Unauthorized");
 
   const body = await req.json().catch(() => null);
-  if (!body || typeof body.code !== "string" || body.code.length < 4) {
-    return errorResponse(req, 400, "code must be a string of at least 4 characters");
-  }
+  const problem = validateNewKioskPin(body?.code);
+  if (!body || problem) return errorResponse(req, 400, problem ?? "code is required");
 
   const supabase = serviceClient();
   const { error } = await supabase

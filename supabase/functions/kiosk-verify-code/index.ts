@@ -6,6 +6,7 @@
 // -- see kiosk-set-code for how each user changes their own.
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser, timingSafeEqual } from "../_shared/auth.ts";
+import { kioskPinMatches } from "../_shared/kioskPin.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -24,5 +25,7 @@ Deno.serve(async (req) => {
   // here. Note this does NOT make the kiosk lock a security boundary: it is
   // still enforced client-side and still brute-forceable without a lockout.
   // A server-side lock (lockout, hashed PIN) was considered in the September 2026 audit and deferred.
-  return jsonResponse(req, { valid: await timingSafeEqual(body.code, user.kioskPin) });
+  // kioskPin is null for an account that has not chosen a PIN yet (auth.ts types it as
+  // a string, from when the column could not be null); no PIN set means nothing unlocks.
+  return jsonResponse(req, { valid: await kioskPinMatches(user.kioskPin, body.code, timingSafeEqual) });
 });
