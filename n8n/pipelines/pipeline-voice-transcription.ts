@@ -16,7 +16,8 @@
 //   Calls     AMR conversion (an HTTP call to the Vercel function in n8n/ffmpeg-service, to M4A), OpenAI transcription, then skill-attribute-voice-memo, then
 //             append_contact_interaction_notes per attributed contact, and contacts-from-voice-memo
 //             when the transcript alone justifies a new contact (at link attempt LINK_FALLBACK_ATTEMPT).
-//   Writes    inbound_messages (transcript, status, link state); contacts' interaction_notes
+//   Writes    inbound_messages (transcript, status, link state, playback_path) and the M4A
+//             playback copy in voice-memos; contacts' interaction_notes
 //             (atomic and idempotent); a new contact only through contacts-from-voice-memo.
 //   Failure   a failed conversion or transcription marks the memo 'failed' with an error class;
 //             transient ones are retried by the backstop; permanent ones end in a Fail Loudly node.
@@ -465,6 +466,77 @@ const openAiTranscribe = node({
     credentials: { openAiApi: newCredential('OpenAI account 2') }
   },
   output: [{ text: 'Met Jane Doe, she wants a demo.', usage: { type: 'duration', seconds: 10 } }]
+});
+
+// The playable copy (2026-10-19), same as v3 so a rollback to this version keeps memos
+// playable: browsers cannot play the stored AMR, so the converted file this workflow
+// already makes for transcription is kept. Here the converter returns M4A (AAC), which
+// browsers play too, so it is stored as sms/<id>.m4a and recorded in
+// inbound_messages.playback_path (the column's CHECK pins it to the row's own id with
+// an .mp3 or .m4a extension). A side branch off Converted? that comes AFTER transcription
+// in connection order, and every node on it continues on error: a failed upload must
+// never cost a memo its transcript. No copy yet -> the app says "isn't ready to play yet".
+const uploadPlayback = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.5,
+  config: {
+    name: 'Upload Playback Copy',
+    position: [4160, 620],
+    onError: 'continueRegularOutput',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ '" + SUPABASE_URL + "/storage/v1/object/voice-memos/sms/' + $('Run Context').item.json.messageId + '.m4a' }}"),
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'supabaseApi',
+      sendHeaders: true,
+      headerParameters: { parameters: [{ name: 'x-upsert', value: 'true' }] },
+      sendBody: true,
+      contentType: 'binaryData',
+      inputDataFieldName: 'audio',
+      options: { timeout: 60000 }
+    },
+    credentials: { supabaseApi: newCredential('Supabase account') }
+  },
+  output: [{ Key: 'voice-memos/sms/' + SAMPLE_ID + '.m4a', Id: 'object-id' }]
+});
+
+const playbackUploaded = ifElse({
+  version: 2.3,
+  config: {
+    name: 'Playback Copy Uploaded?',
+    position: [4380, 620],
+    parameters: {
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' },
+        conditions: [{ leftValue: expr('{{ !$json.error && !!$json.Key }}'), operator: { type: 'boolean', operation: 'true', singleValue: true }, rightValue: '' }],
+        combinator: 'and'
+      }
+    }
+  }
+});
+
+const recordPlayback = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.5,
+  config: {
+    name: 'Record Playback Path',
+    position: [4600, 620],
+    onError: 'continueRegularOutput',
+    parameters: {
+      method: 'PATCH',
+      url: expr("{{ '" + SUPABASE_URL + "/rest/v1/inbound_messages?id=eq.' + $('Run Context').item.json.messageId }}"),
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'supabaseApi',
+      sendHeaders: true,
+      headerParameters: { parameters: [{ name: 'Prefer', value: 'return=minimal' }] },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ playback_path: 'sms/' + $('Run Context').item.json.messageId + '.m4a' }) }}"),
+      options: { timeout: 30000 }
+    },
+    credentials: { supabaseApi: newCredential('Supabase account') }
+  },
+  output: [{}]
 });
 
 const transcribed = ifElse({
@@ -1000,7 +1072,7 @@ const failAttribution = node({
 });
 
 const note = sticky(
-  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> download -> Convert Audio (HTTP POST to the Vercel ffmpeg service, AMR to M4A) -> built-in OpenAI node (Audio > Transcribe) -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path and id re-checked before either reaches a storage URL or a row filter (mismatch = terminal + Fail Loudly). No name hints are sent (tested 2026-10-07: both OpenAI models heard a noisy memo's name correctly without them). A failed conversion (service down, bad key, not AMR) marks the memo failed (transient) via Converted?; success is detected by the returned audio, not an error branch. Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless the transcript came back empty); the backstop resurrects transient ones.\n\n**Needs before it can run:** the ffmpeg service deployed on Vercel (n8n/ffmpeg-service), FFMPEG_SERVICE_URL set in this file to its URL, and an 'FFmpeg Service Key' HTTP Header Auth credential in n8n (Authorization: Bearer <FFMPEG_SERVICE_KEY>). No admin involvement and no files on the n8n host.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact. At link_attempts=3, if nothing matched, the skill is asked whether the transcript alone names someone; if so Create Voice Memo Contact mints a source='voice_memo' contact. Excerpts append atomically and idempotently. NOT YET PORTED from local-agent: unplacedContacts (people the rep met who matched no card). REQUIRES skill-attribute-voice-memo (k1LFHrmVYBqDV4bT) to be regenerated from the current SKILL.md and schema first.",
+  "## pipeline-voice-transcription\nVoice memo (inbound_messages, kind='audio') -> download -> Convert Audio (HTTP POST to the Vercel ffmpeg service, AMR to M4A) -> built-in OpenAI node (Audio > Transcribe) -> transcript -> skill-attribute-voice-memo -> excerpts appended to the right contacts' interaction_notes.\n\n**Triggers:** header-authenticated DB Webhook on inbound_messages INSERT *and UPDATE* (twilio-webhook sets storage_path in a second UPDATE after upload); 5-min backstop: reset stale claims (30 min), resurrect transient failures (10 x 5 min), pick up to 5 pending memos, and run the relink sweep (claim_unlinked_audio_messages, 20 x 20 min, 3 per tick). Only a UUID-validated id comes from the webhook.\n\n**Transcription:** optimistic claim to 'processing' (processing_attempts + 1); storage_path and id re-checked before either reaches a storage URL or a row filter (mismatch = terminal + Fail Loudly). No name hints are sent (tested 2026-10-07: both OpenAI models heard a noisy memo's name correctly without them). A failed conversion (service down, bad key, not AMR) marks the memo failed (transient) via Converted?; success is detected by the returned audio, not an error branch. Transcript saved + 'completed' before attribution. Failures: 'failed' + error_class (transient unless the transcript came back empty); the backstop resurrects transient ones.\n\n**Playback copy (2026-10-19):** the converted M4A is also kept: a side branch off Converted? (after transcription) uploads it to voice-memos/sms/<id>.m4a and records inbound_messages.playback_path, so a rollback to this version keeps memos playable (browsers cannot play the stored AMR). Every node on the branch continues on error, so a failed upload never costs a memo its transcript.\n\n**Needs before it can run:** the ffmpeg service deployed on Vercel (n8n/ffmpeg-service), FFMPEG_SERVICE_URL set in this file to its URL, and an 'FFmpeg Service Key' HTTP Header Auth credential in n8n (Authorization: Bearer <FFMPEG_SERVICE_KEY>). No admin involvement and no files on the n8n host.\n\n**Attribution:** candidates = this rep's card/roster contacts at the event (max 200). No force-attach fallback onto an EXISTING contact. At link_attempts=3, if nothing matched, the skill is asked whether the transcript alone names someone; if so Create Voice Memo Contact mints a source='voice_memo' contact. Excerpts append atomically and idempotently. NOT YET PORTED from local-agent: unplacedContacts (people the rep met who matched no card). REQUIRES skill-attribute-voice-memo (k1LFHrmVYBqDV4bT) to be regenerated from the current SKILL.md and schema first.",
   [dbWebhook, webhookMessageId, backstop, resetStale, retryTransient, findPending, backstopMessageId, claimUnlinked, claimedWithTranscript],
   { color: 4 }
 );
@@ -1013,9 +1085,12 @@ export default workflow('pipeline-voice-transcription', 'pipeline-voice-transcri
   .to(safePath
     .onTrue(runContext.to(downloadAudio).to(downloaded
       .onTrue(convertAudio.to(converted
-        .onTrue(openAiTranscribe.to(transcribed
-          .onTrue(transcriptRow.to(saveTranscript).to(stillUnlinked).to(linkContext))
-          .onFalse(transcriptionFailedRow.to(markTranscriptionFailed))))
+        .onTrue([
+          openAiTranscribe.to(transcribed
+            .onTrue(transcriptRow.to(saveTranscript).to(stillUnlinked).to(linkContext))
+            .onFalse(transcriptionFailedRow.to(markTranscriptionFailed))),
+          uploadPlayback.to(playbackUploaded.onTrue(recordPlayback))
+        ])
         .onFalse(conversionFailedRow.to(markTranscriptionFailed))))
       .onFalse(transcriptionFailedRow)))
     .onFalse(unsafePathRow.to(markUnsafeFailed).to(failUnsafe)))

@@ -205,3 +205,22 @@ test('the live pipeline keeps the MP3 on a side branch AFTER transcription that 
   // The path comes from the claimed row's own id (UUID-checked upstream), never from the item.
   assert.match(src, /\/storage\/v1\/object\/voice-memos\/sms\/' \+ \$\('Run Context'\)\.item\.json\.messageId \+ '\.mp3'/);
 });
+
+// The standby (v2) is the rollback target; if it lacked the playback branch, a rollback
+// would silently put every new memo back to "Couldn't play". Its converter returns M4A,
+// so the copy is .m4a, which the column's CHECK has to allow.
+test('the standby v2 pipeline keeps the same playback copy, as M4A, so a rollback stays playable', () => {
+  const src = readFileSync(join(REPO, 'n8n/pipelines/pipeline-voice-transcription.ts'), 'utf8');
+  assert.ok(src.indexOf('openAiTranscribe.to(transcribed') < src.indexOf('uploadPlayback.to(playbackUploaded'));
+  for (const name of ['Upload Playback Copy', 'Record Playback Path']) {
+    const at = src.indexOf(`name: '${name}'`);
+    assert.ok(at > 0, name);
+    assert.match(src.slice(at, at + 200), /onError: 'continueRegularOutput'/, `${name} must continue on error`);
+  }
+  assert.match(src, /voice-memos\/sms\/' \+ \$\('Run Context'\)\.item\.json\.messageId \+ '\.m4a'/);
+  assert.match(src, /playback_path: 'sms\/' \+ \$\('Run Context'\)\.item\.json\.messageId \+ '\.m4a'/);
+  // v2's converted file is in binary property 'audio' (v3's is 'data').
+  assert.match(src.slice(src.indexOf("name: 'Upload Playback Copy'")), /inputDataFieldName: 'audio'/);
+  const sql = readFileSync(join(REPO, 'supabase/migrations/20261019174307_voice_memo_playback_allow_m4a.sql'), 'utf8');
+  assert.match(sql, /playback_path in \('sms\/' \|\| id::text \|\| '\.mp3', 'sms\/' \|\| id::text \|\| '\.m4a'\)/);
+});

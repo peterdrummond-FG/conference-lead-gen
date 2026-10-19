@@ -230,6 +230,10 @@ Things to know before trusting that "this directory equals production":
 - **Two files share a version prefix**, `20260928120000_events_complete_fn.sql` and
   `20260928120000_voice_memo_fallback_contact_creation.sql`. They touch different
   objects; apply them in either order.
+- **A comment that was true when written.** `20261019172232_voice_memo_playback_copy.sql`
+  pins `playback_path` to `sms/<id>.mp3`. `20261019174307_voice_memo_playback_allow_m4a.sql`
+  replaced that CHECK so `.m4a` is allowed too (the standby v2 pipeline's converter
+  returns M4A); the first file was left as applied.
 - **A fresh environment has not been rebuilt from this directory.** Because of the
   first point, replaying these files into an empty project is untested and would not
   recreate every object. Production schema changes are made with the Supabase MCP

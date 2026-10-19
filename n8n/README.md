@@ -184,8 +184,8 @@ conversion: phones send AMR, which OpenAI rejects.
   property `data`. Since 2026-10-19 it also **keeps that MP3** (browsers cannot play
   the stored AMR): a side branch after transcription uploads it to
   `voice-memos/sms/<id>.mp3` and records `inbound_messages.playback_path`. v2 does
-  not, so rolling back to v2 stops new memos getting a playable copy (existing ones
-  keep theirs).
+  the same with the M4A its converter returns (`voice-memos/sms/<id>.m4a`), so a
+  rollback keeps new memos playable too.
 - **Standby (v2):** id `kYKg80yktf4QKljI`, source
   `pipelines/pipeline-voice-transcription.ts`. It converts through the Vercel function
   in `ffmpeg-service/` (`https://audio-convert-ffmpeg.vercel.app/api/convert`) and

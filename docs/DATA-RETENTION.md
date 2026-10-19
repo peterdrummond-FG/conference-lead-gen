@@ -49,7 +49,7 @@ crop, and any voice memo reached through `source_message_id`.
 
 - `expired_media(p_retention_days, p_limit)` — the single definition of the
   retention rule. A voice memo is **two files**: the AMR (`storage_path`) and the MP3
-  playback copy (`playback_path`, added 2026-10-19 because browsers cannot play AMR).
+  playback copy (`playback_path`, `.mp3`, or `.m4a` when the standby pipeline made it; added 2026-10-19 because browsers cannot play AMR).
   Same recording, same deadline: every deleter below removes both. `expired_media` and
   `mark_media_purged` are executable by `service_role` only (they were open to the
   public key until 2026-10-19).
