@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
   accountBadge, appendNote, eventRecency, groupByEvent, isProcessing, isReady, leadCue, leadFlags, readinessChecklist, readyIds, searchLeads, sortLeads, statusCounts,
-  filterBySource, sourceFilterOptions, sourceKey, sourceLabel, sourceTone, SOURCE_OPTIONS,
+  filterBySource, sourceFilterOptions, sourceKey, sourceLabel, sourceTone, SOURCE_OPTIONS, SOURCE_GROUPS,
 } from './contactsList.ts';
 
 function lead(over = {}) {
@@ -379,6 +379,16 @@ test('every intake_path the database allows is a door sourceKey knows', () => {
 test('filter options list every source and add Other only when a lead needs it', () => {
   assert.deepEqual(sourceFilterOptions([lead()]).map((o) => o.value), [null, ...SOURCE_OPTIONS.map((o) => o.value)]);
   assert.equal(sourceFilterOptions([lead({ source: 'sms_v2' })]).at(-1).value, 'other');
+});
+
+// The Filter panel draws its chips from SOURCE_GROUPS. A source missing from every
+// group would have no chip, so a rep could never filter to it.
+test('every source option sits in exactly one filter group', () => {
+  const placed = SOURCE_GROUPS.flatMap((g) => g.items.map((i) => i.value));
+  assert.equal(new Set(placed).size, placed.length, 'a source is in two groups');
+  for (const o of SOURCE_OPTIONS) assert.ok(placed.includes(o.value), `${o.value} has no group`);
+  assert.ok(placed.includes('other'), 'Other has no group');
+  assert.ok(SOURCE_GROUPS.every((g) => g.items.every((i) => i.short.trim())), 'a chip has no text');
 });
 
 test('filtering by source keeps only that source; null keeps all', () => {

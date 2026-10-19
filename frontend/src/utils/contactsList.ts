@@ -292,6 +292,34 @@ export const SOURCE_OPTIONS: { value: SourceKey; label: string }[] = [
 
 const OTHER_OPTION = { value: 'other' as SourceKey, label: 'Other' };
 
+// How the Filter panel lays the source chips out: a short row per kind of source, so
+// ten pills don't read as one wall. `short` is the chip's text under its row label
+// ("QR" / "Scan"); the chip's accessible name stays the full label. Display only: the
+// stored key and the label on a contact's card are unchanged. A key in SOURCE_OPTIONS
+// that no group lists would silently vanish from the panel, so the test checks every
+// one is placed (and the panel puts any unplaced key under "Other" regardless).
+export const SOURCE_GROUPS: { label: string; items: { value: SourceKey; short: string }[] }[] = [
+  { label: 'QR', items: [
+    { value: 'qr_scan', short: 'Scan' },
+    { value: 'qr_booth', short: 'Booth' },
+    { value: 'qr_session', short: 'Session' },
+  ] },
+  { label: 'Photo', items: [
+    { value: 'card_photo', short: 'Card' },
+    { value: 'list_photo', short: 'List' },
+  ] },
+  { label: 'Voice and text', items: [
+    { value: 'voice_memo', short: 'Memo' },
+    { value: 'sms', short: 'SMS' },
+    { value: 'imported_note', short: 'Imported' },
+  ] },
+  { label: 'Other', items: [
+    { value: 'kiosk', short: 'Kiosk' },
+    { value: 'form', short: 'Form' },
+    { value: 'other', short: 'Other' },
+  ] },
+];
+
 export function sourceKey(c: SourceFields): SourceKey {
   switch (c.source) {
     case 'form':
