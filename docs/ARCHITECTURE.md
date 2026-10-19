@@ -792,6 +792,35 @@ as its own `Follow Up Done` column —
 no Zoho field is mapped to it yet, so it rides along unmapped until Sales
 picks one.
 
+### Import: upload a file (2026-10-19)
+
+The Import page (`/notes`, `NotesPage.vue` + `NotesBody.vue`) has two tabs: paste a note,
+or upload a CSV / `.xlsx`. Choosing a file imports it at once; there is no mapping screen.
+
+- **The browser matches the columns** (`utils/fileImport.ts`, tests beside it): by header
+  wording first ("Work Email", "Surname", "School District" is a district), then by what the
+  cells look like (an email, a phone number, a state), which also covers a file with no header
+  row. Plain code, not a model: model calls only run inside n8n skill workflows. The one
+  question it can ask is which column holds the names, when it truly can't tell.
+- **Everything that isn't one of our fields is kept as a note** on that contact, as
+  `Header: value` lines (each value cut at 500 characters, empty cells skipped), so it
+  reaches Zoho in the Description column like any rep note. A second Email column goes to
+  notes, not over the first.
+- **`notes-import-file`** files one contact per row and is the only writer. It re-validates
+  every value (`_shared/fileImport.ts`: the caps every intake path uses; a value that doesn't
+  fit its field moves into the notes rather than being lost; a row with no name is listed
+  under "Not added" with its spreadsheet row number). 500 rows max, 5 concurrent inserts.
+  It resolves the conference the same way `notes-submit` does (`_shared/noteEvent.ts`).
+- **It reuses `note_submissions` and source `note`** so the Contacts source reads "Imported
+  note", the rep is credited, and `notes-status` reads the result back unchanged. The
+  submission row is created already `completed` on purpose: `pending_extraction` would
+  fire the note-extraction webhook and hand a file summary to the AI, and a row left
+  `processing` by a crash would be re-queued to it by `reconcile_stale_note_submissions`.
+- Contacts are inserted `needs_review` / match `pending`, which is what starts research and
+  matching in n8n. Nothing is confirmed for the rep. `extraction_confidence` is `high`
+  because the values are copied from the person's own cells, not read by a model.
+- Deploy `notes-import-file` and `notes-submit` (both use `_shared/noteEvent.ts`).
+
 ### Resolving a duplicate
 
 `DuplicateResolutionDialog.vue` opens from a lead flagged "possible duplicate".

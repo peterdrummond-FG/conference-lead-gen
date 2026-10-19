@@ -7,6 +7,7 @@
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
+import { resolveNoteEvent } from "../_shared/noteEvent.ts";
 
 // A paste this big is a mis-paste (a whole document, a mail thread), not a
 // day's conference notes. Rejecting it up front beats handing the extraction
@@ -41,38 +42,11 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
 
-  // The rep's own linked event wins over whichever event happens to be
-  // active: a rep writing up notes on the way home is still filing them
-  // against the conference they were just at, even if someone has since
-  // activated the next one. Falls back to the most-recently-activated event
-  // for staff who don't keep a current_event_id (admin/Solutions Success) —
-  // ordered rather than .maybeSingle() since multiple events can be active
-  // at once (20260915120000_event_slug_and_concurrent_events.sql). Never
-  // taken from the client — the paste page shows the same resolution so the
-  // rep can see where it's going, but it isn't what decides it.
-  let eventId = user.currentEventId;
-  if (!eventId) {
-    const { data: activeEvent, error: activeError } = await supabase
-      .from("events")
-      .select("id")
-      .eq("is_active", true)
-      .order("activated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (activeError) return errorResponse(req, 500, activeError.message);
-    if (!activeEvent) {
-      return errorResponse(req, 409, "You're not linked to an event and there's no active event — choose one in Setup first.");
-    }
-    eventId = activeEvent.id;
-  }
-
-  const { data: event, error: eventError } = await supabase
-    .from("events")
-    .select("id, name")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (eventError) return errorResponse(req, 500, eventError.message);
-  if (!event) return errorResponse(req, 409, "The event you're linked to no longer exists — choose a new one in Setup.");
+  // Shared with notes-import-file so a pasted note and an uploaded file always
+  // land in the same conference (see _shared/noteEvent.ts for the rule).
+  const resolved = await resolveNoteEvent(supabase, user.currentEventId);
+  if ("failure" in resolved) return errorResponse(req, resolved.failure.status, resolved.failure.message);
+  const { event } = resolved;
 
   const windowStart = new Date(Date.now() - IN_FLIGHT_WINDOW_MINUTES * 60_000).toISOString();
   const { data: recent, error: recentError } = await supabase
