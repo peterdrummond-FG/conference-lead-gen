@@ -1,5 +1,5 @@
 <template>
-  <q-form ref="formRef" class="intake-form" :class="{ 'is-phone': phone }" @submit.prevent="$emit('submit')" @focusin="onFocusIn">
+  <q-form ref="formRef" class="intake-form" :class="{ 'is-phone': phone, 'is-wide': wide }" @submit.prevent="$emit('submit')" @focusin="onFocusIn">
     <!-- The first block folds into a one-line summary once it's filled in and
          the attendee moves on to another field (never while they're still
          typing in it, which would shift the screen under their thumb). The
@@ -14,7 +14,9 @@
       <q-btn flat no-caps color="primary" label="Edit" class="intake-summary-edit" aria-label="Edit your name and contact details" @click="$emit('unfold')" />
     </div>
 
+    <div class="intake-grid">
     <div v-show="!folded" ref="identityEl" class="intake-identity">
+      <div v-if="wide" class="intake-section">About you</div>
       <div class="intake-name-row">
         <q-input
       :readonly="readonly"
@@ -61,28 +63,55 @@
       <div class="intake-hint">Add your email and phone number</div>
     </div>
 
-    <div class="intake-optional">Optional</div>
-    <q-input v-model="form.title" :readonly="readonly" label="Title" :autocomplete="ac('organization-title')" borderless />
+    <div class="intake-work">
+      <div v-if="wide" class="intake-section">Where you work</div>
+      <div v-else class="intake-optional">Optional</div>
+      <q-input v-model="form.title" :readonly="readonly" label="Title" :autocomplete="ac('organization-title')" borderless />
 
-    <!-- A booth or breakout-session QR already says how they found us. -->
-    <q-select
-      :readonly="readonly"
-      v-if="showChannel"
-      v-model="form.channel"
-      :options="CHANNEL_OPTIONS"
-      option-label="label"
-      option-value="value"
-      emit-value
-      map-options
-      clearable
-      borderless
-      label="How did you hear about us?"
-    />
+      <!-- Phones and the tour keep the dropdown in its old place, between Title and
+           State; wide screens give the question its own row below (see `wide`). -->
+      <q-select
+        v-if="showChannel && !wide"
+        :readonly="readonly"
+        v-model="form.channel"
+        :options="CHANNEL_OPTIONS"
+        option-label="label"
+        option-value="value"
+        emit-value
+        map-options
+        clearable
+        borderless
+        label="How did you hear about us?"
+      />
 
-    <!-- State, District and School: the same fields the lead editor and the merge dialog
-         use (InstitutionFields), so the lists, the "Use '<typed>'" entry and the clearing
-         rules are one piece of code. -->
-    <InstitutionFields :model="form" variant="form" hints :readonly="readonly" />
+      <!-- State, District and School: the same fields the lead editor and the merge dialog
+           use (InstitutionFields), so the lists, the "Use '<typed>'" entry and the clearing
+           rules are one piece of code. -->
+      <InstitutionFields :model="form" variant="form" hints :readonly="readonly" />
+    </div>
+    </div>
+
+    <!-- A booth or breakout-session QR already says how they found us. Two big buttons
+         instead of a dropdown: the answer matters to the team, so it is on screen, not
+         behind a tap. Still clearable, so "didn't answer" stays distinct from a choice. -->
+    <div v-if="showChannel && wide" class="intake-channel">
+      <div class="intake-channel-label">How did you hear about us?</div>
+      <q-btn-toggle
+        v-model="form.channel"
+        :options="CHANNEL_OPTIONS"
+        :readonly="readonly"
+        clearable
+        spread
+        no-caps
+        unelevated
+        rounded
+        color="white"
+        text-color="grey-9"
+        toggle-color="primary"
+        class="intake-channel-toggle"
+        aria-label="How did you hear about us?"
+      />
+    </div>
 
     <div class="intake-submit-row">
       <q-btn
@@ -101,8 +130,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { QForm } from 'quasar';
+import { computed, ref } from 'vue';
+import { useQuasar, type QForm } from 'quasar';
 import type { UsStateOption } from '@/constants/usStates';
 import type { TypeaheadOption } from '@/utils/institutionPicker';
 import InstitutionFields from '@/components/InstitutionFields.vue';
@@ -147,6 +176,10 @@ const emit = defineEmits<{
 }>();
 
 const form = props.form;
+const $q = useQuasar();
+// Two columns and a card from 600px up. `phone` (the tour's phone screen) forces the
+// phone layout on a laptop browser, as it does for the sizes below.
+const wide = computed(() => !props.phone && !$q.screen.lt.sm);
 const formRef = ref<QForm | null>(null);
 const identityEl = ref<HTMLElement | null>(null);
 const firstNameRef = ref<{ focus: () => void } | null>(null);
@@ -228,4 +261,28 @@ defineExpose({
 .intake-form.is-phone :deep(.q-field) { font-size: 18px; margin-bottom: 4px; }
 .intake-form.is-phone :deep(.q-field__control) { height: 52px; }
 .intake-form.is-phone .intake-submit-row { margin-top: 24px; }
+
+/* Wide screens (laptop, tablet): About you | Where you work, with the how-did-you-hear
+   row and Submit beneath. Phones keep the single column above, untouched. Each field
+   still reserves Quasar's 20px error slot so a message never shifts the row below. */
+.intake-grid { display: block; }
+.intake-form.is-wide .intake-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.intake-form.is-wide :deep(.q-field) { font-size: 18px; margin-bottom: 0; padding-bottom: 20px; position: relative; }
+/* Hints and errors sit in the reserved 20px, never in flow: Quasar only adds the slot to a
+   field that has a rule or hint, so without this Title and State came out 20px shorter than
+   Email and Phone and the two columns never lined up (and State's slot would appear on error). */
+.intake-form.is-wide :deep(.q-field__bottom) { position: absolute; left: 0; right: 0; top: 100%; bottom: auto; padding: 4px 0 0; min-height: 0; }
+.intake-form.is-wide :deep(.q-field--with-bottom) { padding-bottom: 20px; }
+.intake-form.is-wide :deep(.q-field__control) { height: 52px; }
+.intake-form.is-wide :deep(.q-field__label) { font-size: 16px; }
+.intake-form.is-wide .intake-name-row { gap: 14px; }
+.intake-form.is-wide .intake-hint { margin: -2px 0 0; font-size: 13px; }
+.intake-section { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: #5f6368; margin: 0 0 4px; }
+.intake-form.is-wide .intake-submit-row { margin-top: 20px; }
+.intake-form.is-wide .intake-submit-btn { padding: 12px 0; }
+
+.intake-channel { margin-top: 12px; }
+.intake-channel-label { font-size: 16px; font-weight: 600; color: #262627; margin-bottom: 8px; }
+.intake-channel-toggle { border: 1.5px solid #8b95a1; }
+.intake-channel-toggle :deep(.q-btn) { min-height: 52px; font-size: 16px; }
 </style>

@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed, nextTick, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { useQuasar } from 'quasar';
 import { api } from '@/boot/axios';
 import { useEventStore } from '@/stores/event-store';
 import { useSessionStore } from '@/stores/session-store';
@@ -68,6 +69,7 @@ const eventStore = useEventStore();
 const sessionStore = useSessionStore();
 const kioskModeStore = useKioskModeStore();
 const route = useRoute();
+const $q = useQuasar();
 
 // Browser autofill helps an attendee on their own phone (the QR path), but on a
 // shared booth device it would offer the device OWNER's saved name, email and
@@ -168,7 +170,9 @@ const identityComplete = computed(() => {
 // and then taps Title has already left the block without a focus change to catch. Never
 // while they are typing in it, which would shift the screen under their thumb.
 function onFocusOutside() {
-  if (identityComplete.value) folded.value = true;
+  // Folding exists to keep a phone's keyboard from covering the form; on a laptop or
+  // tablet both columns are on screen at once, and folding would leave a hole in the left one.
+  if ($q.screen.lt.sm && identityComplete.value) folded.value = true;
 }
 
 async function unfold() {
@@ -251,6 +255,22 @@ onMounted(async () => {
 .intake-shell {
   width: 100%;
   max-width: 640px;
+}
+
+/* Laptop and tablet: a bounded card, not a page-wide form. The form inside lays out in
+   two columns (IntakeFormFields); phones keep the plain full-width page above. The old
+   48px page padding and 40px under the subtitle pushed Submit below the fold. */
+@media (min-width: 600px) {
+  .intake-page { padding: 24px 24px 32px; }
+  .intake-shell {
+    max-width: 720px;
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 14px;
+    padding: 26px 30px 28px;
+  }
+  .intake-title { font-size: 26px; }
+  .intake-subtitle { font-size: 16px; margin-top: 3px; margin-bottom: 16px; }
 }
 .intake-tools { display: flex; justify-content: flex-end; margin-bottom: 4px; }
 
