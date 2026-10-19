@@ -9,7 +9,8 @@
 //
 // This does NOT delete inbound_messages rows, transcripts, or the contacts
 // they produced -- only the bytes in Storage, after which storage_path is
-// nulled. contacts-photo already returns a clean 404 for a missing object.
+// nulled (and playback_path, the MP3 copy of a memo). contacts-photo already returns
+// a clean 404 for a missing object.
 //
 // Moved here from local-agent/ (2026-10-08) when the local agent was retired: this
 // was its only job that nothing else replaced, and it is NOT scheduled anywhere,
@@ -68,7 +69,10 @@ if (dryRun) process.exit(0);
 
 const purgedIds = [];
 for (const [bucket, rows] of byBucket) {
-  const paths = rows.map((r) => r.storage_path);
+  // A voice memo holds two files, the AMR (storage_path) and its MP3 playback copy
+  // (playback_path). Both are the same recording: deleting only the first would leave
+  // the audio in Storage past the retention window with nothing pointing at it.
+  const paths = rows.flatMap((r) => [r.storage_path, r.playback_path]).filter(Boolean);
   const { error: rmError } = await supabase.storage.from(bucket).remove(paths);
   if (rmError) {
     // Leave storage_path set so the next run retries: nulling it while the

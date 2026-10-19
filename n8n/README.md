@@ -181,7 +181,11 @@ conversion: phones send AMR, which OpenAI rejects.
   with the `n8n-nodes-ffmpeg-audio` community node, so it needs no credential, no
   external service and no files on the host. The node's `m4a` output fails ("Output
   format m4a is not available"), hence MP3, and it returns the file in binary
-  property `data`.
+  property `data`. Since 2026-10-19 it also **keeps that MP3** (browsers cannot play
+  the stored AMR): a side branch after transcription uploads it to
+  `voice-memos/sms/<id>.mp3` and records `inbound_messages.playback_path`. v2 does
+  not, so rolling back to v2 stops new memos getting a playable copy (existing ones
+  keep theirs).
 - **Standby (v2):** id `kYKg80yktf4QKljI`, source
   `pipelines/pipeline-voice-transcription.ts`. It converts through the Vercel function
   in `ffmpeg-service/` (`https://audio-convert-ffmpeg.vercel.app/api/convert`) and

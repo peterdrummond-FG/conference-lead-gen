@@ -164,3 +164,44 @@ test('a batch of only voice memos never gets a "0 contacts" text, and a zero-con
   // The watermark is claimed BEFORE the silent skip, so a settled batch is not re-read every minute.
   assert.ok(src.indexOf('contacts_confirmed_through: newest.received_at') < src.indexOf('if (text === null) continue;'));
 });
+
+// The play button failed for every memo (2026-10-15): storage_path is the AMR exactly as
+// Twilio sent it, and browsers cannot decode AMR. The MP3 copy is what plays, and it
+// is a second file that every deleter and the retention purge must also remove.
+test('the play button signs the MP3 playback copy, never the stored AMR', () => {
+  const src = fn('inbound-messages-audio');
+  assert.match(src, /createSignedUrl\(message\.playback_path, URL_SECONDS\)/);
+  assert.doesNotMatch(src, /createSignedUrl\(message\.storage_path/);
+  // No copy yet -> an honest message, not a file the browser cannot play.
+  assert.match(src, /if \(!message\.playback_path\) return errorResponse\(req, 404/);
+});
+
+test('every place that deletes a memo\'s audio removes the MP3 copy too', () => {
+  assert.match(fn('inbound-messages-delete'), /\[message\.storage_path, message\.playback_path\]/);
+  const bulk = fn('contacts-bulk-delete');
+  assert.match(bulk, /\[m\.storage_path, m\.playback_path\]/);
+  assert.match(bulk, /update\(\{ storage_path: null, playback_path: null \}\)/);
+  assert.match(readFileSync(join(REPO, 'scripts/retention/purge-expired-media.mjs'), 'utf8'), /\[r\.storage_path, r\.playback_path\]/);
+});
+
+test('the playback column is pinned to the row\'s own id, and the purge functions are service-role only', () => {
+  const sql = readFileSync(join(REPO, 'supabase/migrations/20261019172232_voice_memo_playback_copy.sql'), 'utf8');
+  assert.match(sql, /playback_path = 'sms\/' \|\| id::text \|\| '\.mp3'/);
+  assert.match(sql, /returns table\(id uuid, kind text, storage_path text, playback_path text, received_at timestamptz\)/);
+  assert.match(sql, /set storage_path = null,\s+playback_path = null/);
+  assert.match(sql, /revoke execute on function public\.expired_media\(integer, integer\) from public, anon, authenticated/);
+  assert.match(sql, /revoke execute on function public\.mark_media_purged\(uuid\[\]\) from public, anon, authenticated/);
+});
+
+test('the live pipeline keeps the MP3 on a side branch AFTER transcription that can never fail the memo', () => {
+  const src = readFileSync(join(REPO, 'n8n/pipelines/pipeline-voice-transcription-v3.ts'), 'utf8');
+  // Transcription is first in connection order (n8n runs branches in that order).
+  assert.ok(src.indexOf('openAiTranscribe.to(transcribed') < src.indexOf('uploadPlayback.to(playbackUploaded'));
+  for (const name of ['Upload Playback Copy', 'Record Playback Path']) {
+    const at = src.indexOf(`name: '${name}'`);
+    assert.ok(at > 0, name);
+    assert.match(src.slice(at, at + 200), /onError: 'continueRegularOutput'/, `${name} must continue on error`);
+  }
+  // The path comes from the claimed row's own id (UUID-checked upstream), never from the item.
+  assert.match(src, /\/storage\/v1\/object\/voice-memos\/sms\/' \+ \$\('Run Context'\)\.item\.json\.messageId \+ '\.mp3'/);
+});

@@ -660,7 +660,14 @@ shows as a blob; memos use `inbound-messages-audio`). The old
   6s while any memo is working.
 - `inbound-messages-audio` — the play button. Returns `{ url }`, a 5-minute signed
   `voice-memos` URL (JSON rather than contacts-photo's 302, because an `<audio>`
-  element can't send the Authorization header). Same ownership rule as the others;
+  element can't send the Authorization header). It signs `playback_path`, the **MP3
+  copy**, never `storage_path`: that is the AMR exactly as Twilio sent it, and Chrome
+  and Firefox cannot decode AMR, so for the first two weeks every memo said "Couldn't
+  play this recording" (found 2026-10-15). The MP3 is the one `pipeline-voice-transcription`
+  already makes for transcription, kept (side branch off `Converted?`, after
+  transcription, every node continues on error) and recorded in
+  `inbound_messages.playback_path`; a memo with no copy yet answers 404 "isn't ready to
+  play yet". Same ownership rule as the others;
   404 once the 90-day purge has removed the file, and the card then shows no
   player. `index.html`'s CSP gained `media-src 'self' https://*.supabase.co` for it.
 

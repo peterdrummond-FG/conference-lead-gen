@@ -21,7 +21,7 @@ That is deliberate; do not add a policy to "make something work", add a function
 | `profiles` | App users: role (`admin`, `solutionsSuccess`, `sales`), phone number, `current_event_id`, `rep_slug` (a rep's QR link), kiosk PIN, onboarding progress. Logins themselves live in Supabase Auth (`auth.users`). |
 | `campaigns` | A cache of Zoho Campaigns of type conference, used by the conference search. |
 | `school_districts`, `schools` | Copies of Zoho Accounts, used by the State, District and School pickers and by the match step's fallback. |
-| `inbound_messages` | Everything texted to the Twilio number (photos, voice memos, notes), and the work queue for OCR and transcription: status, attempts, transcript, link state, and where the file is in Storage. |
+| `inbound_messages` | Everything texted to the Twilio number (photos, voice memos, notes), and the work queue for OCR and transcription: status, attempts, transcript, link state, and where the files are in Storage (`storage_path`, the original; `playback_path`, a voice memo's MP3 copy that browsers can play). |
 | `note_submissions` | Pasted, texted or voice-memo-derived notes waiting for, or finished with, extraction into contacts. |
 | `phone_event_bindings` | Which conference a phone's texted photos, memos and notes are filed under. |
 | `conference_setup_sessions` | The state of an in-progress "SETUP" text conversation. |

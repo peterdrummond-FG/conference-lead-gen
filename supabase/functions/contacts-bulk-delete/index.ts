@@ -1,7 +1,8 @@
 // POST { ids: string[] } -> { deleted: string[], skipped: {id, reason}[] }
 // Who: any signed-in staff role; a sales rep can act only on their own contacts.
 // Writes: deletes the contacts rows, after removing their card photos, crops and voice-memo
-// audio from Storage and nulling inbound_messages.storage_path (see docs/DATA-RETENTION.md).
+// audio (the AMR and its MP3 playback copy) from Storage and nulling inbound_messages.storage_path
+// and playback_path (see docs/DATA-RETENTION.md).
 // Called by Contacts' delete of rejected leads. Scoped to review_status='rejected' server-side (not just the
 // UI only showing this on the Rejected tab) so a stale client selection can
 // never delete a live row.
@@ -69,17 +70,21 @@ Deno.serve(async (req) => {
     if (messageIds.length > 0) {
       const { data: msgs } = await supabase
         .from("inbound_messages")
-        .select("id, kind, storage_path")
+        .select("id, kind, storage_path, playback_path")
         .in("id", messageIds)
-        .not("storage_path", "is", null);
-      const audioPaths = (msgs ?? []).filter((m) => m.kind === "audio").map((m) => m.storage_path);
+        .or("storage_path.not.is.null,playback_path.not.is.null");
+      // A memo's MP3 playback copy (playback_path) is the same recording as its AMR.
+      const audioPaths = (msgs ?? [])
+        .filter((m) => m.kind === "audio")
+        .flatMap((m) => [m.storage_path, m.playback_path])
+        .filter(Boolean) as string[];
       if (audioPaths.length > 0) {
         const { error: audioError } = await supabase.storage.from("voice-memos").remove(audioPaths);
         if (audioError) console.error("voice memo cleanup failed", audioError);
       }
       if (msgs && msgs.length > 0) {
         await supabase.from("inbound_messages")
-          .update({ storage_path: null })
+          .update({ storage_path: null, playback_path: null })
           .in("id", msgs.map((m) => m.id));
       }
     }

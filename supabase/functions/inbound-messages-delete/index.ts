@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: message, error: messageError } = await supabase
     .from("inbound_messages")
-    .select("id, kind, status, link_status, from_phone, storage_path")
+    .select("id, kind, status, link_status, from_phone, storage_path, playback_path")
     .eq("id", id)
     .maybeSingle();
   if (messageError) return errorResponse(req, 500, messageError.message);
@@ -74,10 +74,13 @@ Deno.serve(async (req) => {
   // retry from, whereas deleting the row first orphans the object with
   // nothing left pointing at it. A missing object is the desired end state
   // anyway, so a Storage error here is logged and non-fatal.
-  if (message.storage_path) {
+  // A memo can hold two files, the original AMR and its MP3 playback copy
+  // (playback_path): both are the same recording and both go.
+  const paths = [message.storage_path, message.playback_path].filter(Boolean) as string[];
+  if (paths.length > 0) {
     // Photos live in contact-photos, memos in voice-memos (twilio-webhook picks the bucket by kind).
     const bucket = message.kind === "photo" ? "contact-photos" : "voice-memos";
-    const { error: removeError } = await supabase.storage.from(bucket).remove([message.storage_path]);
+    const { error: removeError } = await supabase.storage.from(bucket).remove(paths);
     if (removeError) console.error("inbound media cleanup failed", removeError);
   }
 

@@ -7,6 +7,9 @@
 // from their own number; Admin / Solutions Success reach any. Audio is deleted
 // from the voice-memos bucket 90 days after arrival (docs/DATA-RETENTION.md), so an
 // old memo answers 404 "no longer available" and the page shows no player.
+//
+// What it signs is `playback_path`, the MP3 copy n8n's pipeline-voice-transcription
+// saves after converting the phone's AMR (browsers cannot play AMR).
 import { errorResponse, handlePreflight, jsonResponse } from "../_shared/http.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/supabase-client.ts";
@@ -28,7 +31,7 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const { data: message, error } = await supabase
     .from("inbound_messages")
-    .select("kind, from_phone, storage_path")
+    .select("kind, from_phone, storage_path, playback_path")
     .eq("id", id)
     .maybeSingle();
   if (error) return errorResponse(req, 500, error.message);
@@ -39,10 +42,16 @@ Deno.serve(async (req) => {
     if (!profile?.phone_number || profile.phone_number !== message.from_phone) return errorResponse(req, 404, "Not found");
   }
 
-  if (!message.storage_path) return errorResponse(req, 404, "This recording is no longer available.");
+  if (!message.storage_path && !message.playback_path) return errorResponse(req, 404, "This recording is no longer available.");
+  // Sign the MP3 copy, never storage_path: that is the AMR exactly as Twilio sent it,
+  // and Chrome / Firefox cannot decode AMR, so signing it made every memo answer
+  // "Couldn't play this recording" (2026-10-15). A memo with no MP3 yet (its
+  // conversion failed, or it predates the copy and has not been backfilled) says so
+  // rather than handing the browser a file it cannot play.
+  if (!message.playback_path) return errorResponse(req, 404, "This recording isn't ready to play yet. The transcript is below.");
   const { data: signed, error: signError } = await supabase.storage
     .from("voice-memos")
-    .createSignedUrl(message.storage_path, URL_SECONDS);
+    .createSignedUrl(message.playback_path, URL_SECONDS);
   if (signError || !signed) return errorResponse(req, 404, "This recording is no longer available.");
 
   return jsonResponse(req, { url: signed.signedUrl });

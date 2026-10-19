@@ -48,9 +48,14 @@ crop, and any voice memo reached through `source_message_id`.
 ## Mechanism
 
 - `expired_media(p_retention_days, p_limit)` — the single definition of the
-  retention rule.
-- `scripts/retention/purge-expired-media.mjs` — deletes the Storage objects, then
-  calls `mark_media_purged` to null `storage_path`. Supports `--dry-run` and a
+  retention rule. A voice memo is **two files**: the AMR (`storage_path`) and the MP3
+  playback copy (`playback_path`, added 2026-10-19 because browsers cannot play AMR).
+  Same recording, same deadline: every deleter below removes both. `expired_media` and
+  `mark_media_purged` are executable by `service_role` only (they were open to the
+  public key until 2026-10-19).
+- `scripts/retention/purge-expired-media.mjs` — deletes the Storage objects (both
+  files of a memo), then calls `mark_media_purged` to null `storage_path` and
+  `playback_path`. Supports `--dry-run` and a
   `RETENTION_DAYS` override. Deliberately does not touch rows, transcripts, or
   the contacts the media produced; `contacts-photo` already returns a clean 404
   for a missing object.
